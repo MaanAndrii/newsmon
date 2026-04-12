@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 import sqlite3
+import json
 from pathlib import Path
+from urllib import error, parse, request
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -47,6 +49,68 @@ class IntegrationsPayload(BaseModel):
     telegram_bot_chat_id: str | None = None
 
 
+def _http_json(
+    url: str,
+    method: str = "GET",
+    headers: dict[str, str] | None = None,
+    payload: dict | None = None,
+    timeout: int = 8,
+) -> tuple[int, dict]:
+    data_bytes = None
+    req_headers = headers or {}
+    if payload is not None:
+        data_bytes = json.dumps(payload).encode("utf-8")
+        req_headers = {**req_headers, "Content-Type": "application/json"}
+    req = request.Request(url, method=method, headers=req_headers, data=data_bytes)
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            return resp.status, json.loads(body) if body else {}
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8") if exc.fp else ""
+        parsed = json.loads(body) if body else {"detail": str(exc)}
+        return exc.code, parsed
+    except Exception:
+        return 0, {}
+
+
+def _extract_telegram_username(raw: str) -> str | None:
+    value = raw.strip()
+    if value.startswith("@"):
+        value = value[1:]
+    if "t.me/" in value:
+        path = parse.urlparse(value).path.strip("/")
+        value = path.split("/")[0] if path else ""
+    if re.fullmatch(r"[A-Za-z0-9_]{5,64}", value):
+        return value
+    return None
+
+
+def _fetch_telegram_channel_title(username: str) -> str | None:
+    url = f"https://t.me/{username}"
+    req = request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with request.urlopen(req, timeout=8) as resp:
+            if resp.status != 200:
+                return None
+            html = resp.read().decode("utf-8", errors="ignore")
+    except Exception:
+        return None
+
+    og_title = re.search(
+        r'<meta property="og:title" content="([^"]+)"',
+        html,
+        flags=re.IGNORECASE,
+    )
+    if og_title and og_title.group(1).strip():
+        return og_title.group(1).strip()
+
+    page_title = re.search(r"<title>([^<]+)</title>", html, flags=re.IGNORECASE)
+    if page_title and page_title.group(1).strip():
+        return page_title.group(1).replace("Telegram:", "").strip()
+    return None
+
+
 @app.on_event("startup")
 def startup() -> None:
     init_db()
@@ -59,8 +123,22 @@ def list_sources() -> list[dict]:
 
 @app.post("/api/sources", status_code=201)
 def create_source(payload: SourceCreate) -> dict:
+    username = _extract_telegram_username(payload.url)
+    if not username:
+        raise HTTPException(
+            status_code=400,
+            detail="Невалідне джерело. Використай @username або https://t.me/username",
+        )
+    title = _fetch_telegram_channel_title(username)
+    if not title:
+        raise HTTPException(
+            status_code=400,
+            detail="Не вдалося перевірити доступність каналу або отримати його назву",
+        )
+
     try:
-        return repo.create_source(payload.name.strip(), payload.url.strip())
+        canonical_url = f"https://t.me/{username}"
+        return repo.create_source(title, canonical_url)
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Source URL already exists") from exc
 
@@ -136,31 +214,66 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
     telegram_bot_token = (data.get("telegram_bot_token") or "").strip()
     telegram_bot_chat_id = (data.get("telegram_bot_chat_id") or "").strip()
 
-    claude = bool(
+    claude_format = bool(
         re.fullmatch(r"sk-ant-(?:api03-)?[A-Za-z0-9_-]{20,}", claude_key)
     )
-    telegram_user = bool(
+    telegram_user_format = bool(
         re.fullmatch(r"\d{5,12}", telegram_api_id)
         and re.fullmatch(r"[a-fA-F0-9]{32}", telegram_api_hash)
     )
-    telegram_bot = bool(
+    telegram_bot_format = bool(
         re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,}", telegram_bot_token)
         and re.fullmatch(r"-?(?:100\d{8,}|[1-9]\d{4,})", telegram_bot_chat_id)
     )
+
+    claude_ok = False
+    claude_reason = "Очікується ключ формату sk-ant-..."
+    if claude_format:
+        status, _ = _http_json(
+            "https://api.anthropic.com/v1/models",
+            headers={
+                "x-api-key": claude_key,
+                "anthropic-version": "2023-06-01",
+            },
+        )
+        claude_ok = status == 200
+        claude_reason = None if claude_ok else "Claude API недоступний або ключ неавторизований"
+
+    telegram_user_reason = (
+        None
+        if telegram_user_format
+        else "API ID має бути числом, API Hash — 32 hex-символи"
+    )
+
+    telegram_bot_ok = False
+    telegram_bot_reason = "Bot token/chat id не відповідають формату Telegram"
+    if telegram_bot_format:
+        me_status, me_body = _http_json(
+            f"https://api.telegram.org/bot{telegram_bot_token}/getMe"
+        )
+        if me_status == 200 and me_body.get("ok") is True:
+            chat_status, chat_body = _http_json(
+                f"https://api.telegram.org/bot{telegram_bot_token}/getChat?chat_id={parse.quote(telegram_bot_chat_id)}"
+            )
+            telegram_bot_ok = chat_status == 200 and chat_body.get("ok") is True
+            telegram_bot_reason = None if telegram_bot_ok else "Бот не має доступу до вказаного chat_id"
+        else:
+            telegram_bot_reason = "Некоректний Bot token або Telegram API недоступний"
+
     return {
         "claude": {
-            "ok": claude,
-            "reason": None if claude else "Очікується ключ формату sk-ant-...",
+            "ok": claude_ok,
+            "reason": claude_reason,
         },
         "telegram_user_api": {
-            "ok": telegram_user,
-            "reason": None if telegram_user else "API ID має бути числом, API Hash — 32 hex-символи",
+            "ok": telegram_user_format,
+            "reason": telegram_user_reason,
         },
         "telegram_bot_api": {
-            "ok": telegram_bot,
-            "reason": None if telegram_bot else "Bot token/chat id не відповідають формату Telegram",
+            "ok": telegram_bot_ok,
+            "reason": telegram_bot_reason,
         },
-        "overall_ok": claude and telegram_user and telegram_bot,
+        "overall_ok": claude_ok and telegram_user_format and telegram_bot_ok,
     }
 
 

@@ -165,6 +165,7 @@
             <input id="sourceInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 md:col-span-2" placeholder="@new_channel або https://t.me/new_channel" />
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500" onclick="addSource()">Додати джерело</button>
           </div>
+          <p id="sourceMessage" class="text-xs text-slate-400"></p>
         </div>
       </section>
     </main>
@@ -302,7 +303,11 @@
         });
         if (res.ok) {
           document.getElementById('sourceInput').value = '';
+          document.getElementById('sourceMessage').textContent = 'Джерело додано.';
           await loadSources();
+        } else {
+          const err = await res.json();
+          document.getElementById('sourceMessage').textContent = err.detail || 'Не вдалося додати джерело.';
         }
       }
 
