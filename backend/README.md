@@ -28,3 +28,7 @@ SQLite database file is created automatically at `backend/newsmon.db`.
 - `GET /api/integrations`
 - `POST /api/integrations`
 - `POST /api/integrations/validate`
+- `GET /api/monitor/status`
+- `GET /api/telethon/auth/status`
+- `POST /api/telethon/auth/request-code`
+- `POST /api/telethon/auth/verify-code`

@@ -25,11 +25,16 @@
         <div class="flex flex-wrap gap-2 mb-5">
           <button class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm" onclick="switchTab('apiTab', this)">API та інтеграції</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('taxonomyTab', this)">Категорії та ключові слова</button>
+          <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('alertsTab', this)">Сповіщення</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('sourcesTab', this)">Джерела</button>
         </div>
 
         <div id="apiTab" class="tab-panel space-y-4">
           <h2 class="text-lg font-semibold">API та інтеграції</h2>
+          <div class="flex items-center gap-2 p-2 rounded bg-slate-800 text-xs">
+            <span id="sigMonitor" class="w-3 h-3 rounded-full bg-slate-500"></span>
+            <span id="monitorText">Моніторинг: стан невідомий</span>
+          </div>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
             <div class="flex items-center gap-2 p-2 rounded bg-slate-800">
               <span id="sigClaude" class="w-3 h-3 rounded-full bg-slate-500"></span>
@@ -77,6 +82,19 @@
               <span class="text-slate-300">Telegram Bot Chat ID</span>
               <input id="telegramBotChatId" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="-1001234567890" />
             </label>
+          </div>
+          <div class="rounded-lg border border-slate-800 p-3 space-y-2">
+            <h3 class="text-sm font-semibold">Telethon авторизація користувача</h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
+              <input id="telethonAuthPhone" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="+380XXXXXXXXX" />
+              <input id="telethonAuthCode" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Код з Telegram" />
+              <input id="telethonAuthPassword" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="2FA пароль (опц.)" />
+              <div class="flex gap-2">
+                <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs" onclick="requestTelethonCode()">Запросити код</button>
+                <button class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs" onclick="verifyTelethonCode()">Підтвердити</button>
+              </div>
+            </div>
+            <p id="telethonAuthMessage" class="text-xs text-slate-400">Статус авторизації: невідомо</p>
           </div>
           <div class="flex gap-2">
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveIntegrations()">Зберегти інтеграції</button>
@@ -154,6 +172,46 @@
               <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Категорія" />
               <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500">Додати ключове слово</button>
             </div>
+          </div>
+        </div>
+
+        <div id="alertsTab" class="tab-panel hidden space-y-4">
+          <h2 class="text-lg font-semibold">Сповіщення</h2>
+          <div class="overflow-x-auto rounded-lg border border-slate-800">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-800 text-slate-300">
+                <tr>
+                  <th class="text-left p-3">Правило</th>
+                  <th class="text-left p-3">Канал</th>
+                  <th class="text-left p-3">Категорія</th>
+                  <th class="text-left p-3">Мін. оцінка</th>
+                  <th class="text-left p-3">Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="border-t border-slate-800">
+                  <td class="p-3">вибух</td>
+                  <td class="p-3">@ukraine_news</td>
+                  <td class="p-3">Надзвичайні події</td>
+                  <td class="p-3">7</td>
+                  <td class="p-3"><span class="px-2 py-1 rounded bg-emerald-700 text-xs">Увімкнено</span></td>
+                </tr>
+                <tr class="border-t border-slate-800">
+                  <td class="p-3">кадрові зміни</td>
+                  <td class="p-3">@city_live</td>
+                  <td class="p-3">Політика</td>
+                  <td class="p-3">6</td>
+                  <td class="p-3"><span class="px-2 py-1 rounded bg-slate-600 text-xs">Вимкнено</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-2 text-sm">
+            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Ключове слово / regex" />
+            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Канал" />
+            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Категорія" />
+            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Мін. оцінка" />
+            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500">Додати правило</button>
           </div>
         </div>
 
@@ -257,6 +315,7 @@
         document.getElementById('telethonSession').value = data.telethon_session || 'telegram_user';
         document.getElementById('telegramBotToken').value = data.telegram_bot_token || '';
         document.getElementById('telegramBotChatId').value = data.telegram_bot_chat_id || '';
+        document.getElementById('telethonAuthPhone').value = data.telethon_phone || '';
       }
 
       async function saveIntegrations() {
@@ -289,6 +348,59 @@
         if (!data.telegram_bot_api.ok) details.push(`Telegram Bot API: ${data.telegram_bot_api.reason}`);
         document.getElementById('validationMessage').textContent =
           details.length > 0 ? details.join(' • ') : 'Усі інтеграції пройшли валідацію формату.';
+      }
+
+      function setMonitorSignal(state, text) {
+        const dot = document.getElementById('sigMonitor');
+        dot.classList.remove('bg-slate-500', 'bg-emerald-500', 'bg-amber-400', 'bg-rose-500');
+        if (state === 'ok') dot.classList.add('bg-emerald-500');
+        else if (state === 'warning' || state === 'running') dot.classList.add('bg-amber-400');
+        else if (state === 'error') dot.classList.add('bg-rose-500');
+        else dot.classList.add('bg-slate-500');
+        document.getElementById('monitorText').textContent = text;
+      }
+
+      async function loadMonitorStatus() {
+        const res = await fetch(`${apiBase}/api/monitor/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const info = `Моніторинг: ${data.state} • Оновлено: ${data.updated_sources}/${data.total_sources}`;
+        setMonitorSignal(data.state, info);
+      }
+
+      async function loadTelethonAuthStatus() {
+        const res = await fetch(`${apiBase}/api/telethon/auth/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById('telethonAuthMessage').textContent =
+          data.authorized
+            ? `Telethon авторизовано (session: ${data.session})`
+            : `Telethon НЕ авторизовано (session: ${data.session})`;
+      }
+
+      async function requestTelethonCode() {
+        const phone = document.getElementById('telethonAuthPhone').value.trim();
+        const res = await fetch(`${apiBase}/api/telethon/auth/request-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone }),
+        });
+        const data = await res.json();
+        document.getElementById('telethonAuthMessage').textContent = data.detail || 'Запит оброблено';
+      }
+
+      async function verifyTelethonCode() {
+        const phone = document.getElementById('telethonAuthPhone').value.trim();
+        const code = document.getElementById('telethonAuthCode').value.trim();
+        const password = document.getElementById('telethonAuthPassword').value.trim();
+        const res = await fetch(`${apiBase}/api/telethon/auth/verify-code`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, code, password: password || null }),
+        });
+        const data = await res.json();
+        document.getElementById('telethonAuthMessage').textContent = data.detail || 'Перевірка виконана';
+        await loadTelethonAuthStatus();
       }
 
       function sourceRow(item) {
@@ -364,6 +476,10 @@
 
       loadIntegrations();
       loadSources();
+      loadMonitorStatus();
+      loadTelethonAuthStatus();
+      setInterval(loadMonitorStatus, 10000);
+      setInterval(loadTelethonAuthStatus, 30000);
     </script>
   </body>
 </html>

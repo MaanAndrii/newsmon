@@ -20,6 +20,15 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 PROTOTYPE_DIR = ROOT_DIR / "prototype"
 MONITOR_INTERVAL_SECONDS = 300
 monitor_task: asyncio.Task | None = None
+telethon_auth_state: dict[str, str] = {}
+monitor_status: dict[str, str | int | None] = {
+    "state": "stopped",
+    "last_run_at": None,
+    "last_success_at": None,
+    "last_error": None,
+    "updated_sources": 0,
+    "total_sources": 0,
+}
 
 
 class SourceCreate(BaseModel):
@@ -53,6 +62,16 @@ class IntegrationsPayload(BaseModel):
     telegram_bot_chat_id: str | None = None
     telethon_phone: str | None = None
     telethon_session: str | None = "telegram_user"
+
+
+class TelethonCodeRequest(BaseModel):
+    phone: str
+
+
+class TelethonCodeVerify(BaseModel):
+    phone: str
+    code: str
+    password: str | None = None
 
 
 def _http_json(
@@ -158,12 +177,43 @@ async def _sync_sources_last_messages() -> tuple[int, int, str | None]:
     return updated, len(sources), None
 
 
+def _telethon_client_config() -> tuple[int, str, str]:
+    integrations = repo.get_integrations()
+    api_id = (integrations.get("telegram_api_id") or "").strip()
+    api_hash = (integrations.get("telegram_api_hash") or "").strip()
+    session_name = (integrations.get("telethon_session") or "telegram_user").strip()
+    if not re.fullmatch(r"\d{5,12}", api_id) or not re.fullmatch(
+        r"[a-fA-F0-9]{32}", api_hash
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Вкажіть коректні Telegram API ID/Hash у вкладці інтеграцій",
+        )
+    return int(api_id), api_hash, session_name
+
+
 async def _monitor_loop() -> None:
     while True:
         try:
-            await _sync_sources_last_messages()
+            monitor_status["state"] = "running"
+            monitor_status["last_run_at"] = datetime.now(timezone.utc).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+            updated, total, err = await _sync_sources_last_messages()
+            monitor_status["updated_sources"] = updated
+            monitor_status["total_sources"] = total
+            if err:
+                monitor_status["state"] = "warning"
+                monitor_status["last_error"] = err
+            else:
+                monitor_status["state"] = "ok"
+                monitor_status["last_error"] = None
+                monitor_status["last_success_at"] = datetime.now(timezone.utc).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
         except Exception:
-            pass
+            monitor_status["state"] = "error"
+            monitor_status["last_error"] = "Непередбачена помилка моніторингу"
         await asyncio.sleep(MONITOR_INTERVAL_SECONDS)
 
 
@@ -173,6 +223,73 @@ async def startup() -> None:
     global monitor_task
     if monitor_task is None:
         monitor_task = asyncio.create_task(_monitor_loop())
+
+
+@app.get("/api/monitor/status")
+def get_monitor_status() -> dict:
+    return monitor_status
+
+
+@app.get("/api/telethon/auth/status")
+async def telethon_auth_status() -> dict:
+    api_id, api_hash, session_name = _telethon_client_config()
+    try:
+        from telethon import TelegramClient
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="Telethon не встановлено") from exc
+    session_path = ROOT_DIR / "backend" / session_name
+    async with TelegramClient(str(session_path), api_id, api_hash) as client:
+        authorized = await client.is_user_authorized()
+    return {"authorized": authorized, "session": session_name}
+
+
+@app.post("/api/telethon/auth/request-code")
+async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
+    phone = payload.phone.strip()
+    if not re.fullmatch(r"\+?\d{10,15}", phone):
+        raise HTTPException(status_code=400, detail="Невірний формат телефону")
+    api_id, api_hash, session_name = _telethon_client_config()
+    try:
+        from telethon import TelegramClient
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="Telethon не встановлено") from exc
+    session_path = ROOT_DIR / "backend" / session_name
+    async with TelegramClient(str(session_path), api_id, api_hash) as client:
+        sent = await client.send_code_request(phone)
+        telethon_auth_state[phone] = sent.phone_code_hash
+    return {"ok": True, "detail": "Код підтвердження надіслано", "phone": phone}
+
+
+@app.post("/api/telethon/auth/verify-code")
+async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
+    phone = payload.phone.strip()
+    code = payload.code.strip()
+    if not phone or not code:
+        raise HTTPException(status_code=400, detail="Вкажіть телефон і код")
+    phone_code_hash = telethon_auth_state.get(phone)
+    if not phone_code_hash:
+        raise HTTPException(status_code=400, detail="Спочатку запитай код підтвердження")
+
+    api_id, api_hash, session_name = _telethon_client_config()
+    try:
+        from telethon import TelegramClient
+        from telethon.errors import SessionPasswordNeededError
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="Telethon не встановлено") from exc
+    session_path = ROOT_DIR / "backend" / session_name
+    async with TelegramClient(str(session_path), api_id, api_hash) as client:
+        try:
+            await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
+        except SessionPasswordNeededError:
+            if not payload.password:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Потрібен пароль 2FA (Telegram password)",
+                )
+            await client.sign_in(password=payload.password)
+        authorized = await client.is_user_authorized()
+    telethon_auth_state.pop(phone, None)
+    return {"ok": authorized, "detail": "Telethon авторизовано" if authorized else "Авторизація не завершена"}
 
 
 @app.get("/api/sources")
