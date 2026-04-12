@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NewsMon — Налаштування Prototype</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+    <header class="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-10">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 class="text-xl font-bold">NewsMon — Налаштування</h1>
+          <p class="text-xs text-slate-400">Прототип Settings (mock конфіг)</p>
+        </div>
+        <nav class="flex gap-2 text-sm">
+          <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="dashboard.html">Dashboard</a>
+          <a class="px-3 py-2 rounded-lg bg-emerald-600 text-white" href="settings.html">Налаштування</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
+      <section class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+        <div class="flex flex-wrap gap-2 mb-5">
+          <button class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm" onclick="switchTab('apiTab', this)">API та інтеграції</button>
+          <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('taxonomyTab', this)">Категорії та ключові слова</button>
+          <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('alertsTab', this)">Сповіщення</button>
+          <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('sourcesTab', this)">Джерела</button>
+        </div>
+
+        <div id="apiTab" class="tab-panel space-y-4">
+          <h2 class="text-lg font-semibold">API та інтеграції</h2>
+          <div class="flex items-center gap-2 p-2 rounded bg-slate-800 text-xs">
+            <span id="sigMonitor" class="w-3 h-3 rounded-full bg-slate-500"></span>
+            <span id="monitorText">Моніторинг: стан невідомий</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+            <div class="flex items-center gap-2 p-2 rounded bg-slate-800">
+              <span id="sigClaude" class="w-3 h-3 rounded-full bg-slate-500"></span>
+              <span>Claude API</span>
+            </div>
+            <div class="flex items-center gap-2 p-2 rounded bg-slate-800">
+              <span id="sigTelegramUser" class="w-3 h-3 rounded-full bg-slate-500"></span>
+              <span>Telegram User API</span>
+            </div>
+            <div class="flex items-center gap-2 p-2 rounded bg-slate-800">
+              <span id="sigTelethon" class="w-3 h-3 rounded-full bg-slate-500"></span>
+              <span>Telethon</span>
+            </div>
+            <div class="flex items-center gap-2 p-2 rounded bg-slate-800">
+              <span id="sigTelegramBot" class="w-3 h-3 rounded-full bg-slate-500"></span>
+              <span>Telegram Bot API</span>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <label class="flex flex-col gap-1">
+              <span class="text-slate-300">Claude API Key</span>
+              <input id="claudeApiKey" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="sk-ant-..." />
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-slate-300">Telegram API ID</span>
+              <input id="telegramApiId" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456" />
+            </label>
+            <label class="flex flex-col gap-1 md:col-span-2">
+              <span class="text-slate-300">Telegram API Hash</span>
+              <input id="telegramApiHash" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="loremipsumhash" />
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-slate-300">Telegram Bot Token</span>
+              <input id="telegramBotToken" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456:AA...mock_token" />
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-slate-300">Telegram Bot Chat ID</span>
+              <input id="telegramBotChatId" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="-1001234567890" />
+            </label>
+          </div>
+          <div class="rounded-lg border border-slate-800 p-3 space-y-2">
+            <h3 class="text-sm font-semibold">Telethon авторизація користувача</h3>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
+              <input id="telethonAuthPhone" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="+380XXXXXXXXX" />
+              <input id="telethonAuthCode" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Код з Telegram" />
+              <input id="telethonAuthPassword" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="2FA пароль (опц.)" />
+              <div class="flex gap-2">
+                <button id="telethonCodeBtn" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs" onclick="requestTelethonCode()">Запросити код</button>
+                <button id="telethonVerifyBtn" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs" onclick="verifyTelethonCode()">Підтвердити</button>
+              </div>
+            </div>
+            <p id="telethonAuthMessage" class="text-xs text-slate-400">Статус авторизації: невідомо</p>
+          </div>
+          <div class="flex gap-2">
+            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveIntegrations()">Зберегти інтеграції</button>
+            <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm" onclick="validateIntegrations()">Перевірити підключення</button>
+          </div>
+          <p id="validationMessage" class="text-xs text-slate-400"></p>
+        </div>
+
+        <div id="taxonomyTab" class="tab-panel hidden space-y-6">
+          <div>
+            <h2 class="text-lg font-semibold mb-3">Категорії (табличний вигляд)</h2>
+            <div class="overflow-x-auto rounded-lg border border-slate-800">
+              <table class="min-w-full text-sm">
+                <thead class="bg-slate-800 text-slate-300">
+                  <tr>
+                    <th class="text-left p-3">Назва</th>
+                    <th class="text-left p-3">Колір</th>
+                    <th class="text-left p-3">За замовчуванням</th>
+                    <th class="text-left p-3">Дія</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="border-t border-slate-800">
+                    <td class="p-3">Суспільство</td>
+                    <td class="p-3"><span class="inline-flex items-center gap-2"><span class="w-4 h-4 rounded-full bg-blue-500"></span>#3B82F6</span></td>
+                    <td class="p-3">Ні</td>
+                    <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs">Видалити</button></td>
+                  </tr>
+                  <tr class="border-t border-slate-800">
+                    <td class="p-3">Політика</td>
+                    <td class="p-3"><span class="inline-flex items-center gap-2"><span class="w-4 h-4 rounded-full bg-red-500"></span>#EF4444</span></td>
+                    <td class="p-3">Ні</td>
+                    <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs">Видалити</button></td>
+                  </tr>
+                  <tr class="border-t border-slate-800">
+                    <td class="p-3">Надзвичайні події</td>
+                    <td class="p-3"><span class="inline-flex items-center gap-2"><span class="w-4 h-4 rounded-full bg-amber-500"></span>#F59E0B</span></td>
+                    <td class="p-3">Так</td>
+                    <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs">Видалити</button></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
+              <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Нова категорія" />
+              <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1">
+                <input id="categoryColorPicker" type="color" value="#22c55e" class="w-10 h-8 bg-transparent border-0 p-0" />
+                <span id="categoryColorValue" class="text-xs text-slate-300">#22C55E</span>
+              </div>
+              <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600" onclick="suggestCategoryColor()">Запропонувати колір</button>
+              <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500">Додати категорію</button>
+            </div>
+          </div>
+
+          <div>
+            <h2 class="text-lg font-semibold mb-3">Ключові слова (табличний вигляд)</h2>
+            <div class="overflow-x-auto rounded-lg border border-slate-800">
+              <table class="min-w-full text-sm">
+                <thead class="bg-slate-800 text-slate-300">
+                  <tr>
+                    <th class="text-left p-3">Ключове слово</th>
+                    <th class="text-left p-3">Категорія</th>
+                    <th class="text-left p-3">Мін. оцінка</th>
+                    <th class="text-left p-3">Дія</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="border-t border-slate-800"><td class="p-3">вибух</td><td class="p-3">Надзвичайні події</td><td class="p-3">7</td><td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs">Видалити</button></td></tr>
+                  <tr class="border-t border-slate-800"><td class="p-3">кадрові зміни</td><td class="p-3">Політика</td><td class="p-3">6</td><td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs">Видалити</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+              <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Нове ключове слово" />
+              <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Категорія" />
+              <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500">Додати ключове слово</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="alertsTab" class="tab-panel hidden space-y-4">
+          <h2 class="text-lg font-semibold">Сповіщення</h2>
+          <div class="overflow-x-auto rounded-lg border border-slate-800">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-800 text-slate-300">
+                <tr>
+                  <th class="text-left p-3">Правило</th>
+                  <th class="text-left p-3">Канал</th>
+                  <th class="text-left p-3">Категорія</th>
+                  <th class="text-left p-3">Мін. оцінка</th>
+                  <th class="text-left p-3">Статус</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="border-t border-slate-800">
+                  <td class="p-3">вибух</td>
+                  <td class="p-3">@ukraine_news</td>
+                  <td class="p-3">Надзвичайні події</td>
+                  <td class="p-3">7</td>
+                  <td class="p-3"><span class="px-2 py-1 rounded bg-emerald-700 text-xs">Увімкнено</span></td>
+                </tr>
+                <tr class="border-t border-slate-800">
+                  <td class="p-3">кадрові зміни</td>
+                  <td class="p-3">@city_live</td>
+                  <td class="p-3">Політика</td>
+                  <td class="p-3">6</td>
+                  <td class="p-3"><span class="px-2 py-1 rounded bg-slate-600 text-xs">Вимкнено</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-2 text-sm">
+            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Ключове слово / regex" />
+            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Канал" />
+            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Категорія" />
+            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Мін. оцінка" />
+            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500">Додати правило</button>
+          </div>
+        </div>
+
+        <div id="sourcesTab" class="tab-panel hidden space-y-4">
+          <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <h2 class="text-lg font-semibold">Джерела (канали моніторингу)</h2>
+            <div class="flex gap-2">
+              <select id="sourcesSort" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm" onchange="loadSources()">
+                <option value="alpha">Сортування: алфавіт</option>
+                <option value="last_message_desc">Сортування: останні активні</option>
+                <option value="last_message_asc">Сортування: неактивні зверху</option>
+              </select>
+            </div>
+          </div>
+          <div class="overflow-x-auto rounded-lg border border-slate-800">
+            <table class="min-w-full text-sm">
+              <thead class="bg-slate-800 text-slate-300">
+                <tr>
+                  <th class="text-left p-3">Канал</th>
+                  <th class="text-left p-3">Дата останнього повідомлення</th>
+                  <th class="text-left p-3">Сигнал</th>
+                  <th class="text-left p-3">Моніторинг</th>
+                  <th class="text-left p-3">ШІ</th>
+                  <th class="text-left p-3">Дія</th>
+                </tr>
+              </thead>
+              <tbody id="sourcesBody"></tbody>
+            </table>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+            <input id="sourceInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 md:col-span-2" placeholder="@new_channel або https://t.me/new_channel" />
+            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500" onclick="addSource()">Додати джерело</button>
+          </div>
+          <p id="sourceMessage" class="text-xs text-slate-400"></p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="border-t border-slate-800 bg-slate-900">
+      <div class="max-w-7xl mx-auto px-4 py-3 text-xs text-slate-400 flex justify-between">
+        <span>© 2026 NewsMon Prototype</span>
+        <span>Автор: Команда редакції / AI прототип</span>
+      </div>
+    </footer>
+    <script>
+      const apiBase = '';
+      const categoryColorPicker = document.getElementById('categoryColorPicker');
+      const categoryColorValue = document.getElementById('categoryColorValue');
+      const sourcesBody = document.getElementById('sourcesBody');
+
+      categoryColorPicker.addEventListener('input', () => {
+        categoryColorValue.textContent = categoryColorPicker.value.toUpperCase();
+      });
+
+      function suggestCategoryColor() {
+        const palette = ['#22C55E', '#3B82F6', '#EF4444', '#F59E0B', '#A855F7', '#14B8A6'];
+        const randomColor = palette[Math.floor(Math.random() * palette.length)];
+        categoryColorPicker.value = randomColor;
+        categoryColorValue.textContent = randomColor;
+      }
+
+      function switchTab(tabId, button) {
+        document.querySelectorAll('.tab-panel').forEach((panel) => panel.classList.add('hidden'));
+        document.getElementById(tabId).classList.remove('hidden');
+
+        const buttons = button.parentElement.querySelectorAll('button');
+        buttons.forEach((btn) => {
+          btn.classList.remove('bg-emerald-600', 'text-white');
+          btn.classList.add('bg-slate-800');
+        });
+        button.classList.add('bg-emerald-600', 'text-white');
+        button.classList.remove('bg-slate-800');
+      }
+
+      function integrationPayload() {
+        return {
+          claude_api_key: document.getElementById('claudeApiKey').value,
+          telegram_api_id: document.getElementById('telegramApiId').value,
+          telegram_api_hash: document.getElementById('telegramApiHash').value,
+          telegram_bot_token: document.getElementById('telegramBotToken').value,
+          telegram_bot_chat_id: document.getElementById('telegramBotChatId').value,
+        };
+      }
+
+      function setSignal(id, ok) {
+        const el = document.getElementById(id);
+        el.classList.remove('bg-slate-500', 'bg-emerald-500', 'bg-rose-500');
+        el.classList.add(ok ? 'bg-emerald-500' : 'bg-rose-500');
+      }
+
+      async function parseApiBody(res) {
+        const raw = await res.text();
+        if (!raw) return {};
+        try {
+          return JSON.parse(raw);
+        } catch (_) {
+          return { detail: raw };
+        }
+      }
+
+      async function loadIntegrations() {
+        const res = await fetch(`${apiBase}/api/integrations`);
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById('claudeApiKey').value = data.claude_api_key || '';
+        document.getElementById('telegramApiId').value = data.telegram_api_id || '';
+        document.getElementById('telegramApiHash').value = data.telegram_api_hash || '';
+        document.getElementById('telegramBotToken').value = data.telegram_bot_token || '';
+        document.getElementById('telegramBotChatId').value = data.telegram_bot_chat_id || '';
+      }
+
+      async function saveIntegrations() {
+        const res = await fetch(`${apiBase}/api/integrations`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(integrationPayload()),
+        });
+        if (res.ok) {
+          await validateIntegrations();
+        }
+      }
+
+      async function validateIntegrations() {
+        const res = await fetch(`${apiBase}/api/integrations/validate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(integrationPayload()),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        setSignal('sigClaude', data.claude.ok);
+        setSignal('sigTelegramUser', data.telegram_user_api.ok);
+        setSignal('sigTelethon', data.telethon.ok);
+        setSignal('sigTelegramBot', data.telegram_bot_api.ok);
+        const details = [];
+        if (!data.claude.ok) details.push(`Claude: ${data.claude.reason}`);
+        if (!data.telegram_user_api.ok) details.push(`Telegram User API: ${data.telegram_user_api.reason}`);
+        if (!data.telethon.ok) details.push(`Telethon: ${data.telethon.reason}`);
+        if (!data.telegram_bot_api.ok) details.push(`Telegram Bot API: ${data.telegram_bot_api.reason}`);
+        document.getElementById('validationMessage').textContent =
+          details.length > 0 ? details.join(' • ') : 'Усі інтеграції пройшли валідацію формату.';
+      }
+
+      function setMonitorSignal(state, text) {
+        const dot = document.getElementById('sigMonitor');
+        dot.classList.remove('bg-slate-500', 'bg-emerald-500', 'bg-amber-400', 'bg-rose-500');
+        if (state === 'ok') dot.classList.add('bg-emerald-500');
+        else if (state === 'warning' || state === 'running') dot.classList.add('bg-amber-400');
+        else if (state === 'error') dot.classList.add('bg-rose-500');
+        else dot.classList.add('bg-slate-500');
+        document.getElementById('monitorText').textContent = text;
+      }
+
+      async function loadMonitorStatus() {
+        const res = await fetch(`${apiBase}/api/monitor/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const info = `Моніторинг: ${data.state} • Оновлено: ${data.updated_sources}/${data.total_sources}`;
+        setMonitorSignal(data.state, info);
+      }
+
+      async function loadTelethonAuthStatus() {
+        try {
+          const res = await fetch(`${apiBase}/api/telethon/auth/status`);
+          const data = await parseApiBody(res);
+          if (!res.ok) {
+            document.getElementById('telethonAuthMessage').textContent = data.detail || 'Не вдалося перевірити Telethon статус';
+            return;
+          }
+          document.getElementById('telethonAuthMessage').textContent =
+            data.authorized
+              ? `Telethon авторизовано (session: ${data.session})`
+              : `Telethon НЕ авторизовано (session: ${data.session})`;
+        } catch (err) {
+          document.getElementById('telethonAuthMessage').textContent = `Помилка запиту статусу: ${err}`;
+        }
+      }
+
+      async function requestTelethonCode() {
+        const phone = document.getElementById('telethonAuthPhone').value.trim();
+        const button = document.getElementById('telethonCodeBtn');
+        if (!phone) {
+          document.getElementById('telethonAuthMessage').textContent = 'Вкажи номер телефону у форматі +380...';
+          return;
+        }
+        button.disabled = true;
+        button.classList.add('opacity-60', 'cursor-not-allowed');
+        document.getElementById('telethonAuthMessage').textContent = 'Надсилаємо код...';
+        try {
+          const res = await fetch(`${apiBase}/api/telethon/auth/request-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone }),
+          });
+          const data = await parseApiBody(res);
+          document.getElementById('telethonAuthMessage').textContent =
+            data.detail || (res.ok ? 'Запит оброблено' : 'Не вдалося запросити код');
+        } catch (err) {
+          document.getElementById('telethonAuthMessage').textContent = `Помилка запиту коду: ${err}`;
+        } finally {
+          button.disabled = false;
+          button.classList.remove('opacity-60', 'cursor-not-allowed');
+        }
+      }
+
+      async function verifyTelethonCode() {
+        const phone = document.getElementById('telethonAuthPhone').value.trim();
+        const code = document.getElementById('telethonAuthCode').value.trim();
+        const password = document.getElementById('telethonAuthPassword').value.trim();
+        const button = document.getElementById('telethonVerifyBtn');
+        button.disabled = true;
+        button.classList.add('opacity-60', 'cursor-not-allowed');
+        try {
+          const res = await fetch(`${apiBase}/api/telethon/auth/verify-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone, code, password: password || null }),
+          });
+          const data = await parseApiBody(res);
+          document.getElementById('telethonAuthMessage').textContent =
+            data.detail || (res.ok ? 'Перевірка виконана' : 'Авторизація не пройшла');
+          await loadTelethonAuthStatus();
+        } catch (err) {
+          document.getElementById('telethonAuthMessage').textContent = `Помилка перевірки коду: ${err}`;
+        } finally {
+          button.disabled = false;
+          button.classList.remove('opacity-60', 'cursor-not-allowed');
+        }
+      }
+
+      function sourceRow(item) {
+        const dot = item.last_message_signal === 'green'
+          ? 'bg-emerald-500'
+          : item.last_message_signal === 'yellow'
+          ? 'bg-amber-400'
+          : 'bg-rose-500';
+        const dateText = item.last_message_at || 'Немає даних';
+        return `<tr class="border-t border-slate-800">
+            <td class="p-3">${item.name}</td>
+            <td class="p-3">${dateText}</td>
+            <td class="p-3"><span class="inline-block w-3 h-3 rounded-full ${dot}"></span></td>
+            <td class="p-3">
+              <label class="inline-flex items-center cursor-pointer">
+                <input type="checkbox" ${item.is_active ? 'checked' : ''} class="sr-only peer"
+                  onchange="toggleSource(${item.id}, 'is_active', this.checked)" />
+                <span class="w-10 h-5 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
+              </label>
+            </td>
+            <td class="p-3">
+              <label class="inline-flex items-center cursor-pointer">
+                <input type="checkbox" ${item.ai_enabled ? 'checked' : ''} class="sr-only peer"
+                  onchange="toggleSource(${item.id}, 'ai_enabled', this.checked)" />
+                <span class="w-10 h-5 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
+              </label>
+            </td>
+            <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteSource(${item.id})">Видалити</button></td>
+          </tr>`;
+      }
+
+      async function loadSources() {
+        const sort = document.getElementById('sourcesSort').value;
+        const res = await fetch(`${apiBase}/api/sources?sort=${encodeURIComponent(sort)}`);
+        if (!res.ok) return;
+        const rows = await res.json();
+        sourcesBody.innerHTML = rows.map(sourceRow).join('');
+      }
+
+      async function addSource() {
+        const value = document.getElementById('sourceInput').value.trim();
+        if (!value) return;
+        const payload = { name: value, url: value };
+        const res = await fetch(`${apiBase}/api/sources`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          document.getElementById('sourceInput').value = '';
+          document.getElementById('sourceMessage').textContent = 'Джерело додано.';
+          await loadSources();
+        } else {
+          const err = await res.json();
+          document.getElementById('sourceMessage').textContent = err.detail || 'Не вдалося додати джерело.';
+        }
+      }
+
+      async function toggleSource(id, field, checked) {
+        await fetch(`${apiBase}/api/sources/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [field]: checked }),
+        });
+      }
+
+      async function deleteSource(id) {
+        const res = await fetch(`${apiBase}/api/sources/${id}`, { method: 'DELETE' });
+        if (res.ok) {
+          await loadSources();
+        }
+      }
+
+      loadIntegrations();
+      loadSources();
+      loadMonitorStatus();
+      loadTelethonAuthStatus();
+      setInterval(loadMonitorStatus, 10000);
+      setInterval(loadTelethonAuthStatus, 30000);
+    </script>
+  </body>
+</html>
