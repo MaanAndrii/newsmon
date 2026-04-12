@@ -294,6 +294,16 @@
         el.classList.add(ok ? 'bg-emerald-500' : 'bg-rose-500');
       }
 
+      async function parseApiBody(res) {
+        const raw = await res.text();
+        if (!raw) return {};
+        try {
+          return JSON.parse(raw);
+        } catch (_) {
+          return { detail: raw };
+        }
+      }
+
       async function loadIntegrations() {
         const res = await fetch(`${apiBase}/api/integrations`);
         if (!res.ok) return;
@@ -358,7 +368,7 @@
       async function loadTelethonAuthStatus() {
         try {
           const res = await fetch(`${apiBase}/api/telethon/auth/status`);
-          const data = await res.json();
+          const data = await parseApiBody(res);
           if (!res.ok) {
             document.getElementById('telethonAuthMessage').textContent = data.detail || 'Не вдалося перевірити Telethon статус';
             return;
@@ -388,7 +398,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone }),
           });
-          const data = await res.json();
+          const data = await parseApiBody(res);
           document.getElementById('telethonAuthMessage').textContent =
             data.detail || (res.ok ? 'Запит оброблено' : 'Не вдалося запросити код');
         } catch (err) {
@@ -412,7 +422,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone, code, password: password || null }),
           });
-          const data = await res.json();
+          const data = await parseApiBody(res);
           document.getElementById('telethonAuthMessage').textContent =
             data.detail || (res.ok ? 'Перевірка виконана' : 'Авторизація не пройшла');
           await loadTelethonAuthStatus();
