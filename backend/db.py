@@ -55,21 +55,14 @@ def init_db() -> None:
 
             CREATE TABLE IF NOT EXISTS integrations (
                 id INTEGER PRIMARY KEY CHECK(id = 1),
-                claude_api_key TEXT NULL,
                 telegram_api_id TEXT NULL,
                 telegram_api_hash TEXT NULL,
-                telegram_bot_token TEXT NULL,
-                telegram_bot_chat_id TEXT NULL,
-                telethon_phone TEXT NULL,
-                telethon_session TEXT NULL,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
             """
         )
         _ensure_column(conn, "sources", "ai_enabled", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "sources", "last_message_at", "TEXT NULL")
-        _ensure_column(conn, "integrations", "telethon_phone", "TEXT NULL")
-        _ensure_column(conn, "integrations", "telethon_session", "TEXT NULL")
 
 
 def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, ddl: str) -> None:
@@ -194,9 +187,7 @@ class Repository:
         with get_connection() as conn:
             row = conn.execute(
                 """
-                SELECT claude_api_key, telegram_api_id, telegram_api_hash,
-                       telegram_bot_token, telegram_bot_chat_id,
-                       telethon_phone, telethon_session, updated_at
+                SELECT telegram_api_id, telegram_api_hash, updated_at
                 FROM integrations WHERE id = 1
                 """
             ).fetchone()
@@ -204,9 +195,7 @@ class Repository:
                 conn.execute("INSERT INTO integrations(id) VALUES (1)")
                 row = conn.execute(
                     """
-                    SELECT claude_api_key, telegram_api_id, telegram_api_hash,
-                           telegram_bot_token, telegram_bot_chat_id,
-                           telethon_phone, telethon_session, updated_at
+                    SELECT telegram_api_id, telegram_api_hash, updated_at
                     FROM integrations WHERE id = 1
                     """
                 ).fetchone()
@@ -217,36 +206,22 @@ class Repository:
             conn.execute(
                 """
                 INSERT INTO integrations(
-                    id, claude_api_key, telegram_api_id, telegram_api_hash,
-                    telegram_bot_token, telegram_bot_chat_id, telethon_phone,
-                    telethon_session, updated_at
+                    id, telegram_api_id, telegram_api_hash, updated_at
                 )
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (1, ?, ?, datetime('now'))
                 ON CONFLICT(id) DO UPDATE SET
-                    claude_api_key=excluded.claude_api_key,
                     telegram_api_id=excluded.telegram_api_id,
                     telegram_api_hash=excluded.telegram_api_hash,
-                    telegram_bot_token=excluded.telegram_bot_token,
-                    telegram_bot_chat_id=excluded.telegram_bot_chat_id,
-                    telethon_phone=excluded.telethon_phone,
-                    telethon_session=excluded.telethon_session,
                     updated_at=datetime('now')
                 """,
                 (
-                    payload.get("claude_api_key"),
                     payload.get("telegram_api_id"),
                     payload.get("telegram_api_hash"),
-                    payload.get("telegram_bot_token"),
-                    payload.get("telegram_bot_chat_id"),
-                    payload.get("telethon_phone"),
-                    payload.get("telethon_session"),
                 ),
             )
             row = conn.execute(
                 """
-                SELECT claude_api_key, telegram_api_id, telegram_api_hash,
-                       telegram_bot_token, telegram_bot_chat_id,
-                       telethon_phone, telethon_session, updated_at
+                SELECT telegram_api_id, telegram_api_hash, updated_at
                 FROM integrations WHERE id = 1
                 """
             ).fetchone()

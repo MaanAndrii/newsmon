@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import re
 import sqlite3
-import json
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib import error, parse, request
+from urllib import parse, request
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -55,13 +54,8 @@ class KeywordCreate(BaseModel):
 
 
 class IntegrationsPayload(BaseModel):
-    claude_api_key: str | None = None
     telegram_api_id: str | None = None
     telegram_api_hash: str | None = None
-    telegram_bot_token: str | None = None
-    telegram_bot_chat_id: str | None = None
-    telethon_phone: str | None = None
-    telethon_session: str | None = "telegram_user"
 
 
 class TelethonCodeRequest(BaseModel):
@@ -72,31 +66,6 @@ class TelethonCodeVerify(BaseModel):
     phone: str
     code: str
     password: str | None = None
-
-
-def _http_json(
-    url: str,
-    method: str = "GET",
-    headers: dict[str, str] | None = None,
-    payload: dict | None = None,
-    timeout: int = 8,
-) -> tuple[int, dict]:
-    data_bytes = None
-    req_headers = headers or {}
-    if payload is not None:
-        data_bytes = json.dumps(payload).encode("utf-8")
-        req_headers = {**req_headers, "Content-Type": "application/json"}
-    req = request.Request(url, method=method, headers=req_headers, data=data_bytes)
-    try:
-        with request.urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            return resp.status, json.loads(body) if body else {}
-    except error.HTTPError as exc:
-        body = exc.read().decode("utf-8") if exc.fp else ""
-        parsed = json.loads(body) if body else {"detail": str(exc)}
-        return exc.code, parsed
-    except Exception:
-        return 0, {}
 
 
 def _extract_telegram_username(raw: str) -> str | None:
@@ -140,7 +109,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, str | None]:
     integrations = repo.get_integrations()
     api_id = (integrations.get("telegram_api_id") or "").strip()
     api_hash = (integrations.get("telegram_api_hash") or "").strip()
-    session_name = (integrations.get("telethon_session") or "telegram_user").strip()
+    session_name = "telegram_user"
 
     if not re.fullmatch(r"\d{5,12}", api_id) or not re.fullmatch(
         r"[a-fA-F0-9]{32}", api_hash
@@ -177,11 +146,10 @@ async def _sync_sources_last_messages() -> tuple[int, int, str | None]:
     return updated, len(sources), None
 
 
-def _telethon_client_config() -> tuple[int, str, str]:
+def _telethon_client_config() -> tuple[int, str]:
     integrations = repo.get_integrations()
     api_id = (integrations.get("telegram_api_id") or "").strip()
     api_hash = (integrations.get("telegram_api_hash") or "").strip()
-    session_name = (integrations.get("telethon_session") or "telegram_user").strip()
     if not re.fullmatch(r"\d{5,12}", api_id) or not re.fullmatch(
         r"[a-fA-F0-9]{32}", api_hash
     ):
@@ -189,7 +157,7 @@ def _telethon_client_config() -> tuple[int, str, str]:
             status_code=400,
             detail="Вкажіть коректні Telegram API ID/Hash у вкладці інтеграцій",
         )
-    return int(api_id), api_hash, session_name
+    return int(api_id), api_hash
 
 
 async def _monitor_loop() -> None:
@@ -232,7 +200,8 @@ def get_monitor_status() -> dict:
 
 @app.get("/api/telethon/auth/status")
 async def telethon_auth_status() -> dict:
-    api_id, api_hash, session_name = _telethon_client_config()
+    api_id, api_hash = _telethon_client_config()
+    session_name = "telegram_user"
     try:
         from telethon import TelegramClient
     except ImportError as exc:
@@ -251,7 +220,8 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
     phone = payload.phone.strip()
     if not re.fullmatch(r"\+?\d{10,15}", phone):
         raise HTTPException(status_code=400, detail="Невірний формат телефону")
-    api_id, api_hash, session_name = _telethon_client_config()
+    api_id, api_hash = _telethon_client_config()
+    session_name = "telegram_user"
     try:
         from telethon import TelegramClient
     except ImportError as exc:
@@ -261,8 +231,14 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
         ) from exc
     session_path = ROOT_DIR / "backend" / session_name
     async with TelegramClient(str(session_path), api_id, api_hash) as client:
-        sent = await client.send_code_request(phone)
-        telethon_auth_state[phone] = sent.phone_code_hash
+        try:
+            sent = await client.send_code_request(phone)
+            telethon_auth_state[phone] = sent.phone_code_hash
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Не вдалося надіслати код: {exc}",
+            ) from exc
     return {"ok": True, "detail": "Код підтвердження надіслано", "phone": phone}
 
 
@@ -276,10 +252,15 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
     if not phone_code_hash:
         raise HTTPException(status_code=400, detail="Спочатку запитай код підтвердження")
 
-    api_id, api_hash, session_name = _telethon_client_config()
+    api_id, api_hash = _telethon_client_config()
+    session_name = "telegram_user"
     try:
         from telethon import TelegramClient
-        from telethon.errors import SessionPasswordNeededError
+        from telethon.errors import (
+            PhoneCodeExpiredError,
+            PhoneCodeInvalidError,
+            SessionPasswordNeededError,
+        )
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
@@ -289,13 +270,23 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
     async with TelegramClient(str(session_path), api_id, api_hash) as client:
         try:
             await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
+        except PhoneCodeInvalidError as exc:
+            raise HTTPException(status_code=400, detail="Невірний код підтвердження") from exc
+        except PhoneCodeExpiredError as exc:
+            telethon_auth_state.pop(phone, None)
+            raise HTTPException(status_code=400, detail="Код прострочений. Запросіть новий код") from exc
         except SessionPasswordNeededError:
             if not payload.password:
                 raise HTTPException(
                     status_code=400,
                     detail="Потрібен пароль 2FA (Telegram password)",
                 )
-            await client.sign_in(password=payload.password)
+            try:
+                await client.sign_in(password=payload.password)
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail="Невірний пароль 2FA") from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Помилка авторизації: {exc}") from exc
         authorized = await client.is_user_authorized()
     telethon_auth_state.pop(phone, None)
     return {"ok": authorized, "detail": "Telethon авторизовано" if authorized else "Авторизація не завершена"}
@@ -413,82 +404,23 @@ def save_integrations(payload: IntegrationsPayload) -> dict:
 @app.post("/api/integrations/validate")
 def validate_integrations(payload: IntegrationsPayload) -> dict:
     data = payload.model_dump()
-    claude_key = (data.get("claude_api_key") or "").strip()
     telegram_api_id = (data.get("telegram_api_id") or "").strip()
     telegram_api_hash = (data.get("telegram_api_hash") or "").strip()
-    telegram_bot_token = (data.get("telegram_bot_token") or "").strip()
-    telegram_bot_chat_id = (data.get("telegram_bot_chat_id") or "").strip()
-    telethon_phone = (data.get("telethon_phone") or "").strip()
-    telethon_session = (data.get("telethon_session") or "").strip()
-
-    claude_format = bool(
-        re.fullmatch(r"sk-ant-(?:api03-)?[A-Za-z0-9_-]{20,}", claude_key)
-    )
     telegram_user_format = bool(
         re.fullmatch(r"\d{5,12}", telegram_api_id)
         and re.fullmatch(r"[a-fA-F0-9]{32}", telegram_api_hash)
     )
-    telegram_bot_format = bool(
-        re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,}", telegram_bot_token)
-        and re.fullmatch(r"-?(?:100\d{8,}|[1-9]\d{4,})", telegram_bot_chat_id)
-    )
-
-    claude_ok = False
-    claude_reason = "Очікується ключ формату sk-ant-..."
-    if claude_format:
-        status, _ = _http_json(
-            "https://api.anthropic.com/v1/models",
-            headers={
-                "x-api-key": claude_key,
-                "anthropic-version": "2023-06-01",
-            },
-        )
-        claude_ok = status == 200
-        claude_reason = None if claude_ok else "Claude API недоступний або ключ неавторизований"
-
-    telegram_user_reason = (
-        "API ID/Hash коректні. Фізична перевірка відбувається через авто-синхронізацію Telethon."
-        if telegram_user_format
-        else "API ID має бути числом, API Hash — 32 hex-символи"
-    )
-    telethon_cfg_ok = bool(
-        re.fullmatch(r"\+?\d{10,15}", telethon_phone)
-        and re.fullmatch(r"[A-Za-z0-9_.-]{3,80}", telethon_session or "telegram_user")
-    )
-
-    telegram_bot_ok = False
-    telegram_bot_reason = "Bot token/chat id не відповідають формату Telegram"
-    if telegram_bot_format:
-        me_status, me_body = _http_json(
-            f"https://api.telegram.org/bot{telegram_bot_token}/getMe"
-        )
-        if me_status == 200 and me_body.get("ok") is True:
-            chat_status, chat_body = _http_json(
-                f"https://api.telegram.org/bot{telegram_bot_token}/getChat?chat_id={parse.quote(telegram_bot_chat_id)}"
-            )
-            telegram_bot_ok = chat_status == 200 and chat_body.get("ok") is True
-            telegram_bot_reason = None if telegram_bot_ok else "Бот не має доступу до вказаного chat_id"
-        else:
-            telegram_bot_reason = "Некоректний Bot token або Telegram API недоступний"
-
+    telegram_user_reason = None if telegram_user_format else "API ID має бути числом, API Hash — 32 hex-символи"
     return {
-        "claude": {
-            "ok": claude_ok,
-            "reason": claude_reason,
-        },
         "telegram_user_api": {
             "ok": telegram_user_format,
             "reason": telegram_user_reason,
         },
         "telethon": {
-            "ok": telethon_cfg_ok,
-            "reason": None if telethon_cfg_ok else "Вкажіть номер телефону (+380...) та назву сесії (латиниця/цифри)",
+            "ok": telegram_user_format,
+            "reason": None if telegram_user_format else "Для Telethon потрібні коректні Telegram API ID/Hash",
         },
-        "telegram_bot_api": {
-            "ok": telegram_bot_ok,
-            "reason": telegram_bot_reason,
-        },
-        "overall_ok": claude_ok and telegram_user_format and telethon_cfg_ok and telegram_bot_ok,
+        "overall_ok": telegram_user_format,
     }
 
 
