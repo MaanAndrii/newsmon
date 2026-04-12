@@ -40,6 +40,10 @@
               <span>Telegram User API</span>
             </div>
             <div class="flex items-center gap-2 p-2 rounded bg-slate-800">
+              <span id="sigTelethon" class="w-3 h-3 rounded-full bg-slate-500"></span>
+              <span>Telethon</span>
+            </div>
+            <div class="flex items-center gap-2 p-2 rounded bg-slate-800">
               <span id="sigTelegramBot" class="w-3 h-3 rounded-full bg-slate-500"></span>
               <span>Telegram Bot API</span>
             </div>
@@ -56,6 +60,14 @@
             <label class="flex flex-col gap-1 md:col-span-2">
               <span class="text-slate-300">Telegram API Hash</span>
               <input id="telegramApiHash" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="loremipsumhash" />
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-slate-300">Telethon phone</span>
+              <input id="telethonPhone" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="+380XXXXXXXXX" />
+            </label>
+            <label class="flex flex-col gap-1">
+              <span class="text-slate-300">Telethon session</span>
+              <input id="telethonSession" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="telegram_user" />
             </label>
             <label class="flex flex-col gap-1">
               <span class="text-slate-300">Telegram Bot Token</span>
@@ -154,7 +166,6 @@
                 <option value="last_message_desc">Сортування: останні активні</option>
                 <option value="last_message_asc">Сортування: неактивні зверху</option>
               </select>
-              <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm" onclick="syncLastMessages()">Оновити дати з Telegram</button>
             </div>
           </div>
           <div class="overflow-x-auto rounded-lg border border-slate-800">
@@ -222,6 +233,8 @@
           claude_api_key: document.getElementById('claudeApiKey').value,
           telegram_api_id: document.getElementById('telegramApiId').value,
           telegram_api_hash: document.getElementById('telegramApiHash').value,
+          telethon_phone: document.getElementById('telethonPhone').value,
+          telethon_session: document.getElementById('telethonSession').value,
           telegram_bot_token: document.getElementById('telegramBotToken').value,
           telegram_bot_chat_id: document.getElementById('telegramBotChatId').value,
         };
@@ -240,6 +253,8 @@
         document.getElementById('claudeApiKey').value = data.claude_api_key || '';
         document.getElementById('telegramApiId').value = data.telegram_api_id || '';
         document.getElementById('telegramApiHash').value = data.telegram_api_hash || '';
+        document.getElementById('telethonPhone').value = data.telethon_phone || '';
+        document.getElementById('telethonSession').value = data.telethon_session || 'telegram_user';
         document.getElementById('telegramBotToken').value = data.telegram_bot_token || '';
         document.getElementById('telegramBotChatId').value = data.telegram_bot_chat_id || '';
       }
@@ -265,10 +280,12 @@
         const data = await res.json();
         setSignal('sigClaude', data.claude.ok);
         setSignal('sigTelegramUser', data.telegram_user_api.ok);
+        setSignal('sigTelethon', data.telethon.ok);
         setSignal('sigTelegramBot', data.telegram_bot_api.ok);
         const details = [];
         if (!data.claude.ok) details.push(`Claude: ${data.claude.reason}`);
         if (!data.telegram_user_api.ok) details.push(`Telegram User API: ${data.telegram_user_api.reason}`);
+        if (!data.telethon.ok) details.push(`Telethon: ${data.telethon.reason}`);
         if (!data.telegram_bot_api.ok) details.push(`Telegram Bot API: ${data.telegram_bot_api.reason}`);
         document.getElementById('validationMessage').textContent =
           details.length > 0 ? details.join(' • ') : 'Усі інтеграції пройшли валідацію формату.';
@@ -342,20 +359,6 @@
         const res = await fetch(`${apiBase}/api/sources/${id}`, { method: 'DELETE' });
         if (res.ok) {
           await loadSources();
-        }
-      }
-
-      async function syncLastMessages() {
-        const res = await fetch(`${apiBase}/api/sources/sync-last-message`, { method: 'POST' });
-        if (res.ok) {
-          const data = await res.json();
-          document.getElementById('sourceMessage').textContent =
-            `Оновлено каналів: ${data.updated_sources} з ${data.total_sources}`;
-          await loadSources();
-        } else {
-          const err = await res.json();
-          document.getElementById('sourceMessage').textContent =
-            err.detail || 'Не вдалося синхронізувати дати повідомлень.';
         }
       }
 

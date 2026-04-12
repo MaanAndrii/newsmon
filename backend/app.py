@@ -18,6 +18,8 @@ app = FastAPI(title="NewsMon Prototype API", version="0.1.0")
 repo = Repository()
 ROOT_DIR = Path(__file__).resolve().parent.parent
 PROTOTYPE_DIR = ROOT_DIR / "prototype"
+MONITOR_INTERVAL_SECONDS = 300
+monitor_task: asyncio.Task | None = None
 
 
 class SourceCreate(BaseModel):
@@ -49,6 +51,8 @@ class IntegrationsPayload(BaseModel):
     telegram_api_hash: str | None = None
     telegram_bot_token: str | None = None
     telegram_bot_chat_id: str | None = None
+    telethon_phone: str | None = None
+    telethon_session: str | None = "telegram_user"
 
 
 def _http_json(
@@ -113,9 +117,62 @@ def _fetch_telegram_channel_title(username: str) -> str | None:
     return None
 
 
+async def _sync_sources_last_messages() -> tuple[int, int, str | None]:
+    integrations = repo.get_integrations()
+    api_id = (integrations.get("telegram_api_id") or "").strip()
+    api_hash = (integrations.get("telegram_api_hash") or "").strip()
+    session_name = (integrations.get("telethon_session") or "telegram_user").strip()
+
+    if not re.fullmatch(r"\d{5,12}", api_id) or not re.fullmatch(
+        r"[a-fA-F0-9]{32}", api_hash
+    ):
+        return 0, 0, "Telegram User API ID/Hash не заповнені або некоректні"
+
+    try:
+        from telethon import TelegramClient
+    except ImportError:
+        return 0, 0, "Telethon не встановлено"
+
+    sources = repo.list_sources(sort_by="alpha")
+    session_path = ROOT_DIR / "backend" / session_name
+    updated = 0
+    async with TelegramClient(str(session_path), int(api_id), api_hash) as client:
+        if not await client.is_user_authorized():
+            return 0, len(sources), "Telethon-сесія не авторизована (потрібен login)"
+        for source in sources:
+            username = _extract_telegram_username(source["url"] or "")
+            if not username:
+                continue
+            try:
+                entity = await client.get_entity(username)
+                messages = await client.get_messages(entity, limit=1)
+                if messages and messages[0] and messages[0].date:
+                    dt_utc = messages[0].date.astimezone(timezone.utc)
+                    repo.update_source_last_message(
+                        source["id"],
+                        dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                    )
+                    updated += 1
+            except Exception:
+                continue
+    return updated, len(sources), None
+
+
+async def _monitor_loop() -> None:
+    while True:
+        try:
+            await _sync_sources_last_messages()
+        except Exception:
+            pass
+        await asyncio.sleep(MONITOR_INTERVAL_SECONDS)
+
+
 @app.on_event("startup")
-def startup() -> None:
+async def startup() -> None:
     init_db()
+    global monitor_task
+    if monitor_task is None:
+        monitor_task = asyncio.create_task(_monitor_loop())
 
 
 @app.get("/api/sources")
@@ -180,60 +237,6 @@ def delete_source(source_id: int) -> None:
         raise HTTPException(status_code=404, detail="Source not found")
 
 
-@app.post("/api/sources/sync-last-message")
-def sync_last_messages() -> dict:
-    integrations = repo.get_integrations()
-    api_id = (integrations.get("telegram_api_id") or "").strip()
-    api_hash = (integrations.get("telegram_api_hash") or "").strip()
-    if not re.fullmatch(r"\d{5,12}", api_id) or not re.fullmatch(
-        r"[a-fA-F0-9]{32}", api_hash
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="Спочатку введіть коректні Telegram User API ID/Hash у налаштуваннях інтеграцій",
-        )
-
-    try:
-        from telethon import TelegramClient
-    except ImportError as exc:
-        raise HTTPException(
-            status_code=503,
-            detail="Telethon не встановлено. Встановіть пакет telethon для синхронізації",
-        ) from exc
-
-    sources = repo.list_sources(sort_by="alpha")
-
-    async def _sync() -> int:
-        session_path = ROOT_DIR / "backend" / "telegram_user"
-        updated = 0
-        async with TelegramClient(str(session_path), int(api_id), api_hash) as client:
-            if not await client.is_user_authorized():
-                raise HTTPException(
-                    status_code=401,
-                    detail="Telegram User API не авторизовано. Спочатку виконайте login у Telethon-сесії",
-                )
-            for source in sources:
-                username = _extract_telegram_username(source["url"] or "")
-                if not username:
-                    continue
-                try:
-                    entity = await client.get_entity(username)
-                    messages = await client.get_messages(entity, limit=1)
-                    if messages and messages[0] and messages[0].date:
-                        dt_utc = messages[0].date.astimezone(timezone.utc)
-                        repo.update_source_last_message(
-                            source["id"],
-                            dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                        )
-                        updated += 1
-                except Exception:
-                    continue
-        return updated
-
-    updated_count = asyncio.run(_sync())
-    return {"updated_sources": updated_count, "total_sources": len(sources)}
-
-
 @app.get("/api/categories")
 def list_categories() -> list[dict]:
     return repo.list_categories()
@@ -289,6 +292,8 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
     telegram_api_hash = (data.get("telegram_api_hash") or "").strip()
     telegram_bot_token = (data.get("telegram_bot_token") or "").strip()
     telegram_bot_chat_id = (data.get("telegram_bot_chat_id") or "").strip()
+    telethon_phone = (data.get("telethon_phone") or "").strip()
+    telethon_session = (data.get("telethon_session") or "").strip()
 
     claude_format = bool(
         re.fullmatch(r"sk-ant-(?:api03-)?[A-Za-z0-9_-]{20,}", claude_key)
@@ -316,9 +321,13 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
         claude_reason = None if claude_ok else "Claude API недоступний або ключ неавторизований"
 
     telegram_user_reason = (
-        None
+        "API ID/Hash коректні. Фізична перевірка відбувається через авто-синхронізацію Telethon."
         if telegram_user_format
         else "API ID має бути числом, API Hash — 32 hex-символи"
+    )
+    telethon_cfg_ok = bool(
+        re.fullmatch(r"\+?\d{10,15}", telethon_phone)
+        and re.fullmatch(r"[A-Za-z0-9_.-]{3,80}", telethon_session or "telegram_user")
     )
 
     telegram_bot_ok = False
@@ -345,11 +354,15 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
             "ok": telegram_user_format,
             "reason": telegram_user_reason,
         },
+        "telethon": {
+            "ok": telethon_cfg_ok,
+            "reason": None if telethon_cfg_ok else "Вкажіть номер телефону (+380...) та назву сесії (латиниця/цифри)",
+        },
         "telegram_bot_api": {
             "ok": telegram_bot_ok,
             "reason": telegram_bot_reason,
         },
-        "overall_ok": claude_ok and telegram_user_format and telegram_bot_ok,
+        "overall_ok": claude_ok and telegram_user_format and telethon_cfg_ok and telegram_bot_ok,
     }
 
 

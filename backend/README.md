@@ -21,7 +21,6 @@ SQLite database file is created automatically at `backend/newsmon.db`.
 - `POST /api/sources`
 - `PATCH /api/sources/{id}`
 - `DELETE /api/sources/{id}`
-- `POST /api/sources/sync-last-message`
 - `GET /api/categories`
 - `POST /api/categories`
 - `GET /api/keywords`
