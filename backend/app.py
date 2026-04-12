@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from db import Repository, init_db
 
 app = FastAPI(title="NewsMon Prototype API", version="0.1.0")
 repo = Repository()
+ROOT_DIR = Path(__file__).resolve().parent.parent
+PROTOTYPE_DIR = ROOT_DIR / "prototype"
 
 
 class SourceCreate(BaseModel):
@@ -80,3 +84,18 @@ def create_keyword(payload: KeywordCreate) -> dict:
         )
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Keyword already exists for this category") from exc
+
+
+@app.get("/")
+def index() -> FileResponse:
+    return FileResponse(PROTOTYPE_DIR / "dashboard.html")
+
+
+@app.get("/dashboard.html")
+def dashboard_page() -> FileResponse:
+    return FileResponse(PROTOTYPE_DIR / "dashboard.html")
+
+
+@app.get("/settings.html")
+def settings_page() -> FileResponse:
+    return FileResponse(PROTOTYPE_DIR / "settings.html")
