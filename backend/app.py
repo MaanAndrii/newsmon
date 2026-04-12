@@ -20,6 +20,11 @@ class SourceCreate(BaseModel):
     url: str = Field(min_length=3, max_length=255)
 
 
+class SourceUpdate(BaseModel):
+    is_active: bool | None = None
+    ai_enabled: bool | None = None
+
+
 class CategoryCreate(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     color: str = Field(default="#64748b", min_length=4, max_length=20)
@@ -31,6 +36,14 @@ class KeywordCreate(BaseModel):
     category_id: int | None = None
     min_score: int = Field(default=0, ge=0, le=10)
     is_regex: bool = False
+
+
+class IntegrationsPayload(BaseModel):
+    claude_api_key: str | None = None
+    telegram_api_id: str | None = None
+    telegram_api_hash: str | None = None
+    telegram_bot_token: str | None = None
+    telegram_bot_chat_id: str | None = None
 
 
 @app.on_event("startup")
@@ -49,6 +62,21 @@ def create_source(payload: SourceCreate) -> dict:
         return repo.create_source(payload.name.strip(), payload.url.strip())
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Source URL already exists") from exc
+
+
+@app.patch("/api/sources/{source_id}")
+def update_source(source_id: int, payload: SourceUpdate) -> dict:
+    updated = repo.update_source(source_id, payload.is_active, payload.ai_enabled)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    return updated
+
+
+@app.delete("/api/sources/{source_id}", status_code=204)
+def delete_source(source_id: int) -> None:
+    deleted = repo.delete_source(source_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Source not found")
 
 
 @app.get("/api/categories")
@@ -84,6 +112,32 @@ def create_keyword(payload: KeywordCreate) -> dict:
         )
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Keyword already exists for this category") from exc
+
+
+@app.get("/api/integrations")
+def get_integrations() -> dict:
+    return repo.get_integrations()
+
+
+@app.post("/api/integrations")
+def save_integrations(payload: IntegrationsPayload) -> dict:
+    data = payload.model_dump()
+    clean = {k: v.strip() if isinstance(v, str) else v for k, v in data.items()}
+    return repo.save_integrations(clean)
+
+
+@app.post("/api/integrations/validate")
+def validate_integrations(payload: IntegrationsPayload) -> dict:
+    data = payload.model_dump()
+    claude = bool(data.get("claude_api_key")) and data["claude_api_key"].startswith("sk-")
+    telegram_user = bool(data.get("telegram_api_id")) and bool(data.get("telegram_api_hash"))
+    telegram_bot = bool(data.get("telegram_bot_token")) and bool(data.get("telegram_bot_chat_id"))
+    return {
+        "claude": {"ok": claude},
+        "telegram_user_api": {"ok": telegram_user},
+        "telegram_bot_api": {"ok": telegram_bot},
+        "overall_ok": claude and telegram_user and telegram_bot,
+    }
 
 
 @app.get("/")
