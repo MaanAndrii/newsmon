@@ -70,6 +70,7 @@
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveIntegrations()">Зберегти інтеграції</button>
             <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm" onclick="validateIntegrations()">Перевірити підключення</button>
           </div>
+          <p id="validationMessage" class="text-xs text-slate-400"></p>
         </div>
 
         <div id="taxonomyTab" class="tab-panel hidden space-y-6">
@@ -253,6 +254,12 @@
         setSignal('sigClaude', data.claude.ok);
         setSignal('sigTelegramUser', data.telegram_user_api.ok);
         setSignal('sigTelegramBot', data.telegram_bot_api.ok);
+        const details = [];
+        if (!data.claude.ok) details.push(`Claude: ${data.claude.reason}`);
+        if (!data.telegram_user_api.ok) details.push(`Telegram User API: ${data.telegram_user_api.reason}`);
+        if (!data.telegram_bot_api.ok) details.push(`Telegram Bot API: ${data.telegram_bot_api.reason}`);
+        document.getElementById('validationMessage').textContent =
+          details.length > 0 ? details.join(' • ') : 'Усі інтеграції пройшли валідацію формату.';
       }
 
       function sourceRow(item) {

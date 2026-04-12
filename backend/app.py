@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 
@@ -129,13 +130,36 @@ def save_integrations(payload: IntegrationsPayload) -> dict:
 @app.post("/api/integrations/validate")
 def validate_integrations(payload: IntegrationsPayload) -> dict:
     data = payload.model_dump()
-    claude = bool(data.get("claude_api_key")) and data["claude_api_key"].startswith("sk-")
-    telegram_user = bool(data.get("telegram_api_id")) and bool(data.get("telegram_api_hash"))
-    telegram_bot = bool(data.get("telegram_bot_token")) and bool(data.get("telegram_bot_chat_id"))
+    claude_key = (data.get("claude_api_key") or "").strip()
+    telegram_api_id = (data.get("telegram_api_id") or "").strip()
+    telegram_api_hash = (data.get("telegram_api_hash") or "").strip()
+    telegram_bot_token = (data.get("telegram_bot_token") or "").strip()
+    telegram_bot_chat_id = (data.get("telegram_bot_chat_id") or "").strip()
+
+    claude = bool(
+        re.fullmatch(r"sk-ant-(?:api03-)?[A-Za-z0-9_-]{20,}", claude_key)
+    )
+    telegram_user = bool(
+        re.fullmatch(r"\d{5,12}", telegram_api_id)
+        and re.fullmatch(r"[a-fA-F0-9]{32}", telegram_api_hash)
+    )
+    telegram_bot = bool(
+        re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,}", telegram_bot_token)
+        and re.fullmatch(r"-?(?:100\d{8,}|[1-9]\d{4,})", telegram_bot_chat_id)
+    )
     return {
-        "claude": {"ok": claude},
-        "telegram_user_api": {"ok": telegram_user},
-        "telegram_bot_api": {"ok": telegram_bot},
+        "claude": {
+            "ok": claude,
+            "reason": None if claude else "Очікується ключ формату sk-ant-...",
+        },
+        "telegram_user_api": {
+            "ok": telegram_user,
+            "reason": None if telegram_user else "API ID має бути числом, API Hash — 32 hex-символи",
+        },
+        "telegram_bot_api": {
+            "ok": telegram_bot,
+            "reason": None if telegram_bot else "Bot token/chat id не відповідають формату Telegram",
+        },
         "overall_ok": claude and telegram_user and telegram_bot,
     }
 
