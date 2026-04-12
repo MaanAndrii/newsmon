@@ -54,8 +54,11 @@ class KeywordCreate(BaseModel):
 
 
 class IntegrationsPayload(BaseModel):
+    claude_api_key: str | None = None
     telegram_api_id: str | None = None
     telegram_api_hash: str | None = None
+    telegram_bot_token: str | None = None
+    telegram_bot_chat_id: str | None = None
 
 
 class TelethonCodeRequest(BaseModel):
@@ -217,13 +220,16 @@ async def telethon_auth_status() -> dict:
 
 @app.post("/api/telethon/auth/request-code")
 async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
-    phone = payload.phone.strip()
-    if not re.fullmatch(r"\+?\d{10,15}", phone):
-        raise HTTPException(status_code=400, detail="Невірний формат телефону")
+    phone = payload.phone.strip().replace(" ", "").replace("-", "")
+    if phone.startswith("00"):
+        phone = f"+{phone[2:]}"
+    if not re.fullmatch(r"\+\d{10,15}", phone):
+        raise HTTPException(status_code=400, detail="Невірний формат телефону. Використай міжнародний формат, наприклад +380...")
     api_id, api_hash = _telethon_client_config()
     session_name = "telegram_user"
     try:
         from telethon import TelegramClient
+        from telethon.errors import FloodWaitError, PhoneNumberBannedError, PhoneNumberInvalidError
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
@@ -231,9 +237,21 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
         ) from exc
     session_path = ROOT_DIR / "backend" / session_name
     async with TelegramClient(str(session_path), api_id, api_hash) as client:
+        if await client.is_user_authorized():
+            return {
+                "ok": True,
+                "detail": "Сесію вже авторизовано. Код підтвердження не потрібен.",
+                "phone": phone,
+            }
         try:
             sent = await client.send_code_request(phone)
             telethon_auth_state[phone] = sent.phone_code_hash
+        except PhoneNumberInvalidError as exc:
+            raise HTTPException(status_code=400, detail="Telegram не приймає цей номер телефону") from exc
+        except PhoneNumberBannedError as exc:
+            raise HTTPException(status_code=400, detail="Цей номер заблоковано в Telegram") from exc
+        except FloodWaitError as exc:
+            raise HTTPException(status_code=429, detail=f"Забагато спроб. Повтори через {exc.seconds} сек.") from exc
         except Exception as exc:
             raise HTTPException(
                 status_code=400,
@@ -244,7 +262,9 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
 
 @app.post("/api/telethon/auth/verify-code")
 async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
-    phone = payload.phone.strip()
+    phone = payload.phone.strip().replace(" ", "").replace("-", "")
+    if phone.startswith("00"):
+        phone = f"+{phone[2:]}"
     code = payload.code.strip()
     if not phone or not code:
         raise HTTPException(status_code=400, detail="Вкажіть телефон і код")
@@ -404,14 +424,37 @@ def save_integrations(payload: IntegrationsPayload) -> dict:
 @app.post("/api/integrations/validate")
 def validate_integrations(payload: IntegrationsPayload) -> dict:
     data = payload.model_dump()
+    claude_key = (data.get("claude_api_key") or "").strip()
     telegram_api_id = (data.get("telegram_api_id") or "").strip()
     telegram_api_hash = (data.get("telegram_api_hash") or "").strip()
+    telegram_bot_token = (data.get("telegram_bot_token") or "").strip()
+    telegram_bot_chat_id = (data.get("telegram_bot_chat_id") or "").strip()
+
+    claude_format = bool(
+        re.fullmatch(r"sk-ant-(?:api03-)?[A-Za-z0-9_-]{20,}", claude_key)
+    )
     telegram_user_format = bool(
         re.fullmatch(r"\d{5,12}", telegram_api_id)
         and re.fullmatch(r"[a-fA-F0-9]{32}", telegram_api_hash)
     )
-    telegram_user_reason = None if telegram_user_format else "API ID має бути числом, API Hash — 32 hex-символи"
+    telegram_bot_format = bool(
+        re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,}", telegram_bot_token)
+        and re.fullmatch(r"-?(?:100\d{8,}|[1-9]\d{4,})", telegram_bot_chat_id)
+    )
+    claude_ok = claude_format
+    claude_reason = None if claude_ok else "Очікується ключ формату sk-ant-..."
+    telegram_user_reason = (
+        "API ID/Hash коректні. Фактична перевірка виконується через Telethon авторизацію."
+        if telegram_user_format
+        else "API ID має бути числом, API Hash — 32 hex-символи"
+    )
+    telegram_bot_ok = telegram_bot_format
+    telegram_bot_reason = None if telegram_bot_ok else "Bot token/chat id не відповідають формату Telegram"
     return {
+        "claude": {
+            "ok": claude_ok,
+            "reason": claude_reason,
+        },
         "telegram_user_api": {
             "ok": telegram_user_format,
             "reason": telegram_user_reason,
@@ -420,7 +463,11 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
             "ok": telegram_user_format,
             "reason": None if telegram_user_format else "Для Telethon потрібні коректні Telegram API ID/Hash",
         },
-        "overall_ok": telegram_user_format,
+        "telegram_bot_api": {
+            "ok": telegram_bot_ok,
+            "reason": telegram_bot_reason,
+        },
+        "overall_ok": claude_ok and telegram_user_format and telegram_bot_ok,
     }
 
 
