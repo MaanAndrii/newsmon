@@ -26,6 +26,7 @@ def init_db() -> None:
                 url TEXT NOT NULL UNIQUE,
                 is_active INTEGER NOT NULL DEFAULT 1,
                 ai_enabled INTEGER NOT NULL DEFAULT 1,
+                last_message_at TEXT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -64,6 +65,7 @@ def init_db() -> None:
             """
         )
         _ensure_column(conn, "sources", "ai_enabled", "INTEGER NOT NULL DEFAULT 1")
+        _ensure_column(conn, "sources", "last_message_at", "TEXT NULL")
 
 
 def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, ddl: str) -> None:
@@ -74,10 +76,16 @@ def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, 
 
 
 class Repository:
-    def list_sources(self) -> list[dict[str, Any]]:
+    def list_sources(self, sort_by: str = "created_desc") -> list[dict[str, Any]]:
+        order_by = {
+            "alpha": "LOWER(name) ASC",
+            "last_message_desc": "last_message_at DESC, LOWER(name) ASC",
+            "last_message_asc": "last_message_at ASC, LOWER(name) ASC",
+            "created_desc": "id DESC",
+        }.get(sort_by, "id DESC")
         with get_connection() as conn:
             rows = conn.execute(
-                "SELECT id, name, url, is_active, ai_enabled, created_at FROM sources ORDER BY id DESC"
+                f"SELECT id, name, url, is_active, ai_enabled, last_message_at, created_at FROM sources ORDER BY {order_by}"
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -88,7 +96,7 @@ class Repository:
                 (name, url),
             )
             row = conn.execute(
-                "SELECT id, name, url, is_active, ai_enabled, created_at FROM sources WHERE id = ?",
+                "SELECT id, name, url, is_active, ai_enabled, last_message_at, created_at FROM sources WHERE id = ?",
                 (cur.lastrowid,),
             ).fetchone()
         return dict(row)
@@ -103,7 +111,7 @@ class Repository:
             if ai_enabled is not None:
                 conn.execute("UPDATE sources SET ai_enabled = ? WHERE id = ?", (int(ai_enabled), source_id))
             updated = conn.execute(
-                "SELECT id, name, url, is_active, ai_enabled, created_at FROM sources WHERE id = ?",
+                "SELECT id, name, url, is_active, ai_enabled, last_message_at, created_at FROM sources WHERE id = ?",
                 (source_id,),
             ).fetchone()
         return dict(updated)
@@ -112,6 +120,13 @@ class Repository:
         with get_connection() as conn:
             cur = conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
         return cur.rowcount > 0
+
+    def update_source_last_message(self, source_id: int, last_message_at: str | None) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE sources SET last_message_at = ? WHERE id = ?",
+                (last_message_at, source_id),
+            )
 
     def list_categories(self) -> list[dict[str, Any]]:
         with get_connection() as conn:

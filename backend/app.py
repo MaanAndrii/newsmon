@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 import sqlite3
 import json
+import asyncio
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib import error, parse, request
 
@@ -117,8 +119,28 @@ def startup() -> None:
 
 
 @app.get("/api/sources")
-def list_sources() -> list[dict]:
-    return repo.list_sources()
+def list_sources(sort: str = "created_desc") -> list[dict]:
+    items = repo.list_sources(sort_by=sort)
+    now = datetime.now(timezone.utc)
+    for item in items:
+        signal = "red"
+        last_message_at = item.get("last_message_at")
+        if last_message_at:
+            try:
+                dt = datetime.strptime(last_message_at, "%Y-%m-%d %H:%M:%S").replace(
+                    tzinfo=timezone.utc
+                )
+                hours = (now - dt).total_seconds() / 3600
+                if hours <= 12:
+                    signal = "green"
+                elif hours <= 24:
+                    signal = "yellow"
+                else:
+                    signal = "red"
+            except ValueError:
+                signal = "red"
+        item["last_message_signal"] = signal
+    return items
 
 
 @app.post("/api/sources", status_code=201)
@@ -156,6 +178,60 @@ def delete_source(source_id: int) -> None:
     deleted = repo.delete_source(source_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Source not found")
+
+
+@app.post("/api/sources/sync-last-message")
+def sync_last_messages() -> dict:
+    integrations = repo.get_integrations()
+    api_id = (integrations.get("telegram_api_id") or "").strip()
+    api_hash = (integrations.get("telegram_api_hash") or "").strip()
+    if not re.fullmatch(r"\d{5,12}", api_id) or not re.fullmatch(
+        r"[a-fA-F0-9]{32}", api_hash
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Спочатку введіть коректні Telegram User API ID/Hash у налаштуваннях інтеграцій",
+        )
+
+    try:
+        from telethon import TelegramClient
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Telethon не встановлено. Встановіть пакет telethon для синхронізації",
+        ) from exc
+
+    sources = repo.list_sources(sort_by="alpha")
+
+    async def _sync() -> int:
+        session_path = ROOT_DIR / "backend" / "telegram_user"
+        updated = 0
+        async with TelegramClient(str(session_path), int(api_id), api_hash) as client:
+            if not await client.is_user_authorized():
+                raise HTTPException(
+                    status_code=401,
+                    detail="Telegram User API не авторизовано. Спочатку виконайте login у Telethon-сесії",
+                )
+            for source in sources:
+                username = _extract_telegram_username(source["url"] or "")
+                if not username:
+                    continue
+                try:
+                    entity = await client.get_entity(username)
+                    messages = await client.get_messages(entity, limit=1)
+                    if messages and messages[0] and messages[0].date:
+                        dt_utc = messages[0].date.astimezone(timezone.utc)
+                        repo.update_source_last_message(
+                            source["id"],
+                            dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                        )
+                        updated += 1
+                except Exception:
+                    continue
+        return updated
+
+    updated_count = asyncio.run(_sync())
+    return {"updated_sources": updated_count, "total_sources": len(sources)}
 
 
 @app.get("/api/categories")
