@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NewsMon — Dashboard Prototype</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100 flex flex-col" id="appRoot">
+    <header class="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-10">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 class="text-xl font-bold">NewsMon — Моніторинг Telegram-каналів</h1>
+          <p class="text-xs text-slate-400">Прототип Dashboard (mock дані)</p>
+        </div>
+        <nav class="flex gap-2 text-sm">
+          <a class="px-3 py-2 rounded-lg bg-emerald-600 text-white" href="dashboard.html">Dashboard</a>
+          <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="settings.html">Налаштування</a>
+          <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Пошук</a>
+          <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Сповіщення</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
+      <section class="mb-5 p-4 rounded-xl bg-slate-900 border border-slate-800">
+        <div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+          <h2 class="font-semibold text-lg">Статус системи</h2>
+          <div class="flex flex-wrap gap-2 text-xs">
+            <span class="px-2 py-1 rounded bg-emerald-700/60">Telegram: активний</span>
+            <span class="px-2 py-1 rounded bg-amber-700/60">Claude: pending 12</span>
+            <span class="px-2 py-1 rounded bg-sky-700/60">Канали: 54/60</span>
+            <span class="px-2 py-1 rounded bg-violet-700/60">12.04.2026 14:22</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <article class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="font-semibold">@ukraine_news</p>
+              <p class="text-xs text-slate-400">12.04.2026 • 14:12</p>
+            </div>
+            <span class="px-2 py-1 rounded text-sm bg-red-700">Score: 9</span>
+          </div>
+          <p class="text-sm leading-relaxed text-slate-200">
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Quisque interdum, velit at posuere gravida, risus ipsum porta nulla, ac lobortis leo nulla sit amet justo.
+          </p>
+          <div class="flex flex-wrap gap-2 mt-auto">
+            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm">Взяв в роботу</button>
+            <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm">Опрацьовано</button>
+            <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">Відкрити в Telegram</button>
+            <button
+              class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm"
+              data-channel="@ukraine_news"
+              data-date="12.04.2026 • 14:12"
+              data-score="9"
+              data-fulltext="Lorem ipsum dolor sit amet, consectetur adipiscing elit. Quisque interdum, velit at posuere gravida, risus ipsum porta nulla, ac lobortis leo nulla sit amet justo. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Curabitur volutpat sem at neque convallis, vitae pellentesque tortor rhoncus."
+              onclick="openMessageModal(this)"
+            >
+              Читати повністю
+            </button>
+          </div>
+        </article>
+
+        <article class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="font-semibold">@city_live</p>
+              <p class="text-xs text-slate-400">12.04.2026 • 14:09</p>
+            </div>
+            <span class="px-2 py-1 rounded text-sm bg-amber-600">Score: 6</span>
+          </div>
+          <p class="text-sm leading-relaxed text-slate-200">
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed ullamcorper massa non ante sagittis, id vestibulum mi venenatis. Vivamus non mattis nibh.
+          </p>
+          <div class="flex flex-wrap gap-2 mt-auto">
+            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm">Взяв в роботу</button>
+            <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm">Опрацьовано</button>
+            <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">Відкрити в Telegram</button>
+            <button
+              class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm"
+              data-channel="@city_live"
+              data-date="12.04.2026 • 14:09"
+              data-score="6"
+              data-fulltext="Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed ullamcorper massa non ante sagittis, id vestibulum mi venenatis. Vivamus non mattis nibh. In hac habitasse platea dictumst. Integer congue blandit ipsum, vel varius sem pharetra eu."
+              onclick="openMessageModal(this)"
+            >
+              Читати повністю
+            </button>
+          </div>
+        </article>
+
+        <article class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="font-semibold">@economy_daily</p>
+              <p class="text-xs text-slate-400">12.04.2026 • 14:02</p>
+            </div>
+            <span class="px-2 py-1 rounded text-sm bg-slate-600">Score: 3</span>
+          </div>
+          <p class="text-sm leading-relaxed text-slate-200">
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec tincidunt lectus et leo pretium, sed commodo justo gravida. Integer luctus luctus mi.
+          </p>
+          <div class="flex flex-wrap gap-2 mt-auto">
+            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm">Взяв в роботу</button>
+            <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm">Опрацьовано</button>
+            <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">Відкрити в Telegram</button>
+            <button
+              class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm"
+              data-channel="@economy_daily"
+              data-date="12.04.2026 • 14:02"
+              data-score="3"
+              data-fulltext="Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec tincidunt lectus et leo pretium, sed commodo justo gravida. Integer luctus luctus mi. Nunc id tincidunt mauris. Nulla facilisi. Sed sed metus vel turpis feugiat sollicitudin."
+              onclick="openMessageModal(this)"
+            >
+              Читати повністю
+            </button>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <div id="messageModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+      <div class="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+          <div>
+            <h3 class="font-semibold text-lg">Повна версія повідомлення</h3>
+            <p id="modalMeta" class="text-xs text-slate-400"></p>
+          </div>
+          <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeMessageModal()">Закрити</button>
+        </div>
+        <div class="p-4 space-y-3">
+          <div id="modalScore" class="inline-flex px-2 py-1 rounded text-sm bg-violet-700"></div>
+          <p id="modalText" class="text-sm leading-relaxed text-slate-200"></p>
+        </div>
+      </div>
+    </div>
+
+    <footer class="border-t border-slate-800 bg-slate-900">
+      <div class="max-w-7xl mx-auto px-4 py-3 text-xs text-slate-400 flex justify-between">
+        <span>© 2026 NewsMon Prototype</span>
+        <span>Автор: Команда редакції / AI прототип</span>
+      </div>
+    </footer>
+    <script>
+      const modal = document.getElementById('messageModal');
+      const modalMeta = document.getElementById('modalMeta');
+      const modalScore = document.getElementById('modalScore');
+      const modalText = document.getElementById('modalText');
+
+      function openMessageModal(button) {
+        const channel = button.dataset.channel || '';
+        const date = button.dataset.date || '';
+        const score = button.dataset.score || '-';
+        const fullText = button.dataset.fulltext || '';
+
+        modalMeta.textContent = `${channel} • ${date}`;
+        modalScore.textContent = `Оцінка: ${score}`;
+        modalText.textContent = fullText;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+
+      function closeMessageModal() {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+    </script>
+  </body>
+</html>
