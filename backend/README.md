@@ -12,6 +12,8 @@ uvicorn app:app --reload
 
 SQLite database file is created automatically at `backend/newsmon.db`.
 
+Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
+
 ## Open in browser
 
 - API docs: `http://127.0.0.1:8000/docs`
