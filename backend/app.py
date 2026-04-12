@@ -20,6 +20,7 @@ PROTOTYPE_DIR = ROOT_DIR / "prototype"
 MONITOR_INTERVAL_SECONDS = 300
 monitor_task: asyncio.Task | None = None
 telethon_auth_state: dict[str, str] = {}
+telethon_client_lock = asyncio.Lock()
 monitor_status: dict[str, str | int | None] = {
     "state": "stopped",
     "last_run_at": None,
@@ -127,25 +128,26 @@ async def _sync_sources_last_messages() -> tuple[int, int, str | None]:
     sources = repo.list_sources(sort_by="alpha")
     session_path = ROOT_DIR / "backend" / session_name
     updated = 0
-    async with TelegramClient(str(session_path), int(api_id), api_hash) as client:
-        if not await client.is_user_authorized():
-            return 0, len(sources), "Telethon-сесія не авторизована (потрібен login)"
-        for source in sources:
-            username = _extract_telegram_username(source["url"] or "")
-            if not username:
-                continue
-            try:
-                entity = await client.get_entity(username)
-                messages = await client.get_messages(entity, limit=1)
-                if messages and messages[0] and messages[0].date:
-                    dt_utc = messages[0].date.astimezone(timezone.utc)
-                    repo.update_source_last_message(
-                        source["id"],
-                        dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                    )
-                    updated += 1
-            except Exception:
-                continue
+    async with telethon_client_lock:
+        async with TelegramClient(str(session_path), int(api_id), api_hash) as client:
+            if not await client.is_user_authorized():
+                return 0, len(sources), "Telethon-сесія не авторизована (потрібен login)"
+            for source in sources:
+                username = _extract_telegram_username(source["url"] or "")
+                if not username:
+                    continue
+                try:
+                    entity = await client.get_entity(username)
+                    messages = await client.get_messages(entity, limit=1)
+                    if messages and messages[0] and messages[0].date:
+                        dt_utc = messages[0].date.astimezone(timezone.utc)
+                        repo.update_source_last_message(
+                            source["id"],
+                            dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                        )
+                        updated += 1
+                except Exception:
+                    continue
     return updated, len(sources), None
 
 
@@ -213,8 +215,9 @@ async def telethon_auth_status() -> dict:
             detail="Telethon не встановлено. Виконайте: pip install -r backend/requirements.txt",
         ) from exc
     session_path = ROOT_DIR / "backend" / session_name
-    async with TelegramClient(str(session_path), api_id, api_hash) as client:
-        authorized = await client.is_user_authorized()
+    async with telethon_client_lock:
+        async with TelegramClient(str(session_path), api_id, api_hash) as client:
+            authorized = await client.is_user_authorized()
     return {"authorized": authorized, "session": session_name}
 
 
@@ -236,29 +239,35 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
             detail="Telethon не встановлено. Виконайте: pip install -r backend/requirements.txt",
         ) from exc
     session_path = ROOT_DIR / "backend" / session_name
-    async with TelegramClient(str(session_path), api_id, api_hash) as client:
-        if await client.is_user_authorized():
-            return {
-                "ok": True,
-                "detail": "Сесію вже авторизовано. Код підтвердження не потрібен.",
-                "phone": phone,
-            }
-        try:
-            sent = await asyncio.wait_for(client.send_code_request(phone), timeout=25)
-            telethon_auth_state[phone] = sent.phone_code_hash
-        except PhoneNumberInvalidError as exc:
-            raise HTTPException(status_code=400, detail="Telegram не приймає цей номер телефону") from exc
-        except PhoneNumberBannedError as exc:
-            raise HTTPException(status_code=400, detail="Цей номер заблоковано в Telegram") from exc
-        except FloodWaitError as exc:
-            raise HTTPException(status_code=429, detail=f"Забагато спроб. Повтори через {exc.seconds} сек.") from exc
-        except Exception as exc:
-            if isinstance(exc, asyncio.TimeoutError):
-                raise HTTPException(status_code=504, detail="Telegram не відповідає. Спробуй ще раз через 10-20 секунд.") from exc
-            raise HTTPException(
-                status_code=400,
-                detail=f"Не вдалося надіслати код: {exc}",
-            ) from exc
+    try:
+        async with telethon_client_lock:
+            async with TelegramClient(str(session_path), api_id, api_hash) as client:
+                if await client.is_user_authorized():
+                    return {
+                        "ok": True,
+                        "detail": "Сесію вже авторизовано. Код підтвердження не потрібен.",
+                        "phone": phone,
+                    }
+                try:
+                    sent = await asyncio.wait_for(client.send_code_request(phone), timeout=25)
+                    telethon_auth_state[phone] = sent.phone_code_hash
+                except PhoneNumberInvalidError as exc:
+                    raise HTTPException(status_code=400, detail="Telegram не приймає цей номер телефону") from exc
+                except PhoneNumberBannedError as exc:
+                    raise HTTPException(status_code=400, detail="Цей номер заблоковано в Telegram") from exc
+                except FloodWaitError as exc:
+                    raise HTTPException(status_code=429, detail=f"Забагато спроб. Повтори через {exc.seconds} сек.") from exc
+                except Exception as exc:
+                    if isinstance(exc, asyncio.TimeoutError):
+                        raise HTTPException(status_code=504, detail="Telegram не відповідає. Спробуй ще раз через 10-20 секунд.") from exc
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Не вдалося надіслати код: {exc}",
+                    ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Помилка Telethon-сесії: {exc}") from exc
     return {"ok": True, "detail": "Код підтвердження надіслано", "phone": phone}
 
 
@@ -289,27 +298,28 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
             detail="Telethon не встановлено. Виконайте: pip install -r backend/requirements.txt",
         ) from exc
     session_path = ROOT_DIR / "backend" / session_name
-    async with TelegramClient(str(session_path), api_id, api_hash) as client:
-        try:
-            await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
-        except PhoneCodeInvalidError as exc:
-            raise HTTPException(status_code=400, detail="Невірний код підтвердження") from exc
-        except PhoneCodeExpiredError as exc:
-            telethon_auth_state.pop(phone, None)
-            raise HTTPException(status_code=400, detail="Код прострочений. Запросіть новий код") from exc
-        except SessionPasswordNeededError:
-            if not payload.password:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Потрібен пароль 2FA (Telegram password)",
-                )
+    async with telethon_client_lock:
+        async with TelegramClient(str(session_path), api_id, api_hash) as client:
             try:
-                await client.sign_in(password=payload.password)
+                await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
+            except PhoneCodeInvalidError as exc:
+                raise HTTPException(status_code=400, detail="Невірний код підтвердження") from exc
+            except PhoneCodeExpiredError as exc:
+                telethon_auth_state.pop(phone, None)
+                raise HTTPException(status_code=400, detail="Код прострочений. Запросіть новий код") from exc
+            except SessionPasswordNeededError:
+                if not payload.password:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Потрібен пароль 2FA (Telegram password)",
+                    )
+                try:
+                    await client.sign_in(password=payload.password)
+                except Exception as exc:
+                    raise HTTPException(status_code=400, detail="Невірний пароль 2FA") from exc
             except Exception as exc:
-                raise HTTPException(status_code=400, detail="Невірний пароль 2FA") from exc
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Помилка авторизації: {exc}") from exc
-        authorized = await client.is_user_authorized()
+                raise HTTPException(status_code=400, detail=f"Помилка авторизації: {exc}") from exc
+            authorized = await client.is_user_authorized()
     telethon_auth_state.pop(phone, None)
     return {"ok": authorized, "detail": "Telethon авторизовано" if authorized else "Авторизація не завершена"}
 
