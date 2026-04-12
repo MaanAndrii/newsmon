@@ -150,7 +150,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, str | None]:
     try:
         from telethon import TelegramClient
     except ImportError:
-        return 0, 0, "Telethon не встановлено"
+        return 0, 0, "Telethon не встановлено (виконайте: pip install -r backend/requirements.txt)"
 
     sources = repo.list_sources(sort_by="alpha")
     session_path = ROOT_DIR / "backend" / session_name
@@ -236,7 +236,10 @@ async def telethon_auth_status() -> dict:
     try:
         from telethon import TelegramClient
     except ImportError as exc:
-        raise HTTPException(status_code=503, detail="Telethon не встановлено") from exc
+        raise HTTPException(
+            status_code=503,
+            detail="Telethon не встановлено. Виконайте: pip install -r backend/requirements.txt",
+        ) from exc
     session_path = ROOT_DIR / "backend" / session_name
     async with TelegramClient(str(session_path), api_id, api_hash) as client:
         authorized = await client.is_user_authorized()
@@ -252,7 +255,10 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
     try:
         from telethon import TelegramClient
     except ImportError as exc:
-        raise HTTPException(status_code=503, detail="Telethon не встановлено") from exc
+        raise HTTPException(
+            status_code=503,
+            detail="Telethon не встановлено. Виконайте: pip install -r backend/requirements.txt",
+        ) from exc
     session_path = ROOT_DIR / "backend" / session_name
     async with TelegramClient(str(session_path), api_id, api_hash) as client:
         sent = await client.send_code_request(phone)
@@ -275,7 +281,10 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
         from telethon import TelegramClient
         from telethon.errors import SessionPasswordNeededError
     except ImportError as exc:
-        raise HTTPException(status_code=503, detail="Telethon не встановлено") from exc
+        raise HTTPException(
+            status_code=503,
+            detail="Telethon не встановлено. Виконайте: pip install -r backend/requirements.txt",
+        ) from exc
     session_path = ROOT_DIR / "backend" / session_name
     async with TelegramClient(str(session_path), api_id, api_hash) as client:
         try:
