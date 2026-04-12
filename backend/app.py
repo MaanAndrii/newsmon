@@ -244,7 +244,7 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
                 "phone": phone,
             }
         try:
-            sent = await client.send_code_request(phone)
+            sent = await asyncio.wait_for(client.send_code_request(phone), timeout=25)
             telethon_auth_state[phone] = sent.phone_code_hash
         except PhoneNumberInvalidError as exc:
             raise HTTPException(status_code=400, detail="Telegram не приймає цей номер телефону") from exc
@@ -253,6 +253,8 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
         except FloodWaitError as exc:
             raise HTTPException(status_code=429, detail=f"Забагато спроб. Повтори через {exc.seconds} сек.") from exc
         except Exception as exc:
+            if isinstance(exc, asyncio.TimeoutError):
+                raise HTTPException(status_code=504, detail="Telegram не відповідає. Спробуй ще раз через 10-20 секунд.") from exc
             raise HTTPException(
                 status_code=400,
                 detail=f"Не вдалося надіслати код: {exc}",

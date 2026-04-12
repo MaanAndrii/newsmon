@@ -82,8 +82,8 @@
               <input id="telethonAuthCode" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Код з Telegram" />
               <input id="telethonAuthPassword" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="2FA пароль (опц.)" />
               <div class="flex gap-2">
-                <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs" onclick="requestTelethonCode()">Запросити код</button>
-                <button class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs" onclick="verifyTelethonCode()">Підтвердити</button>
+                <button id="telethonCodeBtn" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs" onclick="requestTelethonCode()">Запросити код</button>
+                <button id="telethonVerifyBtn" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs" onclick="verifyTelethonCode()">Підтвердити</button>
               </div>
             </div>
             <p id="telethonAuthMessage" class="text-xs text-slate-400">Статус авторизації: невідомо</p>
@@ -356,40 +356,72 @@
       }
 
       async function loadTelethonAuthStatus() {
-        const res = await fetch(`${apiBase}/api/telethon/auth/status`);
-        if (!res.ok) return;
-        const data = await res.json();
-        document.getElementById('telethonAuthMessage').textContent =
-          data.authorized
-            ? `Telethon авторизовано (session: ${data.session})`
-            : `Telethon НЕ авторизовано (session: ${data.session})`;
+        try {
+          const res = await fetch(`${apiBase}/api/telethon/auth/status`);
+          const data = await res.json();
+          if (!res.ok) {
+            document.getElementById('telethonAuthMessage').textContent = data.detail || 'Не вдалося перевірити Telethon статус';
+            return;
+          }
+          document.getElementById('telethonAuthMessage').textContent =
+            data.authorized
+              ? `Telethon авторизовано (session: ${data.session})`
+              : `Telethon НЕ авторизовано (session: ${data.session})`;
+        } catch (err) {
+          document.getElementById('telethonAuthMessage').textContent = `Помилка запиту статусу: ${err}`;
+        }
       }
 
       async function requestTelethonCode() {
         const phone = document.getElementById('telethonAuthPhone').value.trim();
-        const res = await fetch(`${apiBase}/api/telethon/auth/request-code`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone }),
-        });
-        const data = await res.json();
-        document.getElementById('telethonAuthMessage').textContent =
-          data.detail || (res.ok ? 'Запит оброблено' : 'Не вдалося запросити код');
+        const button = document.getElementById('telethonCodeBtn');
+        if (!phone) {
+          document.getElementById('telethonAuthMessage').textContent = 'Вкажи номер телефону у форматі +380...';
+          return;
+        }
+        button.disabled = true;
+        button.classList.add('opacity-60', 'cursor-not-allowed');
+        document.getElementById('telethonAuthMessage').textContent = 'Надсилаємо код...';
+        try {
+          const res = await fetch(`${apiBase}/api/telethon/auth/request-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone }),
+          });
+          const data = await res.json();
+          document.getElementById('telethonAuthMessage').textContent =
+            data.detail || (res.ok ? 'Запит оброблено' : 'Не вдалося запросити код');
+        } catch (err) {
+          document.getElementById('telethonAuthMessage').textContent = `Помилка запиту коду: ${err}`;
+        } finally {
+          button.disabled = false;
+          button.classList.remove('opacity-60', 'cursor-not-allowed');
+        }
       }
 
       async function verifyTelethonCode() {
         const phone = document.getElementById('telethonAuthPhone').value.trim();
         const code = document.getElementById('telethonAuthCode').value.trim();
         const password = document.getElementById('telethonAuthPassword').value.trim();
-        const res = await fetch(`${apiBase}/api/telethon/auth/verify-code`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone, code, password: password || null }),
-        });
-        const data = await res.json();
-        document.getElementById('telethonAuthMessage').textContent =
-          data.detail || (res.ok ? 'Перевірка виконана' : 'Авторизація не пройшла');
-        await loadTelethonAuthStatus();
+        const button = document.getElementById('telethonVerifyBtn');
+        button.disabled = true;
+        button.classList.add('opacity-60', 'cursor-not-allowed');
+        try {
+          const res = await fetch(`${apiBase}/api/telethon/auth/verify-code`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone, code, password: password || null }),
+          });
+          const data = await res.json();
+          document.getElementById('telethonAuthMessage').textContent =
+            data.detail || (res.ok ? 'Перевірка виконана' : 'Авторизація не пройшла');
+          await loadTelethonAuthStatus();
+        } catch (err) {
+          document.getElementById('telethonAuthMessage').textContent = `Помилка перевірки коду: ${err}`;
+        } finally {
+          button.disabled = false;
+          button.classList.remove('opacity-60', 'cursor-not-allowed');
+        }
       }
 
       function sourceRow(item) {
