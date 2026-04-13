@@ -21,8 +21,11 @@ repo = Repository()
 ROOT_DIR = Path(__file__).resolve().parent.parent
 PROTOTYPE_DIR = ROOT_DIR / "prototype"
 MONITOR_INTERVAL_SECONDS = 600
-MIN_MONITOR_INTERVAL_SECONDS = 30
-MAX_MONITOR_INTERVAL_SECONDS = 3600
+MIN_MONITOR_INTERVAL_SECONDS = 300
+MAX_MONITOR_INTERVAL_SECONDS = 1800
+DEFAULT_MONITOR_DEPTH = 3
+MIN_MONITOR_DEPTH = 1
+MAX_MONITOR_DEPTH = 10
 monitor_task: asyncio.Task | None = None
 telethon_auth_state: dict[str, dict[str, str]] = {}
 telethon_client_lock = asyncio.Lock()
@@ -113,6 +116,11 @@ class MonitorConfigPayload(BaseModel):
     collect_enabled: bool
     ai_enabled: bool
     interval_seconds: int = Field(default=MONITOR_INTERVAL_SECONDS, ge=MIN_MONITOR_INTERVAL_SECONDS, le=MAX_MONITOR_INTERVAL_SECONDS)
+    fetch_depth: int = Field(default=DEFAULT_MONITOR_DEPTH, ge=MIN_MONITOR_DEPTH, le=MAX_MONITOR_DEPTH)
+
+
+class ClearMessagesPayload(BaseModel):
+    confirm: bool = False
 
 
 def _extract_telegram_username(raw: str) -> str | None:
@@ -173,7 +181,18 @@ def _get_monitor_config() -> dict[str, bool | int]:
     except ValueError:
         interval_seconds = MONITOR_INTERVAL_SECONDS
     interval_seconds = max(MIN_MONITOR_INTERVAL_SECONDS, min(MAX_MONITOR_INTERVAL_SECONDS, interval_seconds))
-    return {"collect_enabled": collect_enabled, "ai_enabled": ai_enabled, "interval_seconds": interval_seconds}
+    depth_raw = repo.get_setting("monitor.fetch_depth", str(DEFAULT_MONITOR_DEPTH)) or str(DEFAULT_MONITOR_DEPTH)
+    try:
+        fetch_depth = int(depth_raw)
+    except ValueError:
+        fetch_depth = DEFAULT_MONITOR_DEPTH
+    fetch_depth = max(MIN_MONITOR_DEPTH, min(MAX_MONITOR_DEPTH, fetch_depth))
+    return {
+        "collect_enabled": collect_enabled,
+        "ai_enabled": ai_enabled,
+        "interval_seconds": interval_seconds,
+        "fetch_depth": fetch_depth,
+    }
 
 
 def _telethon_client_init_data(api_id: int, api_hash: str) -> tuple[str, int, str]:
@@ -187,6 +206,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
     monitor_cfg = _get_monitor_config()
     if not monitor_cfg["collect_enabled"]:
         return 0, 0, 0, "Збір повідомлень глобально вимкнений у вкладці Моніторинг"
+    fetch_depth = int(monitor_cfg["fetch_depth"])
 
     integrations = repo.get_integrations()
     api_id = (integrations.get("telegram_api_id") or "").strip()
@@ -234,7 +254,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                             updated += 1
 
                         last_known_id = repo.get_last_tg_message_id(int(source["id"]))
-                        async for message in client.iter_messages(entity, min_id=last_known_id, reverse=True):
+                        async for message in client.iter_messages(entity, min_id=last_known_id, reverse=True, limit=fetch_depth):
                             if not message:
                                 continue
                             message_id = int(getattr(message, "id", 0))
@@ -330,6 +350,7 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.collect_enabled", "1" if payload.collect_enabled else "0")
     repo.set_setting("monitor.ai_enabled", "1" if payload.ai_enabled else "0")
     repo.set_setting("monitor.interval_seconds", str(payload.interval_seconds))
+    repo.set_setting("monitor.fetch_depth", str(payload.fetch_depth))
     return _get_monitor_config()
 
 
@@ -620,6 +641,14 @@ def list_sources(sort: str = "created_desc") -> list[dict]:
 def list_messages(limit: int = 100) -> list[dict]:
     safe_limit = max(1, min(limit, 500))
     return repo.list_messages(limit=safe_limit)
+
+
+@app.post("/api/messages/clear-all")
+def clear_all_messages(payload: ClearMessagesPayload) -> dict:
+    if not payload.confirm:
+        raise HTTPException(status_code=400, detail="Підтвердіть очищення (confirm=true)")
+    deleted = repo.clear_all_messages()
+    return {"ok": True, "deleted_messages": deleted}
 
 
 @app.post("/api/sources", status_code=201)

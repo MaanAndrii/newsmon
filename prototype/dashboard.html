@@ -95,7 +95,7 @@
       const modalScore = document.getElementById('modalScore');
       const modalText = document.getElementById('modalText');
       const messagesGrid = document.getElementById('messagesGrid');
-      const statusCache = { telegram: '', ai: '', channels: '', clock: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null };
+      const statusCache = { telegram: '', ai: '', channels: '', clock: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
 
       function openMessageModal(button) {
         const channel = button.dataset.channel || '';
@@ -147,7 +147,7 @@
 
       async function loadMessages() {
         try {
-          const res = await fetch('/api/messages?limit=90');
+          const res = await fetch('/api/messages?limit=100');
           const items = res.ok ? await res.json() : [];
           messagesGrid.innerHTML = items.length
             ? items.map(renderMessageCard).join('')
@@ -167,7 +167,7 @@
 
       function updatePollCountdown() {
         const timerEl = document.getElementById('statusPollTimer');
-        if (!statusCache.lastRunAt) {
+        if (!statusCache.collectEnabled || !statusCache.lastRunAt) {
           timerEl.textContent = '--:--';
           return;
         }
@@ -188,6 +188,7 @@
           const monitorState = monitor?.state || 'unknown';
           const aiEnabled = Boolean(monitor?.ai_enabled);
           const collectEnabled = Boolean(monitor?.collect_enabled);
+          statusCache.collectEnabled = collectEnabled;
           statusCache.intervalSeconds = Number(monitor?.interval_seconds || 600);
           statusCache.lastRunAt = monitor?.last_run_at ? new Date((monitor.last_run_at || '').replace(' ', 'T') + 'Z') : null;
           statusCache.telegram = `Стан: ${monitorState}. Помилка: ${monitor?.last_error || 'немає'}`;
@@ -198,6 +199,7 @@
           document.getElementById('statusTelegram').textContent = monitorState === 'ok' ? 'активний' : monitorState;
           document.getElementById('statusAi').textContent = aiEnabled ? 'увімкнено' : 'вимкнено';
           document.getElementById('statusChannels').textContent = `${activeSources}/${totalSources}`;
+          document.getElementById('statusPollTimer').textContent = collectEnabled ? document.getElementById('statusPollTimer').textContent : '--:--';
           paintStatusCard('statusTelegramCard', monitorState === 'ok');
           paintStatusCard('statusAiCard', aiEnabled ? true : null);
           paintStatusCard('statusChannelsCard', activeSources > 0 ? true : null);

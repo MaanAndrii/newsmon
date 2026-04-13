@@ -115,21 +115,29 @@
                 <p class="text-xs text-slate-400">Вмикає/вимикає ingestion для всіх каналів.</p>
               </div>
               <label class="inline-flex items-center cursor-pointer">
-                <input id="monitorCollectEnabled" type="checkbox" class="sr-only peer" />
+                <input id="monitorCollectEnabled" type="checkbox" class="sr-only peer" onchange="updateMonitorFormState()" />
                 <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
               </label>
             </div>
             <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
               <div>
                 <p class="font-medium">Інтервал авто-отримання (сек)</p>
-                <p class="text-xs text-slate-400">Від 30 до 3600 секунд.</p>
+                <p class="text-xs text-slate-400">Від 300 до 1800 секунд.</p>
               </div>
-              <input id="monitorIntervalSeconds" type="number" min="30" max="3600" step="10" class="w-28 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="600" />
+              <input id="monitorIntervalSeconds" type="number" min="300" max="1800" step="60" class="w-28 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="600" />
+            </div>
+            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+              <div>
+                <p class="font-medium">Глибина отримання повідомлень</p>
+                <p class="text-xs text-slate-400">Скільки старих повідомлень можна дозавантажити за один запуск (1..10).</p>
+              </div>
+              <input id="monitorFetchDepth" type="number" min="1" max="10" step="1" class="w-20 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="3" />
             </div>
           </div>
           <div class="flex gap-2">
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveMonitorConfig()">Зберегти налаштування моніторингу</button>
             <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" onclick="runMonitorOnce()">Отримати повідомлення зараз</button>
+            <button class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-sm" onclick="clearAllMessages()">Очистити ВСІ отримані повідомлення</button>
             <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="loadMonitorConfig()">Оновити стан</button>
           </div>
           <p id="monitorConfigMessage" class="text-xs text-slate-400"></p>
@@ -401,7 +409,16 @@
         document.getElementById('monitorAiEnabled').checked = !!data.ai_enabled;
         document.getElementById('monitorCollectEnabled').checked = !!data.collect_enabled;
         document.getElementById('monitorIntervalSeconds').value = Number(data.interval_seconds || 600);
+        document.getElementById('monitorFetchDepth').value = Number(data.fetch_depth || 3);
+        updateMonitorFormState();
         document.getElementById('monitorConfigMessage').textContent = 'Налаштування моніторингу завантажено.';
+      }
+
+      function updateMonitorFormState() {
+        const collectEnabled = document.getElementById('monitorCollectEnabled').checked;
+        const intervalInput = document.getElementById('monitorIntervalSeconds');
+        intervalInput.disabled = !collectEnabled;
+        intervalInput.classList.toggle('opacity-50', !collectEnabled);
       }
 
       async function saveMonitorConfig() {
@@ -409,6 +426,7 @@
           ai_enabled: document.getElementById('monitorAiEnabled').checked,
           collect_enabled: document.getElementById('monitorCollectEnabled').checked,
           interval_seconds: Number(document.getElementById('monitorIntervalSeconds').value || 600),
+          fetch_depth: Number(document.getElementById('monitorFetchDepth').value || 3),
         };
         const res = await fetch(`${apiBase}/api/monitor/config`, {
           method: 'POST',
@@ -417,7 +435,7 @@
         });
         const data = await parseApiBody(res);
         document.getElementById('monitorConfigMessage').textContent = res.ok
-          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, інтервал: ${data.interval_seconds} сек.`
+          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, інтервал: ${data.interval_seconds} сек, глибина: ${data.fetch_depth}.`
           : (data.detail || 'Не вдалося зберегти налаштування моніторингу.');
       }
 
@@ -428,6 +446,20 @@
           ? `Ручний запуск завершено. Оновлено джерел: ${data.updated_sources}/${data.total_sources}, нових повідомлень: ${data.ingested_messages}.`
           : (data.detail || 'Не вдалося виконати ручний запуск.');
         await loadMonitorStatus();
+      }
+
+      async function clearAllMessages() {
+        const ok = window.confirm('Видалити ВСІ отримані повідомлення без можливості відновлення?');
+        if (!ok) return;
+        const res = await fetch(`${apiBase}/api/messages/clear-all`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirm: true }),
+        });
+        const data = await parseApiBody(res);
+        document.getElementById('monitorConfigMessage').textContent = res.ok
+          ? `Видалено повідомлень: ${data.deleted_messages}.`
+          : (data.detail || 'Не вдалося очистити повідомлення.');
       }
 
       async function loadTelethonAuthStatus() {

@@ -27,6 +27,7 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 - `PATCH /api/sources/{id}`
 - `DELETE /api/sources/{id}`
 - `GET /api/messages`
+- `POST /api/messages/clear-all`
 - `GET /api/categories`
 - `POST /api/categories`
 - `DELETE /api/categories/{id}`
@@ -49,3 +50,4 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 
 - Use `GET /api/telethon/session/health` to verify both SQLite integrity and whether a string session is configured.
 - Use `POST /api/monitor/run-once` to trigger manual fetch during testing.
+- Monitor config supports `interval_seconds` (300..1800) and `fetch_depth` (1..10).
