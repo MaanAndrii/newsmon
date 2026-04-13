@@ -108,37 +108,23 @@
                     <th class="text-left p-3">Дія</th>
                   </tr>
                 </thead>
-                <tbody>
-                  <tr class="border-t border-slate-800">
-                    <td class="p-3">Суспільство</td>
-                    <td class="p-3"><span class="inline-flex items-center gap-2"><span class="w-4 h-4 rounded-full bg-blue-500"></span>#3B82F6</span></td>
-                    <td class="p-3">Ні</td>
-                    <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs">Видалити</button></td>
-                  </tr>
-                  <tr class="border-t border-slate-800">
-                    <td class="p-3">Політика</td>
-                    <td class="p-3"><span class="inline-flex items-center gap-2"><span class="w-4 h-4 rounded-full bg-red-500"></span>#EF4444</span></td>
-                    <td class="p-3">Ні</td>
-                    <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs">Видалити</button></td>
-                  </tr>
-                  <tr class="border-t border-slate-800">
-                    <td class="p-3">Надзвичайні події</td>
-                    <td class="p-3"><span class="inline-flex items-center gap-2"><span class="w-4 h-4 rounded-full bg-amber-500"></span>#F59E0B</span></td>
-                    <td class="p-3">Так</td>
-                    <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs">Видалити</button></td>
-                  </tr>
-                </tbody>
+                <tbody id="categoriesBody"></tbody>
               </table>
             </div>
             <div class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
-              <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Нова категорія" />
+              <input id="categoryNameInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Нова категорія" />
               <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1">
                 <input id="categoryColorPicker" type="color" value="#22c55e" class="w-10 h-8 bg-transparent border-0 p-0" />
                 <span id="categoryColorValue" class="text-xs text-slate-300">#22C55E</span>
               </div>
               <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600" onclick="suggestCategoryColor()">Запропонувати колір</button>
-              <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500">Додати категорію</button>
+              <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500" onclick="addCategory()">Додати категорію</button>
             </div>
+            <label class="mt-2 inline-flex items-center gap-2 text-xs text-slate-300">
+              <input id="categoryDefaultInput" type="checkbox" class="rounded border-slate-700 bg-slate-800" />
+              Категорія за замовчуванням
+            </label>
+            <p id="categoryMessage" class="text-xs text-slate-400 mt-2"></p>
           </div>
 
           <div>
@@ -153,17 +139,18 @@
                     <th class="text-left p-3">Дія</th>
                   </tr>
                 </thead>
-                <tbody>
-                  <tr class="border-t border-slate-800"><td class="p-3">вибух</td><td class="p-3">Надзвичайні події</td><td class="p-3">7</td><td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs">Видалити</button></td></tr>
-                  <tr class="border-t border-slate-800"><td class="p-3">кадрові зміни</td><td class="p-3">Політика</td><td class="p-3">6</td><td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs">Видалити</button></td></tr>
-                </tbody>
+                <tbody id="keywordsBody"></tbody>
               </table>
             </div>
-            <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-              <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Нове ключове слово" />
-              <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Категорія" />
-              <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500">Додати ключове слово</button>
+            <div class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
+              <input id="keywordPhraseInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Нове ключове слово" />
+              <select id="keywordCategoryInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
+                <option value="">Без категорії</option>
+              </select>
+              <input id="keywordMinScoreInput" type="number" min="0" max="10" value="0" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Мін. оцінка" />
+              <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500" onclick="addKeyword()">Додати ключове слово</button>
             </div>
+            <p id="keywordMessage" class="text-xs text-slate-400 mt-2"></p>
           </div>
         </div>
 
@@ -253,6 +240,8 @@
       const categoryColorPicker = document.getElementById('categoryColorPicker');
       const categoryColorValue = document.getElementById('categoryColorValue');
       const sourcesBody = document.getElementById('sourcesBody');
+      const categoriesBody = document.getElementById('categoriesBody');
+      const keywordsBody = document.getElementById('keywordsBody');
 
       categoryColorPicker.addEventListener('input', () => {
         categoryColorValue.textContent = categoryColorPicker.value.toUpperCase();
@@ -367,16 +356,21 @@
 
       async function loadTelethonAuthStatus() {
         try {
-          const res = await fetch(`${apiBase}/api/telethon/auth/status`);
+          const [res, healthRes] = await Promise.all([
+            fetch(`${apiBase}/api/telethon/auth/status`),
+            fetch(`${apiBase}/api/telethon/session/health`)
+          ]);
           const data = await parseApiBody(res);
+          const health = await parseApiBody(healthRes);
           if (!res.ok) {
-            document.getElementById('telethonAuthMessage').textContent = data.detail || 'Не вдалося перевірити Telethon статус';
+            document.getElementById('telethonAuthMessage').textContent = `${data.detail || 'Не вдалося перевірити Telethon статус'} • Health: ${health.detail || 'немає даних'}`;
             return;
           }
+          setSignal('sigTelethon', Boolean(data.authorized) && Boolean(health.ok));
           document.getElementById('telethonAuthMessage').textContent =
             data.authorized
-              ? `Telethon авторизовано (session: ${data.session})`
-              : `Telethon НЕ авторизовано (session: ${data.session})`;
+              ? `Telethon авторизовано (session: ${data.session}). Health: ${health.detail || 'OK'}`
+              : `Telethon НЕ авторизовано (session: ${data.session}). Health: ${health.detail || 'OK'}`;
         } catch (err) {
           document.getElementById('telethonAuthMessage').textContent = `Помилка запиту статусу: ${err}`;
         }
@@ -505,8 +499,106 @@
         }
       }
 
+      function categoryRow(item) {
+        const color = (item.color || '#64748b').toUpperCase();
+        return `<tr class="border-t border-slate-800">
+          <td class="p-3">${item.name}</td>
+          <td class="p-3"><span class="inline-flex items-center gap-2"><span class="w-4 h-4 rounded-full" style="background:${color}"></span>${color}</span></td>
+          <td class="p-3">${item.is_default ? 'Так' : 'Ні'}</td>
+          <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteCategory(${item.id})">Видалити</button></td>
+        </tr>`;
+      }
+
+      async function loadCategories() {
+        const res = await fetch(`${apiBase}/api/categories`);
+        if (!res.ok) return;
+        const rows = await res.json();
+        categoriesBody.innerHTML = rows.map(categoryRow).join('');
+        const select = document.getElementById('keywordCategoryInput');
+        select.innerHTML = '<option value="">Без категорії</option>' + rows.map((row) => `<option value="${row.id}">${row.name}</option>`).join('');
+      }
+
+      async function addCategory() {
+        const name = document.getElementById('categoryNameInput').value.trim();
+        const color = categoryColorPicker.value;
+        const is_default = document.getElementById('categoryDefaultInput').checked;
+        if (!name) {
+          document.getElementById('categoryMessage').textContent = 'Вкажи назву категорії.';
+          return;
+        }
+        const res = await fetch(`${apiBase}/api/categories`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, color, is_default }),
+        });
+        const data = await parseApiBody(res);
+        document.getElementById('categoryMessage').textContent = res.ok ? 'Категорію додано.' : (data.detail || 'Не вдалося додати категорію.');
+        if (res.ok) {
+          document.getElementById('categoryNameInput').value = '';
+          document.getElementById('categoryDefaultInput').checked = false;
+          await loadCategories();
+        }
+      }
+
+      async function deleteCategory(id) {
+        const res = await fetch(`${apiBase}/api/categories/${id}`, { method: 'DELETE' });
+        document.getElementById('categoryMessage').textContent = res.ok ? 'Категорію видалено.' : 'Не вдалося видалити категорію.';
+        if (res.ok) {
+          await loadCategories();
+          await loadKeywords();
+        }
+      }
+
+      function keywordRow(item) {
+        return `<tr class="border-t border-slate-800">
+          <td class="p-3">${item.phrase}</td>
+          <td class="p-3">${item.category_name || '—'}</td>
+          <td class="p-3">${item.min_score ?? 0}</td>
+          <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteKeyword(${item.id})">Видалити</button></td>
+        </tr>`;
+      }
+
+      async function loadKeywords() {
+        const res = await fetch(`${apiBase}/api/keywords`);
+        if (!res.ok) return;
+        const rows = await res.json();
+        keywordsBody.innerHTML = rows.map(keywordRow).join('');
+      }
+
+      async function addKeyword() {
+        const phrase = document.getElementById('keywordPhraseInput').value.trim();
+        const categoryRaw = document.getElementById('keywordCategoryInput').value;
+        const minScoreRaw = document.getElementById('keywordMinScoreInput').value;
+        const min_score = Number.parseInt(minScoreRaw, 10);
+        const category_id = categoryRaw ? Number.parseInt(categoryRaw, 10) : null;
+        if (!phrase) {
+          document.getElementById('keywordMessage').textContent = 'Вкажи ключове слово.';
+          return;
+        }
+        const res = await fetch(`${apiBase}/api/keywords`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phrase, category_id, min_score: Number.isNaN(min_score) ? 0 : min_score, is_regex: false }),
+        });
+        const data = await parseApiBody(res);
+        document.getElementById('keywordMessage').textContent = res.ok ? 'Ключове слово додано.' : (data.detail || 'Не вдалося додати ключове слово.');
+        if (res.ok) {
+          document.getElementById('keywordPhraseInput').value = '';
+          document.getElementById('keywordMinScoreInput').value = '0';
+          await loadKeywords();
+        }
+      }
+
+      async function deleteKeyword(id) {
+        const res = await fetch(`${apiBase}/api/keywords/${id}`, { method: 'DELETE' });
+        document.getElementById('keywordMessage').textContent = res.ok ? 'Ключове слово видалено.' : 'Не вдалося видалити ключове слово.';
+        if (res.ok) await loadKeywords();
+      }
+
       loadIntegrations();
       loadSources();
+      loadCategories();
+      loadKeywords();
       loadMonitorStatus();
       loadTelethonAuthStatus();
       setInterval(loadMonitorStatus, 10000);

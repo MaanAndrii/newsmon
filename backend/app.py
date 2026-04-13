@@ -3,6 +3,9 @@ from __future__ import annotations
 import re
 import sqlite3
 import asyncio
+import json
+import shutil
+from datetime import timedelta
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib import parse, request
@@ -17,7 +20,7 @@ app = FastAPI(title="NewsMon Prototype API", version="0.1.0")
 repo = Repository()
 ROOT_DIR = Path(__file__).resolve().parent.parent
 PROTOTYPE_DIR = ROOT_DIR / "prototype"
-MONITOR_INTERVAL_SECONDS = 300
+MONITOR_INTERVAL_SECONDS = 600
 monitor_task: asyncio.Task | None = None
 telethon_auth_state: dict[str, str] = {}
 telethon_client_lock = asyncio.Lock()
@@ -28,7 +31,31 @@ monitor_status: dict[str, str | int | None] = {
     "last_error": None,
     "updated_sources": 0,
     "total_sources": 0,
+    "ingested_messages": 0,
+    "interval_seconds": MONITOR_INTERVAL_SECONDS,
 }
+
+
+def _telethon_session_base() -> Path:
+    return ROOT_DIR / "backend" / "telegram_user"
+
+
+def _telethon_session_file() -> Path:
+    return _telethon_session_base().with_suffix(".session")
+
+
+def _quarantine_telethon_session(reason: str) -> None:
+    base = _telethon_session_base()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    for suffix in [".session", ".session-journal", ".session-wal", ".session-shm"]:
+        src = Path(f"{base}{suffix}")
+        if src.exists():
+            dst = src.with_name(f"{src.name}.broken_{stamp}")
+            try:
+                shutil.move(str(src), str(dst))
+            except Exception:
+                continue
+    monitor_status["last_error"] = f"Telethon session reset: {reason}"
 
 
 class SourceCreate(BaseModel):
@@ -109,46 +136,86 @@ def _fetch_telegram_channel_title(username: str) -> str | None:
     return None
 
 
-async def _sync_sources_last_messages() -> tuple[int, int, str | None]:
+def _detect_media_type(message: object) -> str | None:
+    media = getattr(message, "media", None)
+    if not media:
+        return None
+    media_name = media.__class__.__name__.lower()
+    if "photo" in media_name:
+        return "photo"
+    if "document" in media_name:
+        return "document"
+    return "media"
+
+
+async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
     integrations = repo.get_integrations()
     api_id = (integrations.get("telegram_api_id") or "").strip()
     api_hash = (integrations.get("telegram_api_hash") or "").strip()
-    session_name = "telegram_user"
-
     if not re.fullmatch(r"\d{5,12}", api_id) or not re.fullmatch(
         r"[a-fA-F0-9]{32}", api_hash
     ):
-        return 0, 0, "Telegram User API ID/Hash не заповнені або некоректні"
+        return 0, 0, 0, "Telegram User API ID/Hash не заповнені або некоректні"
 
     try:
         from telethon import TelegramClient
     except ImportError:
-        return 0, 0, "Telethon не встановлено (виконайте: pip install -r backend/requirements.txt)"
+        return 0, 0, 0, "Telethon не встановлено (виконайте: pip install -r backend/requirements.txt)"
 
     sources = repo.list_sources(sort_by="alpha")
-    session_path = ROOT_DIR / "backend" / session_name
+    session_path = _telethon_session_base()
     updated = 0
+    ingested = 0
+    window_start = datetime.now(timezone.utc) - timedelta(seconds=MONITOR_INTERVAL_SECONDS)
     async with telethon_client_lock:
-        async with TelegramClient(str(session_path), int(api_id), api_hash) as client:
-            if not await client.is_user_authorized():
-                return 0, len(sources), "Telethon-сесія не авторизована (потрібен login)"
-            for source in sources:
-                username = _extract_telegram_username(source["url"] or "")
-                if not username:
-                    continue
-                try:
-                    entity = await client.get_entity(username)
-                    messages = await client.get_messages(entity, limit=1)
-                    if messages and messages[0] and messages[0].date:
-                        dt_utc = messages[0].date.astimezone(timezone.utc)
-                        repo.update_source_last_message(
-                            source["id"],
-                            dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                        )
-                        updated += 1
-                except Exception:
-                    continue
-    return updated, len(sources), None
+        try:
+            async with TelegramClient(str(session_path), int(api_id), api_hash) as client:
+                if not await client.is_user_authorized():
+                    return 0, len(sources), 0, "Telethon-сесія не авторизована (потрібен login)"
+                for source in sources:
+                    if not source.get("is_active"):
+                        continue
+                    username = _extract_telegram_username(source["url"] or "")
+                    if not username:
+                        continue
+                    try:
+                        entity = await client.get_entity(username)
+                        latest = await client.get_messages(entity, limit=1)
+                        if latest and latest[0] and latest[0].date:
+                            dt_utc = latest[0].date.astimezone(timezone.utc)
+                            repo.update_source_last_message(
+                                int(source["id"]),
+                                dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                            )
+                            updated += 1
+
+                        last_known_id = repo.get_last_tg_message_id(int(source["id"]))
+                        async for message in client.iter_messages(entity, min_id=last_known_id, reverse=True):
+                            if not message:
+                                continue
+                            message_id = int(getattr(message, "id", 0))
+                            msg_date = getattr(message, "date", None)
+                            if message_id <= 0 or msg_date is None:
+                                continue
+                            msg_date_utc = msg_date.astimezone(timezone.utc)
+                            if msg_date_utc < window_start and message_id <= last_known_id:
+                                continue
+                            text = getattr(message, "message", None) or getattr(message, "raw_text", None) or ""
+                            repo.upsert_message(
+                                source_id=int(source["id"]),
+                                tg_message_id=message_id,
+                                published_at=msg_date_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                                text=text,
+                                media_type=_detect_media_type(message),
+                                telegram_url=f"https://t.me/{username}/{message_id}",
+                                raw_json=json.dumps(message.to_dict(), ensure_ascii=False, default=str),
+                            )
+                            ingested += 1
+                    except Exception:
+                        continue
+        except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
+            return 0, len(sources), 0, f"Session DB помилка: {exc}"
+    return updated, len(sources), ingested, None
 
 
 def _telethon_client_config() -> tuple[int, str]:
@@ -172,9 +239,10 @@ async def _monitor_loop() -> None:
             monitor_status["last_run_at"] = datetime.now(timezone.utc).strftime(
                 "%Y-%m-%d %H:%M:%S"
             )
-            updated, total, err = await _sync_sources_last_messages()
+            updated, total, ingested, err = await _sync_sources_last_messages()
             monitor_status["updated_sources"] = updated
             monitor_status["total_sources"] = total
+            monitor_status["ingested_messages"] = ingested
             if err:
                 monitor_status["state"] = "warning"
                 monitor_status["last_error"] = err
@@ -214,11 +282,50 @@ async def telethon_auth_status() -> dict:
             status_code=503,
             detail="Telethon не встановлено. Виконайте: pip install -r backend/requirements.txt",
         ) from exc
-    session_path = ROOT_DIR / "backend" / session_name
+    session_path = _telethon_session_base()
     async with telethon_client_lock:
-        async with TelegramClient(str(session_path), api_id, api_hash) as client:
-            authorized = await client.is_user_authorized()
+        try:
+            async with TelegramClient(str(session_path), api_id, api_hash) as client:
+                authorized = await client.is_user_authorized()
+        except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Telethon session file пошкоджений або заблокований: {exc}",
+            ) from exc
     return {"authorized": authorized, "session": session_name}
+
+
+@app.get("/api/telethon/session/health")
+def telethon_session_health() -> dict:
+    session_name = "telegram_user"
+    session_path = _telethon_session_file()
+    data: dict[str, object] = {
+        "session": session_name,
+        "path": str(session_path),
+        "exists": session_path.exists(),
+        "size_bytes": session_path.stat().st_size if session_path.exists() else 0,
+        "writable": session_path.parent.exists() and session_path.parent.is_dir(),
+        "ok": True,
+        "detail": "Session file виглядає коректним",
+    }
+    if not session_path.exists():
+        data["detail"] = "Session file ще не створено (це нормально до першого login)"
+        return data
+    try:
+        with sqlite3.connect(f"file:{session_path}?mode=ro", uri=True, timeout=1) as conn:
+            conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+            pragma = conn.execute("PRAGMA quick_check").fetchone()
+            if pragma and pragma[0] != "ok":
+                data["ok"] = False
+                data["detail"] = f"Session DB може бути пошкоджена: {pragma[0]}"
+    except sqlite3.OperationalError as exc:
+        message = str(exc)
+        data["ok"] = False
+        data["detail"] = "Session DB зараз заблокована іншим процесом" if "locked" in message.lower() else f"Session DB недоступна: {message}"
+    except sqlite3.DatabaseError as exc:
+        data["ok"] = False
+        data["detail"] = f"Session DB пошкоджена: {exc}"
+    return data
 
 
 @app.post("/api/telethon/auth/request-code")
@@ -238,32 +345,40 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
             status_code=503,
             detail="Telethon не встановлено. Виконайте: pip install -r backend/requirements.txt",
         ) from exc
-    session_path = ROOT_DIR / "backend" / session_name
+    session_path = _telethon_session_base()
     try:
         async with telethon_client_lock:
-            async with TelegramClient(str(session_path), api_id, api_hash) as client:
-                if await client.is_user_authorized():
-                    return {
-                        "ok": True,
-                        "detail": "Сесію вже авторизовано. Код підтвердження не потрібен.",
-                        "phone": phone,
-                    }
+            for attempt in range(2):
                 try:
-                    sent = await asyncio.wait_for(client.send_code_request(phone), timeout=25)
-                    telethon_auth_state[phone] = sent.phone_code_hash
-                except PhoneNumberInvalidError as exc:
-                    raise HTTPException(status_code=400, detail="Telegram не приймає цей номер телефону") from exc
-                except PhoneNumberBannedError as exc:
-                    raise HTTPException(status_code=400, detail="Цей номер заблоковано в Telegram") from exc
-                except FloodWaitError as exc:
-                    raise HTTPException(status_code=429, detail=f"Забагато спроб. Повтори через {exc.seconds} сек.") from exc
-                except Exception as exc:
-                    if isinstance(exc, asyncio.TimeoutError):
-                        raise HTTPException(status_code=504, detail="Telegram не відповідає. Спробуй ще раз через 10-20 секунд.") from exc
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Не вдалося надіслати код: {exc}",
-                    ) from exc
+                    async with TelegramClient(str(session_path), api_id, api_hash) as client:
+                        if await client.is_user_authorized():
+                            return {
+                                "ok": True,
+                                "detail": "Сесію вже авторизовано. Код підтвердження не потрібен.",
+                                "phone": phone,
+                            }
+                        try:
+                            sent = await asyncio.wait_for(client.send_code_request(phone), timeout=25)
+                            telethon_auth_state[phone] = sent.phone_code_hash
+                            break
+                        except PhoneNumberInvalidError as exc:
+                            raise HTTPException(status_code=400, detail="Telegram не приймає цей номер телефону") from exc
+                        except PhoneNumberBannedError as exc:
+                            raise HTTPException(status_code=400, detail="Цей номер заблоковано в Telegram") from exc
+                        except FloodWaitError as exc:
+                            raise HTTPException(status_code=429, detail=f"Забагато спроб. Повтори через {exc.seconds} сек.") from exc
+                        except Exception as exc:
+                            if isinstance(exc, asyncio.TimeoutError):
+                                raise HTTPException(status_code=504, detail="Telegram не відповідає. Спробуй ще раз через 10-20 секунд.") from exc
+                            if "EOF when reading a line" in str(exc):
+                                raise HTTPException(status_code=500, detail="Пошкоджена Telethon-сесія. Перевір endpoint /api/telethon/session/health") from exc
+                            raise HTTPException(status_code=400, detail=f"Не вдалося надіслати код: {exc}") from exc
+                except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
+                    if attempt == 0:
+                        _quarantine_telethon_session(str(exc))
+                        continue
+                    raise HTTPException(status_code=500, detail=f"Помилка Telethon-сесії: {exc}. Сесію скинуто, повтори запит коду.") from exc
+                break
     except HTTPException:
         raise
     except Exception as exc:
@@ -297,29 +412,29 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
             status_code=503,
             detail="Telethon не встановлено. Виконайте: pip install -r backend/requirements.txt",
         ) from exc
-    session_path = ROOT_DIR / "backend" / session_name
+    session_path = _telethon_session_base()
     async with telethon_client_lock:
-        async with TelegramClient(str(session_path), api_id, api_hash) as client:
-            try:
-                await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
-            except PhoneCodeInvalidError as exc:
-                raise HTTPException(status_code=400, detail="Невірний код підтвердження") from exc
-            except PhoneCodeExpiredError as exc:
-                telethon_auth_state.pop(phone, None)
-                raise HTTPException(status_code=400, detail="Код прострочений. Запросіть новий код") from exc
-            except SessionPasswordNeededError:
-                if not payload.password:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Потрібен пароль 2FA (Telegram password)",
-                    )
+        try:
+            async with TelegramClient(str(session_path), api_id, api_hash) as client:
                 try:
-                    await client.sign_in(password=payload.password)
+                    await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
+                except PhoneCodeInvalidError as exc:
+                    raise HTTPException(status_code=400, detail="Невірний код підтвердження") from exc
+                except PhoneCodeExpiredError as exc:
+                    telethon_auth_state.pop(phone, None)
+                    raise HTTPException(status_code=400, detail="Код прострочений. Запросіть новий код") from exc
+                except SessionPasswordNeededError:
+                    if not payload.password:
+                        raise HTTPException(status_code=400, detail="Потрібен пароль 2FA (Telegram password)")
+                    try:
+                        await client.sign_in(password=payload.password)
+                    except Exception as exc:
+                        raise HTTPException(status_code=400, detail="Невірний пароль 2FA") from exc
                 except Exception as exc:
-                    raise HTTPException(status_code=400, detail="Невірний пароль 2FA") from exc
-            except Exception as exc:
-                raise HTTPException(status_code=400, detail=f"Помилка авторизації: {exc}") from exc
-            authorized = await client.is_user_authorized()
+                    raise HTTPException(status_code=400, detail=f"Помилка авторизації: {exc}") from exc
+                authorized = await client.is_user_authorized()
+        except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
+            raise HTTPException(status_code=500, detail=f"Session file помилка: {exc}. Перевір /api/telethon/session/health") from exc
     telethon_auth_state.pop(phone, None)
     return {"ok": authorized, "detail": "Telethon авторизовано" if authorized else "Авторизація не завершена"}
 
@@ -347,6 +462,12 @@ def list_sources(sort: str = "created_desc") -> list[dict]:
                 signal = "red"
         item["last_message_signal"] = signal
     return items
+
+
+@app.get("/api/messages")
+def list_messages(limit: int = 100) -> list[dict]:
+    safe_limit = max(1, min(limit, 500))
+    return repo.list_messages(limit=safe_limit)
 
 
 @app.post("/api/sources", status_code=201)
@@ -403,6 +524,13 @@ def create_category(payload: CategoryCreate) -> dict:
         raise HTTPException(status_code=409, detail="Category name already exists") from exc
 
 
+@app.delete("/api/categories/{category_id}", status_code=204)
+def delete_category(category_id: int) -> None:
+    deleted = repo.delete_category(category_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+
 @app.get("/api/keywords")
 def list_keywords() -> list[dict]:
     return repo.list_keywords()
@@ -419,6 +547,13 @@ def create_keyword(payload: KeywordCreate) -> dict:
         )
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Keyword already exists for this category") from exc
+
+
+@app.delete("/api/keywords/{keyword_id}", status_code=204)
+def delete_keyword(keyword_id: int) -> None:
+    deleted = repo.delete_keyword(keyword_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Keyword not found")
 
 
 @app.get("/api/integrations")

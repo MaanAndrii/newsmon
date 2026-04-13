@@ -62,6 +62,105 @@ def init_db() -> None:
                 telegram_bot_chat_id TEXT NULL,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_id INTEGER NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+                tg_message_id INTEGER NOT NULL,
+                published_at TEXT NOT NULL,
+                text TEXT NULL,
+                media_type TEXT NULL,
+                ai_score INTEGER NULL CHECK(ai_score BETWEEN 0 AND 10),
+                ai_category TEXT NULL,
+                ai_status TEXT NOT NULL DEFAULT 'pending',
+                manual_override INTEGER NOT NULL DEFAULT 0,
+                workflow_status TEXT NOT NULL DEFAULT 'new',
+                telegram_url TEXT NULL,
+                raw_json TEXT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(source_id, tg_message_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_messages_source_date ON messages(source_id, published_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(published_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_messages_ai_score ON messages(ai_score);
+            CREATE INDEX IF NOT EXISTS idx_messages_workflow ON messages(workflow_status);
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+                text,
+                content='messages',
+                content_rowid='id'
+            );
+
+            CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+                INSERT INTO messages_fts(rowid, text) VALUES (new.id, COALESCE(new.text, ''));
+            END;
+            CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.id, COALESCE(old.text, ''));
+            END;
+            CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, text) VALUES ('delete', old.id, COALESCE(old.text, ''));
+                INSERT INTO messages_fts(rowid, text) VALUES (new.id, COALESCE(new.text, ''));
+            END;
+
+            CREATE TABLE IF NOT EXISTS ai_queue (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+                status TEXT NOT NULL DEFAULT 'pending',
+                retries INTEGER NOT NULL DEFAULT 0,
+                last_error TEXT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS media (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+                media_type TEXT NOT NULL,
+                file_name TEXT NULL,
+                mime_type TEXT NULL,
+                size_bytes INTEGER NULL,
+                local_path TEXT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                pattern TEXT NOT NULL,
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS alert_matches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_id INTEGER NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
+                message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+                matched_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS bookmarks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id INTEGER NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+                note TEXT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                login TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'reader',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                last_login TEXT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
             """
         )
         _ensure_column(conn, "sources", "ai_enabled", "INTEGER NOT NULL DEFAULT 1")
@@ -79,6 +178,73 @@ def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, 
 
 
 class Repository:
+    def list_messages(self, limit: int = 100) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
+                       m.tg_message_id, m.published_at, m.text, m.media_type,
+                       m.ai_score, m.ai_category, m.ai_status, m.workflow_status,
+                       m.telegram_url, m.created_at
+                FROM messages m
+                JOIN sources s ON s.id = m.source_id
+                ORDER BY datetime(m.published_at) DESC, m.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_last_tg_message_id(self, source_id: int) -> int:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(tg_message_id), 0) AS max_id FROM messages WHERE source_id = ?",
+                (source_id,),
+            ).fetchone()
+        return int(row["max_id"] or 0)
+
+    def upsert_message(
+        self,
+        source_id: int,
+        tg_message_id: int,
+        published_at: str,
+        text: str | None,
+        media_type: str | None,
+        telegram_url: str | None,
+        raw_json: str | None,
+    ) -> int:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO messages(
+                    source_id, tg_message_id, published_at, text, media_type, telegram_url, raw_json, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(source_id, tg_message_id) DO UPDATE SET
+                    published_at=excluded.published_at,
+                    text=excluded.text,
+                    media_type=excluded.media_type,
+                    telegram_url=excluded.telegram_url,
+                    raw_json=excluded.raw_json,
+                    updated_at=datetime('now')
+                """,
+                (source_id, tg_message_id, published_at, text, media_type, telegram_url, raw_json),
+            )
+            row = conn.execute(
+                "SELECT id FROM messages WHERE source_id = ? AND tg_message_id = ?",
+                (source_id, tg_message_id),
+            ).fetchone()
+            message_id = int(row["id"])
+            conn.execute(
+                """
+                INSERT INTO ai_queue(message_id, status, updated_at)
+                VALUES (?, 'pending', datetime('now'))
+                ON CONFLICT(message_id) DO NOTHING
+                """,
+                (message_id,),
+            )
+        return message_id
+
     def list_sources(self, sort_by: str = "created_desc") -> list[dict[str, Any]]:
         order_by = {
             "alpha": "LOWER(name) ASC",
@@ -152,6 +318,11 @@ class Repository:
             ).fetchone()
         return dict(row)
 
+    def delete_category(self, category_id: int) -> bool:
+        with get_connection() as conn:
+            cur = conn.execute("DELETE FROM categories WHERE id = ?", (category_id,))
+        return cur.rowcount > 0
+
     def list_keywords(self) -> list[dict[str, Any]]:
         with get_connection() as conn:
             rows = conn.execute(
@@ -188,6 +359,11 @@ class Repository:
                 (cur.lastrowid,),
             ).fetchone()
         return dict(row)
+
+    def delete_keyword(self, keyword_id: int) -> bool:
+        with get_connection() as conn:
+            cur = conn.execute("DELETE FROM keywords WHERE id = ?", (keyword_id,))
+        return cur.rowcount > 0
 
     def get_integrations(self) -> dict[str, Any]:
         with get_connection() as conn:
