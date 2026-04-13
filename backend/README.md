@@ -45,6 +45,7 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 - `GET /api/telethon/session/health`
 - `POST /api/telethon/auth/request-code`
 - `POST /api/telethon/auth/verify-code`
+- `POST /api/telethon/auth/logout`
 
 ## Telethon troubleshooting
 

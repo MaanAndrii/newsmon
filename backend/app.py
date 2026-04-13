@@ -636,6 +636,15 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
     return {"ok": authorized, "detail": "Telethon авторизовано" if authorized else "Авторизація не завершена"}
 
 
+@app.post("/api/telethon/auth/logout")
+async def telethon_logout() -> dict:
+    async with telethon_client_lock:
+        repo.set_setting("telethon.string_session", "")
+        telethon_auth_state.clear()
+        _quarantine_telethon_session("manual logout")
+    return {"ok": True, "detail": "Telethon сесію очищено. Потрібна повторна авторизація."}
+
+
 @app.get("/api/sources")
 def list_sources(sort: str = "created_desc") -> list[dict]:
     items = repo.list_sources(sort_by=sort)

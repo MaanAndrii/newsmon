@@ -85,13 +85,13 @@
               <div class="flex gap-2">
                 <button id="telethonCodeBtn" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs" onclick="requestTelethonCode()">Запросити код</button>
                 <button id="telethonVerifyBtn" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs" onclick="verifyTelethonCode()">Підтвердити</button>
+                <button id="telethonLogoutBtn" class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-xs" onclick="logoutTelethon()">Вийти з Telethon</button>
               </div>
             </div>
             <p id="telethonAuthMessage" class="text-xs text-slate-400">Статус авторизації: невідомо</p>
           </div>
           <div class="flex gap-2">
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveIntegrations()">Зберегти інтеграції</button>
-            <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm" onclick="validateIntegrations()">Перевірити підключення</button>
           </div>
           <p id="validationMessage" class="text-xs text-slate-400"></p>
         </div>
@@ -138,7 +138,6 @@
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveMonitorConfig()">Зберегти налаштування моніторингу</button>
             <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" onclick="runMonitorOnce()">Отримати повідомлення зараз</button>
             <button class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-sm" onclick="clearAllMessages()">Очистити ВСІ отримані повідомлення</button>
-            <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="loadMonitorConfig()">Оновити стан</button>
           </div>
           <p id="monitorConfigMessage" class="text-xs text-slate-400"></p>
         </div>
@@ -313,6 +312,14 @@
         });
         button.classList.add('bg-emerald-600', 'text-white');
         button.classList.remove('bg-slate-800');
+        if (tabId === 'apiTab') {
+          validateIntegrations();
+          loadTelethonAuthStatus();
+        }
+        if (tabId === 'monitoringTab') {
+          loadMonitorConfig();
+          loadMonitorStatus();
+        }
       }
 
       function integrationPayload() {
@@ -447,6 +454,7 @@
           : (data.detail || 'Не вдалося виконати ручний запуск.');
         await loadMonitorStatus();
         await loadSources();
+        await loadMonitorConfig();
       }
 
       async function clearAllMessages() {
@@ -537,13 +545,32 @@
         }
       }
 
+      async function logoutTelethon() {
+        const ok = window.confirm('Вийти з Telethon і скинути поточну сесію?');
+        if (!ok) return;
+        const res = await fetch(`${apiBase}/api/telethon/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await parseApiBody(res);
+        document.getElementById('telethonAuthMessage').textContent =
+          data.detail || (res.ok ? 'Telethon сесію очищено.' : 'Не вдалося вийти з Telethon');
+        await loadTelethonAuthStatus();
+      }
+
+      function formatLocalDateTime(value) {
+        if (!value) return 'Немає даних';
+        const d = new Date(value.replace(' ', 'T') + 'Z');
+        return Number.isNaN(d.getTime()) ? value : d.toLocaleString('uk-UA');
+      }
+
       function sourceRow(item) {
         const dot = item.last_message_signal === 'green'
           ? 'bg-emerald-500'
           : item.last_message_signal === 'yellow'
           ? 'bg-amber-400'
           : 'bg-rose-500';
-        const dateText = item.last_message_at || 'Немає даних';
+        const dateText = formatLocalDateTime(item.last_message_at);
         return `<tr class="border-t border-slate-800">
             <td class="p-3">${item.name}</td>
             <td class="p-3">${dateText}</td>
@@ -710,8 +737,10 @@
       loadCategories();
       loadKeywords();
       loadMonitorStatus();
+      validateIntegrations();
       loadTelethonAuthStatus();
       setInterval(loadMonitorStatus, 10000);
+      setInterval(loadMonitorConfig, 15000);
       setInterval(loadTelethonAuthStatus, 30000);
     </script>
   </body>

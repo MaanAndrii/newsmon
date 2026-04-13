@@ -26,10 +26,7 @@
       <section class="mb-5 p-4 rounded-xl bg-slate-900 border border-slate-800">
         <div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
           <h2 class="font-semibold text-lg">Статус системи</h2>
-          <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs" onclick="runMonitorOnce()">
-            Отримати повідомлення зараз
-          </button>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs w-full md:w-auto">
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs w-full md:w-auto">
             <button id="statusTelegramCard" class="px-3 py-2 rounded bg-emerald-700/60 text-left hover:bg-emerald-600/70 transition" onclick="openSystemStatusModal('telegram')">
               <div class="font-semibold">Telegram</div>
               <div id="statusTelegram">активний</div>
@@ -42,10 +39,16 @@
               <div class="font-semibold">Канали</div>
               <div id="statusChannels">0/0</div>
             </button>
-            <button id="statusClockCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="openSystemStatusModal('clock')">
-              <div class="font-semibold">Опитування</div>
-              <div id="statusPollTimer">--:--</div>
-            </button>
+            <div class="flex flex-col gap-2">
+              <button id="statusClockCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="openSystemStatusModal('clock')">
+                <div class="font-semibold">Опитування</div>
+                <div id="statusPollTimer">--:--</div>
+              </button>
+              <button id="runNowCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="runMonitorOnce()">
+                <div class="font-semibold">Отримати повідомлення</div>
+                <div>зараз</div>
+              </button>
+            </div>
             <button id="statusNowTimeCard" class="px-3 py-2 rounded bg-indigo-700/60 text-left hover:bg-indigo-600/70 transition" onclick="openSystemStatusModal('now')">
               <div class="font-semibold">Поточний час</div>
               <div id="statusNowTime">--:--:--</div>
