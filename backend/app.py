@@ -356,7 +356,7 @@ async def telethon_auth_status() -> dict:
 
 
 @app.get("/api/telethon/session/health")
-def telethon_session_health() -> dict:
+async def telethon_session_health() -> dict:
     session_name = "telegram_user"
     session_path = _telethon_session_file()
     has_string_session = bool(_get_saved_string_session())
@@ -370,24 +370,36 @@ def telethon_session_health() -> dict:
         "ok": True,
         "detail": "Session storage виглядає коректним",
     }
-    if session_path.exists():
+
+    if not session_path.exists() and not has_string_session:
+        data["detail"] = "Session file/string_session ще не створено (це нормально до першого login)"
+        return data
+
+    def _sqlite_check() -> str | None:
+        if not session_path.exists():
+            return None
         try:
             with sqlite3.connect(f"file:{session_path}?mode=ro", uri=True, timeout=1) as conn:
                 conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
                 pragma = conn.execute("PRAGMA quick_check").fetchone()
                 if pragma and pragma[0] != "ok":
-                    data["ok"] = False
-                    data["detail"] = f"Session DB може бути пошкоджена: {pragma[0]}"
+                    return f"Session DB може бути пошкоджена: {pragma[0]}"
         except sqlite3.OperationalError as exc:
             message = str(exc)
-            data["ok"] = False
-            data["detail"] = "Session DB зараз заблокована іншим процесом" if "locked" in message.lower() else f"Session DB недоступна: {message}"
+            if "locked" in message.lower():
+                return "Session DB зараз заблокована іншим процесом"
+            return f"Session DB недоступна: {message}"
         except sqlite3.DatabaseError as exc:
-            data["ok"] = False
-            data["detail"] = f"Session DB пошкоджена: {exc}"
-    elif not has_string_session:
-        data["detail"] = "Session file/string_session ще не створено (це нормально до першого login)"
+            return f"Session DB пошкоджена: {exc}"
+        return None
+
+    loop = asyncio.get_running_loop()
+    sqlite_error = await loop.run_in_executor(None, _sqlite_check)
+    if sqlite_error:
+        data["ok"] = False
+        data["detail"] = sqlite_error
         return data
+
     try:
         integrations = repo.get_integrations()
         api_id_raw = (integrations.get("telegram_api_id") or "").strip()
@@ -402,7 +414,8 @@ def telethon_session_health() -> dict:
                 async with TelegramClient(session_obj, parsed_api_id, parsed_api_hash) as client:
                     await client.is_user_authorized()
 
-            asyncio.run(_probe())
+            async with telethon_client_lock:
+                await _probe()
     except Exception as exc:
         data["ok"] = False
         data["detail"] = f"Session file проходить SQLite check, але Telethon probe впав: {exc}"
