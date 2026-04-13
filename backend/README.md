@@ -41,6 +41,7 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 - `GET /api/monitor/config`
 - `POST /api/monitor/config`
 - `POST /api/monitor/run-once`
+- `GET /api/debug/stats`
 - `GET /api/telethon/auth/status`
 - `GET /api/telethon/session/health`
 - `POST /api/telethon/auth/request-code`
@@ -52,4 +53,5 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 - Use `GET /api/telethon/session/health` to verify both SQLite integrity and whether a string session is configured.
 - Use `POST /api/monitor/run-once` to trigger manual fetch during testing.
 - Monitor config supports `interval_seconds` (300..1800) and `fetch_depth` (1..10).
+- Monitor config supports custom `ai_prompt` for Claude scoring.
 - Integrations support `claude_model` (`claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`).

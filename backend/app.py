@@ -5,6 +5,7 @@ import sqlite3
 import asyncio
 import json
 import shutil
+from collections import deque
 from datetime import timedelta
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,6 +37,8 @@ monitor_task: asyncio.Task | None = None
 telethon_auth_state: dict[str, dict[str, str]] = {}
 telethon_client_lock = asyncio.Lock()
 ai_processing_lock = asyncio.Lock()
+claude_call_events: deque[dict[str, int | datetime]] = deque(maxlen=5000)
+telegram_call_events: deque[datetime] = deque(maxlen=10000)
 monitor_status: dict[str, str | int | None] = {
     "state": "stopped",
     "last_run_at": None,
@@ -180,6 +183,28 @@ def _resolve_claude_model(value: str | None) -> str:
     return DEFAULT_CLAUDE_MODEL
 
 
+def _record_telegram_call() -> None:
+    telegram_call_events.append(datetime.now(timezone.utc))
+
+
+def _record_claude_call(input_tokens: int, output_tokens: int) -> None:
+    claude_call_events.append(
+        {
+            "at": datetime.now(timezone.utc),
+            "input_tokens": int(input_tokens),
+            "output_tokens": int(output_tokens),
+        }
+    )
+
+
+def _get_default_category_name() -> str:
+    categories = repo.list_categories()
+    default_item = next((c for c in categories if c.get("is_default")), None)
+    if default_item and default_item.get("name"):
+        return str(default_item["name"])
+    return "Без категорії"
+
+
 def _detect_media_type(message: object) -> str | None:
     media = getattr(message, "media", None)
     if not media:
@@ -266,7 +291,9 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                         continue
                     try:
                         entity = await client.get_entity(username)
+                        _record_telegram_call()
                         latest = await client.get_messages(entity, limit=1)
+                        _record_telegram_call()
                         if latest and latest[0] and latest[0].date:
                             dt_utc = latest[0].date.astimezone(timezone.utc)
                             repo.update_source_last_message(
@@ -303,7 +330,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                                 or getattr(message, "text", None)
                                 or ""
                             )
-                            repo.upsert_message(
+                            message_id = repo.upsert_message(
                                 source_id=int(source["id"]),
                                 tg_message_id=message_id,
                                 published_at=msg_date_utc.strftime("%Y-%m-%d %H:%M:%S"),
@@ -313,6 +340,8 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                                 raw_json=json.dumps(message.to_dict(), ensure_ascii=False, default=str),
                                 enqueue_ai=monitor_cfg["ai_enabled"] and bool(source.get("ai_enabled")),
                             )
+                            if not (monitor_cfg["ai_enabled"] and bool(source.get("ai_enabled"))):
+                                repo.mark_message_no_ai(message_id, _get_default_category_name())
                             repo.update_source_last_message(
                                 int(source["id"]),
                                 msg_date_utc.strftime("%Y-%m-%d %H:%M:%S"),
@@ -396,6 +425,23 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.fetch_depth", str(payload.fetch_depth))
     repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
     return _get_monitor_config()
+
+
+@app.get("/api/debug/stats")
+def get_debug_stats() -> dict:
+    now = datetime.now(timezone.utc)
+    day_ago = now - timedelta(hours=24)
+    hour_ago = now - timedelta(hours=1)
+    claude_24h = [e for e in claude_call_events if isinstance(e.get("at"), datetime) and e["at"] >= day_ago]
+    telegram_24h = [t for t in telegram_call_events if t >= day_ago]
+    telegram_60m = [t for t in telegram_call_events if t >= hour_ago]
+    return {
+        "claude_requests_24h": len(claude_24h),
+        "claude_input_tokens_24h": sum(int(e.get("input_tokens") or 0) for e in claude_24h),
+        "claude_output_tokens_24h": sum(int(e.get("output_tokens") or 0) for e in claude_24h),
+        "telegram_requests_24h": len(telegram_24h),
+        "telegram_requests_60m": len(telegram_60m),
+    }
 
 
 @app.post("/api/monitor/run-once")
@@ -513,6 +559,8 @@ def _call_claude_score_sync(
     )
     with request.urlopen(req, timeout=25) as resp:
         raw = json.loads(resp.read().decode("utf-8"))
+    usage = raw.get("usage") or {}
+    _record_claude_call(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0))
     content = raw.get("content") or []
     text_payload = ""
     if content and isinstance(content, list):

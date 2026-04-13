@@ -16,8 +16,8 @@
         <nav class="flex gap-2 text-sm">
           <a class="px-3 py-2 rounded-lg bg-emerald-600 text-white" href="dashboard.html">Dashboard</a>
           <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="settings.html">Налаштування</a>
-          <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Пошук</a>
-          <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Сповіщення</a>
+          <!-- <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Пошук</a> -->
+          <!-- <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Сповіщення</a> -->
         </nav>
       </div>
     </header>
@@ -40,18 +40,14 @@
               <div id="statusChannels">0/0</div>
             </button>
             <div class="flex flex-col gap-2">
-              <button id="statusClockCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="openSystemStatusModal('clock')">
-                <div class="font-semibold">Опитування</div>
-                <div id="statusPollTimer">--:--</div>
-              </button>
-              <button id="runNowCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="runMonitorOnce()">
-                <div class="font-semibold">Отримати повідомлення</div>
-                <div>зараз</div>
+              <button id="statusClockCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="openSystemStatusModal('now')">
+                <div class="font-semibold">Актуальний час</div>
+                <div id="statusCurrentTime">--:--:--</div>
               </button>
             </div>
-            <button id="statusNowTimeCard" class="px-3 py-2 rounded bg-indigo-700/60 text-left hover:bg-indigo-600/70 transition" onclick="openSystemStatusModal('now')">
-              <div class="font-semibold">Поточний час</div>
-              <div id="statusNowTime">--:--:--</div>
+            <button id="statusNowTimeCard" class="px-3 py-2 rounded bg-indigo-700/60 text-left hover:bg-indigo-600/70 transition" onclick="openSystemStatusModal('clock')">
+              <div class="font-semibold">Опитування</div>
+              <div id="statusPollTimer">--:--</div>
             </button>
           </div>
         </div>
@@ -161,10 +157,10 @@
       }
 
       function scoreBadge(score) {
-        if (score === null || score === undefined) return '<span class="px-2 py-1 rounded text-sm bg-slate-600">Score: —</span>';
-        if (score >= 8) return `<span class="px-2 py-1 rounded text-sm bg-red-700">Score: ${score}</span>`;
-        if (score >= 5) return `<span class="px-2 py-1 rounded text-sm bg-amber-600">Score: ${score}</span>`;
-        return `<span class="px-2 py-1 rounded text-sm bg-slate-600">Score: ${score}</span>`;
+        if (score === null || score === undefined) return '<span class="px-2 py-1 rounded text-sm bg-slate-600">n/a</span>';
+        if (score >= 8) return `<span class="px-2 py-1 rounded text-sm bg-red-700">${score}</span>`;
+        if (score >= 5) return `<span class="px-2 py-1 rounded text-sm bg-amber-600">${score}</span>`;
+        return `<span class="px-2 py-1 rounded text-sm bg-slate-600">${score}</span>`;
       }
 
       function renderMessageCard(item) {
@@ -179,9 +175,9 @@
             </div>
           </div>
           <p class="text-sm leading-relaxed text-slate-200">${preview}</p>
-          <div class="flex flex-nowrap gap-2 mt-auto overflow-x-auto">
-            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" title="Взяв в роботу">🛠️</button>
-            <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm" title="Опрацьовано">✅</button>
+          <div class="flex flex-nowrap gap-2 mt-auto justify-end">
+            <!-- <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" title="Взяв в роботу">🛠️</button> -->
+            <!-- <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm" title="Опрацьовано">✅</button> -->
             <a href="${item.telegram_url || '#'}" target="_blank" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" title="Відкрити в Telegram">↗️</a>
             <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" title="Читати повністю" data-channel="${escapeHtml(item.source_name)}" data-date="${formatPublishedAt(item.published_at)}" data-score="${item.ai_score ?? '-'}" data-category="${escapeHtml(item.ai_category || '—')}" data-telegramurl="${item.telegram_url || '#'}" data-fulltext="${fullText}" onclick="openMessageModal(this)">📄</button>
           </div>
@@ -232,7 +228,7 @@
       function updateCurrentTime() {
         const now = new Date();
         const nowText = now.toLocaleTimeString('uk-UA');
-        document.getElementById('statusNowTime').textContent = nowText;
+        document.getElementById('statusCurrentTime').textContent = nowText;
         statusCache.now = `Поточний час: ${now.toLocaleString('uk-UA')}`;
       }
 

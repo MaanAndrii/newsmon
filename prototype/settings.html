@@ -28,6 +28,7 @@
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('taxonomyTab', this)">Категорії та ключові слова</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('alertsTab', this)">Сповіщення</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('sourcesTab', this)">Джерела</button>
+          <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('debugTab', this)">Debug</button>
         </div>
 
         <div id="apiTab" class="tab-panel space-y-4">
@@ -100,6 +101,7 @@
           </div>
           <div class="flex gap-2">
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveIntegrations()">Зберегти інтеграції</button>
+            <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm" onclick="validateIntegrations()">Перевірити підключення</button>
           </div>
           <p id="validationMessage" class="text-xs text-slate-400"></p>
         </div>
@@ -285,6 +287,25 @@
           </div>
           <p id="sourceMessage" class="text-xs text-slate-400"></p>
         </div>
+
+        <div id="debugTab" class="tab-panel hidden space-y-4">
+          <h2 class="text-lg font-semibold">Debug</h2>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+            <div class="rounded-lg border border-slate-800 p-3">
+              <p class="font-medium">Claude API (24h)</p>
+              <p id="dbgClaudeReq" class="text-slate-300 mt-1">Запитів: —</p>
+              <p id="dbgClaudeTok" class="text-slate-400 text-xs mt-1">in/out токени: —</p>
+            </div>
+            <div class="rounded-lg border border-slate-800 p-3">
+              <p class="font-medium">Telegram API (24h)</p>
+              <p id="dbgTg24h" class="text-slate-300 mt-1">Запитів: —</p>
+            </div>
+            <div class="rounded-lg border border-slate-800 p-3">
+              <p class="font-medium">Telegram API (60m)</p>
+              <p id="dbgTg60m" class="text-slate-300 mt-1">Запитів: —</p>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
 
@@ -324,14 +345,12 @@
         });
         button.classList.add('bg-emerald-600', 'text-white');
         button.classList.remove('bg-slate-800');
-        if (tabId === 'apiTab') {
-          validateIntegrations();
-          loadTelethonAuthStatus();
-        }
+        if (tabId === 'apiTab') loadTelethonAuthStatus();
         if (tabId === 'monitoringTab') {
           loadMonitorConfig();
           loadMonitorStatus();
         }
+        if (tabId === 'debugTab') loadDebugStats();
       }
 
       function integrationPayload() {
@@ -421,6 +440,16 @@
         const data = await res.json();
         const info = `Моніторинг: ${data.state} • Оновлено: ${data.updated_sources}/${data.total_sources} • Ingested: ${data.ingested_messages || 0}`;
         setMonitorSignal(data.state, info);
+      }
+
+      async function loadDebugStats() {
+        const res = await fetch(`${apiBase}/api/debug/stats`);
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById('dbgClaudeReq').textContent = `Запитів: ${data.claude_requests_24h ?? 0}`;
+        document.getElementById('dbgClaudeTok').textContent = `in/out токени: ${data.claude_input_tokens_24h ?? 0} / ${data.claude_output_tokens_24h ?? 0}`;
+        document.getElementById('dbgTg24h').textContent = `Запитів: ${data.telegram_requests_24h ?? 0}`;
+        document.getElementById('dbgTg60m').textContent = `Запитів: ${data.telegram_requests_60m ?? 0}`;
       }
 
       async function loadMonitorConfig() {
@@ -753,11 +782,12 @@
       loadCategories();
       loadKeywords();
       loadMonitorStatus();
-      validateIntegrations();
       loadTelethonAuthStatus();
+      loadDebugStats();
       setInterval(loadMonitorStatus, 10000);
       setInterval(loadMonitorConfig, 15000);
       setInterval(loadTelethonAuthStatus, 30000);
+      setInterval(loadDebugStats, 60000);
     </script>
   </body>
 </html>

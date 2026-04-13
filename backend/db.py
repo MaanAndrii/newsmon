@@ -493,6 +493,17 @@ class Repository:
                 (message_id,),
             )
 
+    def mark_message_no_ai(self, message_id: int, category: str | None) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE messages
+                SET ai_score = NULL, ai_category = ?, ai_status = 'done', updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (category, message_id),
+            )
+
     def mark_ai_error(self, message_id: int, error: str) -> None:
         with get_connection() as conn:
             conn.execute(
