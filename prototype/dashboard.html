@@ -173,14 +173,17 @@
         return `<article class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex flex-col gap-3">
           <div class="flex items-center justify-between">
             <div><p class="font-semibold">${escapeHtml(item.source_name)}</p><p class="text-xs text-slate-400">${formatPublishedAt(item.published_at)}</p></div>
-            ${scoreBadge(item.ai_score)}
+            <div class="flex gap-1 items-center">
+              ${scoreBadge(item.ai_score)}
+              <span class="px-2 py-1 rounded text-sm bg-sky-700">${escapeHtml(item.ai_category || '—')}</span>
+            </div>
           </div>
           <p class="text-sm leading-relaxed text-slate-200">${preview}</p>
-          <div class="flex flex-wrap gap-2 mt-auto">
-            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm">Взяв в роботу</button>
-            <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm">Опрацьовано</button>
-            <a href="${item.telegram_url || '#'}" target="_blank" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">Відкрити в Telegram</a>
-            <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" data-channel="${escapeHtml(item.source_name)}" data-date="${formatPublishedAt(item.published_at)}" data-score="${item.ai_score ?? '-'}" data-category="${escapeHtml(item.ai_category || '—')}" data-telegramurl="${item.telegram_url || '#'}" data-fulltext="${fullText}" onclick="openMessageModal(this)">Читати повністю</button>
+          <div class="flex flex-nowrap gap-2 mt-auto overflow-x-auto">
+            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" title="Взяв в роботу">🛠️</button>
+            <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm" title="Опрацьовано">✅</button>
+            <a href="${item.telegram_url || '#'}" target="_blank" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" title="Відкрити в Telegram">↗️</a>
+            <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" title="Читати повністю" data-channel="${escapeHtml(item.source_name)}" data-date="${formatPublishedAt(item.published_at)}" data-score="${item.ai_score ?? '-'}" data-category="${escapeHtml(item.ai_category || '—')}" data-telegramurl="${item.telegram_url || '#'}" data-fulltext="${fullText}" onclick="openMessageModal(this)">📄</button>
           </div>
         </article>`;
       }

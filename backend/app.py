@@ -26,6 +26,12 @@ MAX_MONITOR_INTERVAL_SECONDS = 1800
 DEFAULT_MONITOR_DEPTH = 3
 MIN_MONITOR_DEPTH = 1
 MAX_MONITOR_DEPTH = 10
+CLAUDE_MODELS = {
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+}
+DEFAULT_CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 monitor_task: asyncio.Task | None = None
 telethon_auth_state: dict[str, dict[str, str]] = {}
 telethon_client_lock = asyncio.Lock()
@@ -96,6 +102,7 @@ class KeywordCreate(BaseModel):
 
 class IntegrationsPayload(BaseModel):
     claude_api_key: str | None = None
+    claude_model: str | None = DEFAULT_CLAUDE_MODEL
     telegram_api_id: str | None = None
     telegram_api_hash: str | None = None
     telegram_bot_token: str | None = None
@@ -162,6 +169,13 @@ def _fetch_telegram_channel_title(username: str) -> str | None:
     if page_title and page_title.group(1).strip():
         return page_title.group(1).replace("Telegram:", "").strip()
     return None
+
+
+def _resolve_claude_model(value: str | None) -> str:
+    model = (value or "").strip()
+    if model in CLAUDE_MODELS:
+        return model
+    return DEFAULT_CLAUDE_MODEL
 
 
 def _detect_media_type(message: object) -> str | None:
@@ -340,6 +354,7 @@ async def _monitor_loop() -> None:
                 monitor_status["state"] = "warning"
                 monitor_status["last_error"] = err
             else:
+                await _process_ai_queue()
                 monitor_status["state"] = "ok"
                 monitor_status["last_error"] = None
                 monitor_status["last_success_at"] = datetime.now(timezone.utc).strftime(
@@ -389,10 +404,101 @@ async def run_monitor_once() -> dict:
         monitor_status["state"] = "warning"
         monitor_status["last_error"] = err
     else:
+        await _process_ai_queue()
         monitor_status["state"] = "ok"
         monitor_status["last_error"] = None
         monitor_status["last_success_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     return {"ok": err is None, "updated_sources": updated, "total_sources": total, "ingested_messages": ingested, "detail": err}
+
+
+async def _process_ai_queue(limit: int = 20) -> None:
+    monitor_cfg = _get_monitor_config()
+    if not monitor_cfg["ai_enabled"]:
+        return
+    integrations = repo.get_integrations()
+    api_key = (integrations.get("claude_api_key") or "").strip()
+    if not api_key:
+        return
+    model = _resolve_claude_model(integrations.get("claude_model"))
+    categories = [c.get("name", "").strip() for c in repo.list_categories() if c.get("name")]
+    pending = repo.list_ai_queue_pending(limit=limit)
+    if not pending:
+        return
+
+    loop = asyncio.get_running_loop()
+    for item in pending:
+        message_id = int(item.get("message_id") or 0)
+        text = (item.get("text") or "").strip()
+        if message_id <= 0 or not text:
+            repo.mark_ai_error(message_id, "empty message text")
+            continue
+        try:
+            score, category = await loop.run_in_executor(
+                None,
+                _call_claude_score_sync,
+                api_key,
+                model,
+                text,
+                categories,
+            )
+            repo.mark_ai_result(message_id, score, category)
+        except Exception as exc:
+            repo.mark_ai_error(message_id, str(exc))
+
+
+def _call_claude_score_sync(
+    api_key: str,
+    model: str,
+    text: str,
+    categories: list[str],
+) -> tuple[int, str | None]:
+    categories_text = ", ".join(categories) if categories else "Без категорії"
+    system_prompt = (
+        "Оціни медіа-важливість повідомлення від 1 до 10 та обери категорію "
+        f"лише з цього списку: {categories_text}. "
+        "Відповідай тільки JSON: {\"score\": <1-10>, \"category\": \"<назва>\"}."
+    )
+    body = {
+        "model": model,
+        "max_tokens": 120,
+        "system": [
+            {"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}},
+        ],
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": text, "cache_control": {"type": "ephemeral"}},
+                ],
+            }
+        ],
+    }
+    req = request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "prompt-caching-2024-07-31",
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+    with request.urlopen(req, timeout=25) as resp:
+        raw = json.loads(resp.read().decode("utf-8"))
+    content = raw.get("content") or []
+    text_payload = ""
+    if content and isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                text_payload += str(block.get("text") or "")
+    parsed = json.loads(text_payload.strip() or "{}")
+    score = int(parsed.get("score") or 0)
+    score = max(1, min(10, score))
+    category = str(parsed.get("category") or "").strip() or None
+    if categories and category not in categories:
+        category = None
+    return score, category
 
 
 @app.get("/api/telethon/auth/status")
@@ -778,13 +884,16 @@ def delete_keyword(keyword_id: int) -> None:
 
 @app.get("/api/integrations")
 def get_integrations() -> dict:
-    return repo.get_integrations()
+    data = repo.get_integrations()
+    data["claude_model"] = _resolve_claude_model(data.get("claude_model"))
+    return data
 
 
 @app.post("/api/integrations")
 def save_integrations(payload: IntegrationsPayload) -> dict:
     data = payload.model_dump()
     clean = {k: v.strip() if isinstance(v, str) else v for k, v in data.items()}
+    clean["claude_model"] = _resolve_claude_model(clean.get("claude_model"))
     return repo.save_integrations(clean)
 
 
@@ -792,6 +901,7 @@ def save_integrations(payload: IntegrationsPayload) -> dict:
 def validate_integrations(payload: IntegrationsPayload) -> dict:
     data = payload.model_dump()
     claude_key = (data.get("claude_api_key") or "").strip()
+    claude_model = _resolve_claude_model(data.get("claude_model"))
     telegram_api_id = (data.get("telegram_api_id") or "").strip()
     telegram_api_hash = (data.get("telegram_api_hash") or "").strip()
     telegram_bot_token = (data.get("telegram_bot_token") or "").strip()
@@ -808,8 +918,9 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
         re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,}", telegram_bot_token)
         and re.fullmatch(r"-?(?:100\d{8,}|[1-9]\d{4,})", telegram_bot_chat_id)
     )
-    claude_ok = claude_format
-    claude_reason = None if claude_ok else "Очікується ключ формату sk-ant-..."
+    claude_model_ok = claude_model in CLAUDE_MODELS
+    claude_ok = claude_format and claude_model_ok
+    claude_reason = None if claude_ok else "Очікується ключ формату sk-ant-... і валідна Claude model"
     telegram_user_reason = (
         "API ID/Hash коректні. Фактична перевірка виконується через Telethon авторизацію."
         if telegram_user_format
@@ -821,6 +932,7 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
         "claude": {
             "ok": claude_ok,
             "reason": claude_reason,
+            "model": claude_model,
         },
         "telegram_user_api": {
             "ok": telegram_user_format,

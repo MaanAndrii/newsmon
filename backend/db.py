@@ -56,6 +56,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS integrations (
                 id INTEGER PRIMARY KEY CHECK(id = 1),
                 claude_api_key TEXT NULL,
+                claude_model TEXT NULL DEFAULT 'claude-haiku-4-5-20251001',
                 telegram_api_id TEXT NULL,
                 telegram_api_hash TEXT NULL,
                 telegram_bot_token TEXT NULL,
@@ -166,6 +167,7 @@ def init_db() -> None:
         _ensure_column(conn, "sources", "ai_enabled", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "sources", "last_message_at", "TEXT NULL")
         _ensure_column(conn, "integrations", "claude_api_key", "TEXT NULL")
+        _ensure_column(conn, "integrations", "claude_model", "TEXT NULL DEFAULT 'claude-haiku-4-5-20251001'")
         _ensure_column(conn, "integrations", "telegram_bot_token", "TEXT NULL")
         _ensure_column(conn, "integrations", "telegram_bot_chat_id", "TEXT NULL")
 
@@ -379,7 +381,7 @@ class Repository:
         with get_connection() as conn:
             row = conn.execute(
                 """
-                SELECT claude_api_key, telegram_api_id, telegram_api_hash,
+                SELECT claude_api_key, claude_model, telegram_api_id, telegram_api_hash,
                        telegram_bot_token, telegram_bot_chat_id, updated_at
                 FROM integrations WHERE id = 1
                 """
@@ -388,7 +390,7 @@ class Repository:
                 conn.execute("INSERT INTO integrations(id) VALUES (1)")
                 row = conn.execute(
                     """
-                    SELECT claude_api_key, telegram_api_id, telegram_api_hash,
+                    SELECT claude_api_key, claude_model, telegram_api_id, telegram_api_hash,
                            telegram_bot_token, telegram_bot_chat_id, updated_at
                     FROM integrations WHERE id = 1
                     """
@@ -423,12 +425,13 @@ class Repository:
             conn.execute(
                 """
                 INSERT INTO integrations(
-                    id, claude_api_key, telegram_api_id, telegram_api_hash,
+                    id, claude_api_key, claude_model, telegram_api_id, telegram_api_hash,
                     telegram_bot_token, telegram_bot_chat_id, updated_at
                 )
-                VALUES (1, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (1, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(id) DO UPDATE SET
                     claude_api_key=excluded.claude_api_key,
+                    claude_model=excluded.claude_model,
                     telegram_api_id=excluded.telegram_api_id,
                     telegram_api_hash=excluded.telegram_api_hash,
                     telegram_bot_token=excluded.telegram_bot_token,
@@ -437,6 +440,7 @@ class Repository:
                 """,
                 (
                     payload.get("claude_api_key"),
+                    payload.get("claude_model"),
                     payload.get("telegram_api_id"),
                     payload.get("telegram_api_hash"),
                     payload.get("telegram_bot_token"),
@@ -445,9 +449,53 @@ class Repository:
             )
             row = conn.execute(
                 """
-                SELECT claude_api_key, telegram_api_id, telegram_api_hash,
+                SELECT claude_api_key, claude_model, telegram_api_id, telegram_api_hash,
                        telegram_bot_token, telegram_bot_chat_id, updated_at
                 FROM integrations WHERE id = 1
                 """
             ).fetchone()
         return dict(row)
+
+    def list_ai_queue_pending(self, limit: int = 20) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT q.message_id, m.text
+                FROM ai_queue q
+                JOIN messages m ON m.id = q.message_id
+                WHERE q.status = 'pending'
+                ORDER BY q.id ASC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def mark_ai_result(self, message_id: int, score: int, category: str | None) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE messages
+                SET ai_score = ?, ai_category = ?, ai_status = 'done', updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (score, category, message_id),
+            )
+            conn.execute(
+                "UPDATE ai_queue SET status = 'done', last_error = NULL, updated_at = datetime('now') WHERE message_id = ?",
+                (message_id,),
+            )
+
+    def mark_ai_error(self, message_id: int, error: str) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE ai_queue
+                SET retries = retries + 1,
+                    status = CASE WHEN retries + 1 >= 3 THEN 'error' ELSE 'pending' END,
+                    last_error = ?,
+                    updated_at = datetime('now')
+                WHERE message_id = ?
+                """,
+                (error[:500], message_id),
+            )
