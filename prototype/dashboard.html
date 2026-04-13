@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NewsMon — Dashboard Prototype</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100 flex flex-col" id="appRoot">
+    <header class="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-10">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 class="text-xl font-bold">NewsMon — Моніторинг Telegram-каналів</h1>
+          <p class="text-xs text-slate-400">Прототип Dashboard (mock дані)</p>
+        </div>
+        <nav class="flex gap-2 text-sm">
+          <a class="px-3 py-2 rounded-lg bg-emerald-600 text-white" href="dashboard.html">Dashboard</a>
+          <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="settings.html">Налаштування</a>
+          <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Пошук</a>
+          <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Сповіщення</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
+      <section class="mb-5 p-4 rounded-xl bg-slate-900 border border-slate-800">
+        <div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+          <h2 class="font-semibold text-lg">Статус системи</h2>
+          <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs" onclick="runMonitorOnce()">
+            Отримати повідомлення зараз
+          </button>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs w-full md:w-auto">
+            <button id="statusTelegramCard" class="px-3 py-2 rounded bg-emerald-700/60 text-left hover:bg-emerald-600/70 transition" onclick="openSystemStatusModal('telegram')">
+              <div class="font-semibold">Telegram</div>
+              <div id="statusTelegram">активний</div>
+            </button>
+            <button id="statusAiCard" class="px-3 py-2 rounded bg-amber-700/60 text-left hover:bg-amber-600/70 transition" onclick="openSystemStatusModal('ai')">
+              <div class="font-semibold">Claude</div>
+              <div id="statusAi">pending 0</div>
+            </button>
+            <button id="statusChannelsCard" class="px-3 py-2 rounded bg-sky-700/60 text-left hover:bg-sky-600/70 transition" onclick="openSystemStatusModal('channels')">
+              <div class="font-semibold">Канали</div>
+              <div id="statusChannels">0/0</div>
+            </button>
+            <button id="statusClockCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="openSystemStatusModal('clock')">
+              <div class="font-semibold">Опитування</div>
+              <div id="statusPollTimer">--:--</div>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="messagesGrid" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></section>
+    </main>
+
+    <div id="messageModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+      <div class="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+          <div>
+            <h3 id="modalChannel" class="font-semibold text-lg">Канал</h3>
+            <p id="modalMeta" class="text-xs text-slate-400"></p>
+          </div>
+          <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeMessageModal()">Закрити</button>
+        </div>
+        <div class="p-4 space-y-3">
+          <div class="flex gap-2">
+            <div id="modalScore" class="inline-flex px-2 py-1 rounded text-sm bg-violet-700"></div>
+            <div id="modalCategory" class="inline-flex px-2 py-1 rounded text-sm bg-sky-700"></div>
+          </div>
+          <p id="modalText" class="text-sm leading-relaxed text-slate-200"></p>
+          <div class="flex justify-end gap-2 pt-2">
+            <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="copyModalMessage()" title="Копіювати повідомлення">📋</button>
+            <a id="modalTelegramLink" href="#" target="_blank" class="px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-sm" title="Перейти в Telegram">↗️</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="systemStatusModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+      <div class="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+          <h3 class="font-semibold text-lg">Деталі статусу</h3>
+          <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeSystemStatusModal()">Закрити</button>
+        </div>
+        <div class="p-4 space-y-3">
+          <p id="systemStatusTitle" class="text-sm font-semibold text-slate-100"></p>
+          <p id="systemStatusDetail" class="text-sm leading-relaxed text-slate-300"></p>
+          <p id="systemStatusUpdated" class="text-xs text-slate-500"></p>
+        </div>
+      </div>
+    </div>
+
+    <footer class="border-t border-slate-800 bg-slate-900">
+      <div class="max-w-7xl mx-auto px-4 py-3 text-xs text-slate-400 flex justify-between">
+        <span>© 2026 NewsMon Prototype</span>
+        <span>Автор: Команда редакції / AI прототип</span>
+      </div>
+    </footer>
+    <script>
+      const modal = document.getElementById('messageModal');
+      const systemStatusModal = document.getElementById('systemStatusModal');
+      const modalMeta = document.getElementById('modalMeta');
+      const modalChannel = document.getElementById('modalChannel');
+      const modalScore = document.getElementById('modalScore');
+      const modalCategory = document.getElementById('modalCategory');
+      const modalText = document.getElementById('modalText');
+      const modalTelegramLink = document.getElementById('modalTelegramLink');
+      const messagesGrid = document.getElementById('messagesGrid');
+      const statusCache = { telegram: '', ai: '', channels: '', clock: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
+
+      function openMessageModal(button) {
+        const channel = button.dataset.channel || '';
+        const date = button.dataset.date || '';
+        const score = button.dataset.score || '-';
+        const category = button.dataset.category || '—';
+        const telegramUrl = button.dataset.telegramurl || '#';
+        const fullText = button.dataset.fulltext || '';
+
+        modalChannel.textContent = channel || 'Канал';
+        modalMeta.textContent = date;
+        modalScore.textContent = `Оцінка: ${score}`;
+        modalCategory.textContent = `Категорія: ${category}`;
+        modalText.textContent = fullText;
+        modalTelegramLink.href = telegramUrl || '#';
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+
+      function closeMessageModal() {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+
+      async function copyModalMessage() {
+        try {
+          await navigator.clipboard.writeText(modalText.textContent || '');
+        } catch (e) {
+          // ignore clipboard errors in unsupported browsers
+        }
+      }
+
+      function formatPublishedAt(value) {
+        if (!value) return 'Невідомий час';
+        const date = new Date(value.replace(' ', 'T') + 'Z');
+        return Number.isNaN(date.getTime()) ? value : date.toLocaleString('uk-UA');
+      }
+
+      function scoreBadge(score) {
+        if (score === null || score === undefined) return '<span class="px-2 py-1 rounded text-sm bg-slate-600">Score: —</span>';
+        if (score >= 8) return `<span class="px-2 py-1 rounded text-sm bg-red-700">Score: ${score}</span>`;
+        if (score >= 5) return `<span class="px-2 py-1 rounded text-sm bg-amber-600">Score: ${score}</span>`;
+        return `<span class="px-2 py-1 rounded text-sm bg-slate-600">Score: ${score}</span>`;
+      }
+
+      function renderMessageCard(item) {
+        const preview = (item.text || 'Повідомлення без тексту').slice(0, 280);
+        return `<article class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <div><p class="font-semibold">${item.source_name}</p><p class="text-xs text-slate-400">${formatPublishedAt(item.published_at)}</p></div>
+            ${scoreBadge(item.ai_score)}
+          </div>
+          <p class="text-sm leading-relaxed text-slate-200">${preview}</p>
+          <div class="flex flex-wrap gap-2 mt-auto">
+            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm">Взяв в роботу</button>
+            <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm">Опрацьовано</button>
+            <a href="${item.telegram_url || '#'}" target="_blank" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">Відкрити в Telegram</a>
+            <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" data-channel="${item.source_name}" data-date="${formatPublishedAt(item.published_at)}" data-score="${item.ai_score ?? '-'}" data-category="${item.ai_category || '—'}" data-telegramurl="${item.telegram_url || '#'}" data-fulltext="${(item.text || '').replace(/\"/g, '&quot;')}" onclick="openMessageModal(this)">Читати повністю</button>
+          </div>
+        </article>`;
+      }
+
+      async function loadMessages() {
+        try {
+          const res = await fetch('/api/messages?limit=100');
+          const items = res.ok ? await res.json() : [];
+          messagesGrid.innerHTML = items.length
+            ? items.map(renderMessageCard).join('')
+            : `<article class="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-300">Поки що немає зібраних повідомлень.</article>`;
+        } catch (error) {
+          messagesGrid.innerHTML = `<article class="rounded-xl border border-rose-700/40 bg-rose-950/20 p-6 text-sm text-rose-200">Не вдалося завантажити стрічку: ${error}</article>`;
+        }
+      }
+
+      function paintStatusCard(cardId, isOk) {
+        const card = document.getElementById(cardId);
+        card.classList.remove('bg-emerald-700/60', 'bg-amber-700/60', 'bg-rose-700/60');
+        if (isOk === true) card.classList.add('bg-emerald-700/60');
+        else if (isOk === false) card.classList.add('bg-rose-700/60');
+        else card.classList.add('bg-amber-700/60');
+      }
+
+      function updatePollCountdown() {
+        const timerEl = document.getElementById('statusPollTimer');
+        if (!statusCache.collectEnabled || !statusCache.lastRunAt) {
+          timerEl.textContent = '--:--';
+          return;
+        }
+        const next = new Date(statusCache.lastRunAt.getTime() + statusCache.intervalSeconds * 1000);
+        const diff = Math.max(0, Math.floor((next.getTime() - Date.now()) / 1000));
+        const mm = String(Math.floor(diff / 60)).padStart(2, '0');
+        const ss = String(diff % 60).padStart(2, '0');
+        timerEl.textContent = `${mm}:${ss}`;
+      }
+
+      async function loadSystemStatus() {
+        try {
+          const [monitorRes, sourcesRes] = await Promise.all([fetch('/api/monitor/status'), fetch('/api/sources')]);
+          const monitor = monitorRes.ok ? await monitorRes.json() : null;
+          const sources = sourcesRes.ok ? await sourcesRes.json() : [];
+          const activeSources = sources.filter((s) => s.is_active).length;
+          const totalSources = sources.length;
+          const monitorState = monitor?.state || 'unknown';
+          const aiEnabled = Boolean(monitor?.ai_enabled);
+          const collectEnabled = Boolean(monitor?.collect_enabled);
+          statusCache.collectEnabled = collectEnabled;
+          statusCache.intervalSeconds = Number(monitor?.interval_seconds || 600);
+          statusCache.lastRunAt = monitor?.last_run_at ? new Date((monitor.last_run_at || '').replace(' ', 'T') + 'Z') : null;
+          statusCache.telegram = `Стан: ${monitorState}. Помилка: ${monitor?.last_error || 'немає'}`;
+          statusCache.ai = `AI: ${aiEnabled ? 'увімкнено' : 'вимкнено'}. Ingested: ${monitor?.ingested_messages || 0}`;
+          statusCache.channels = `Активних ${activeSources}/${totalSources}, оновлено ${monitor?.updated_sources || 0}`;
+          statusCache.clock = `Інтервал: ${statusCache.intervalSeconds} сек. Збір: ${collectEnabled ? 'увімкнено' : 'вимкнено'}`;
+          statusCache.updatedAt = `Оновлено: ${new Date().toLocaleString('uk-UA')}`;
+          document.getElementById('statusTelegram').textContent = monitorState === 'ok' ? 'активний' : monitorState;
+          document.getElementById('statusAi').textContent = aiEnabled ? 'увімкнено' : 'вимкнено';
+          document.getElementById('statusChannels').textContent = `${activeSources}/${totalSources}`;
+          document.getElementById('statusPollTimer').textContent = collectEnabled ? document.getElementById('statusPollTimer').textContent : '--:--';
+          paintStatusCard('statusTelegramCard', monitorState === 'ok');
+          paintStatusCard('statusAiCard', aiEnabled ? true : null);
+          paintStatusCard('statusChannelsCard', activeSources > 0 ? true : null);
+          paintStatusCard('statusClockCard', collectEnabled ? true : null);
+          updatePollCountdown();
+        } catch (error) {
+          document.getElementById('statusTelegram').textContent = 'помилка';
+          paintStatusCard('statusTelegramCard', false);
+        }
+      }
+
+      async function runMonitorOnce() {
+        const res = await fetch('/api/monitor/run-once', { method: 'POST' });
+        if (res.ok) {
+          await Promise.all([loadSystemStatus(), loadMessages()]);
+        }
+      }
+
+      function openSystemStatusModal(type) {
+        const titles = { telegram: 'Telegram моніторинг', ai: 'Черга AI', channels: 'Стан каналів', clock: 'Таймер опитування' };
+        document.getElementById('systemStatusTitle').textContent = titles[type] || 'Статус';
+        document.getElementById('systemStatusDetail').textContent = statusCache[type] || 'Немає даних';
+        document.getElementById('systemStatusUpdated').textContent = statusCache.updatedAt || '';
+        systemStatusModal.classList.remove('hidden');
+        systemStatusModal.classList.add('flex');
+      }
+
+      function closeSystemStatusModal() {
+        systemStatusModal.classList.add('hidden');
+        systemStatusModal.classList.remove('flex');
+      }
+
+      loadMessages();
+      loadSystemStatus();
+      setInterval(loadMessages, 30000);
+      setInterval(loadSystemStatus, 10000);
+      setInterval(updatePollCountdown, 1000);
+    </script>
+  </body>
+</html>
