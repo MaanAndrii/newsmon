@@ -57,14 +57,21 @@
       <div class="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
         <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
           <div>
-            <h3 class="font-semibold text-lg">Повна версія повідомлення</h3>
+            <h3 id="modalChannel" class="font-semibold text-lg">Канал</h3>
             <p id="modalMeta" class="text-xs text-slate-400"></p>
           </div>
           <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeMessageModal()">Закрити</button>
         </div>
         <div class="p-4 space-y-3">
-          <div id="modalScore" class="inline-flex px-2 py-1 rounded text-sm bg-violet-700"></div>
+          <div class="flex gap-2">
+            <div id="modalScore" class="inline-flex px-2 py-1 rounded text-sm bg-violet-700"></div>
+            <div id="modalCategory" class="inline-flex px-2 py-1 rounded text-sm bg-sky-700"></div>
+          </div>
           <p id="modalText" class="text-sm leading-relaxed text-slate-200"></p>
+          <div class="flex justify-end gap-2 pt-2">
+            <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="copyModalMessage()" title="Копіювати повідомлення">📋</button>
+            <a id="modalTelegramLink" href="#" target="_blank" class="px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-sm" title="Перейти в Telegram">↗️</a>
+          </div>
         </div>
       </div>
     </div>
@@ -92,8 +99,11 @@
       const modal = document.getElementById('messageModal');
       const systemStatusModal = document.getElementById('systemStatusModal');
       const modalMeta = document.getElementById('modalMeta');
+      const modalChannel = document.getElementById('modalChannel');
       const modalScore = document.getElementById('modalScore');
+      const modalCategory = document.getElementById('modalCategory');
       const modalText = document.getElementById('modalText');
+      const modalTelegramLink = document.getElementById('modalTelegramLink');
       const messagesGrid = document.getElementById('messagesGrid');
       const statusCache = { telegram: '', ai: '', channels: '', clock: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
 
@@ -101,11 +111,16 @@
         const channel = button.dataset.channel || '';
         const date = button.dataset.date || '';
         const score = button.dataset.score || '-';
+        const category = button.dataset.category || '—';
+        const telegramUrl = button.dataset.telegramurl || '#';
         const fullText = button.dataset.fulltext || '';
 
-        modalMeta.textContent = `${channel} • ${date}`;
+        modalChannel.textContent = channel || 'Канал';
+        modalMeta.textContent = date;
         modalScore.textContent = `Оцінка: ${score}`;
+        modalCategory.textContent = `Категорія: ${category}`;
         modalText.textContent = fullText;
+        modalTelegramLink.href = telegramUrl || '#';
         modal.classList.remove('hidden');
         modal.classList.add('flex');
       }
@@ -113,6 +128,14 @@
       function closeMessageModal() {
         modal.classList.add('hidden');
         modal.classList.remove('flex');
+      }
+
+      async function copyModalMessage() {
+        try {
+          await navigator.clipboard.writeText(modalText.textContent || '');
+        } catch (e) {
+          // ignore clipboard errors in unsupported browsers
+        }
       }
 
       function formatPublishedAt(value) {
@@ -140,7 +163,7 @@
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm">Взяв в роботу</button>
             <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm">Опрацьовано</button>
             <a href="${item.telegram_url || '#'}" target="_blank" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">Відкрити в Telegram</a>
-            <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" data-channel="${item.source_name}" data-date="${formatPublishedAt(item.published_at)}" data-score="${item.ai_score ?? '-'}" data-fulltext="${(item.text || '').replace(/\"/g, '&quot;')}" onclick="openMessageModal(this)">Читати повністю</button>
+            <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" data-channel="${item.source_name}" data-date="${formatPublishedAt(item.published_at)}" data-score="${item.ai_score ?? '-'}" data-category="${item.ai_category || '—'}" data-telegramurl="${item.telegram_url || '#'}" data-fulltext="${(item.text || '').replace(/\"/g, '&quot;')}" onclick="openMessageModal(this)">Читати повністю</button>
           </div>
         </article>`;
       }

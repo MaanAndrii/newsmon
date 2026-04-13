@@ -226,7 +226,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
     session_path = _telethon_session_base()
     updated = 0
     ingested = 0
-    window_start = datetime.now(timezone.utc) - timedelta(seconds=MONITOR_INTERVAL_SECONDS)
+    window_start = datetime.now(timezone.utc) - timedelta(seconds=int(monitor_cfg["interval_seconds"]))
     async with telethon_client_lock:
         try:
             client_mode, parsed_api_id, parsed_api_hash = _telethon_client_init_data(int(api_id), api_hash)
@@ -254,7 +254,8 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                             updated += 1
 
                         last_known_id = repo.get_last_tg_message_id(int(source["id"]))
-                        async for message in client.iter_messages(entity, min_id=last_known_id, reverse=True, limit=fetch_depth):
+                        candidates: list[object] = []
+                        async for message in client.iter_messages(entity, limit=fetch_depth):
                             if not message:
                                 continue
                             message_id = int(getattr(message, "id", 0))
@@ -262,8 +263,18 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                             if message_id <= 0 or msg_date is None:
                                 continue
                             msg_date_utc = msg_date.astimezone(timezone.utc)
-                            if msg_date_utc < window_start and message_id <= last_known_id:
+                            if message_id <= last_known_id:
                                 continue
+                            if msg_date_utc < window_start:
+                                continue
+                            candidates.append(message)
+
+                        for message in reversed(candidates):
+                            message_id = int(getattr(message, "id", 0))
+                            msg_date = getattr(message, "date", None)
+                            if message_id <= 0 or msg_date is None:
+                                continue
+                            msg_date_utc = msg_date.astimezone(timezone.utc)
                             text = getattr(message, "message", None) or getattr(message, "raw_text", None) or ""
                             repo.upsert_message(
                                 source_id=int(source["id"]),
