@@ -141,6 +141,10 @@
               </div>
               <input id="monitorFetchDepth" type="number" min="1" max="10" step="1" class="w-20 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="3" />
             </div>
+            <div class="rounded-lg border border-slate-800 p-3 md:col-span-2">
+              <p class="font-medium mb-1">Промт для оцінки важливості</p>
+              <textarea id="monitorAiPrompt" rows="3" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="Оціни важливість новини від 1 до 10 та обери категорію."></textarea>
+            </div>
           </div>
           <div class="flex gap-2">
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveMonitorConfig()">Зберегти налаштування моніторингу</button>
@@ -427,6 +431,7 @@
         document.getElementById('monitorCollectEnabled').checked = !!data.collect_enabled;
         document.getElementById('monitorIntervalSeconds').value = Number(data.interval_seconds || 600);
         document.getElementById('monitorFetchDepth').value = Number(data.fetch_depth || 3);
+        document.getElementById('monitorAiPrompt').value = data.ai_prompt || '';
         updateMonitorFormState();
         document.getElementById('monitorConfigMessage').textContent = 'Налаштування моніторингу завантажено.';
       }
@@ -444,6 +449,7 @@
           collect_enabled: document.getElementById('monitorCollectEnabled').checked,
           interval_seconds: Number(document.getElementById('monitorIntervalSeconds').value || 600),
           fetch_depth: Number(document.getElementById('monitorFetchDepth').value || 3),
+          ai_prompt: document.getElementById('monitorAiPrompt').value,
         };
         const res = await fetch(`${apiBase}/api/monitor/config`, {
           method: 'POST',

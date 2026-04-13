@@ -35,6 +35,7 @@ DEFAULT_CLAUDE_MODEL = "claude-haiku-4-5-20251001"
 monitor_task: asyncio.Task | None = None
 telethon_auth_state: dict[str, dict[str, str]] = {}
 telethon_client_lock = asyncio.Lock()
+ai_processing_lock = asyncio.Lock()
 monitor_status: dict[str, str | int | None] = {
     "state": "stopped",
     "last_run_at": None,
@@ -124,6 +125,7 @@ class MonitorConfigPayload(BaseModel):
     ai_enabled: bool
     interval_seconds: int = Field(default=MONITOR_INTERVAL_SECONDS, ge=MIN_MONITOR_INTERVAL_SECONDS, le=MAX_MONITOR_INTERVAL_SECONDS)
     fetch_depth: int = Field(default=DEFAULT_MONITOR_DEPTH, ge=MIN_MONITOR_DEPTH, le=MAX_MONITOR_DEPTH)
+    ai_prompt: str | None = None
 
 
 class ClearMessagesPayload(BaseModel):
@@ -190,7 +192,7 @@ def _detect_media_type(message: object) -> str | None:
     return "media"
 
 
-def _get_monitor_config() -> dict[str, bool | int]:
+def _get_monitor_config() -> dict[str, bool | int | str]:
     collect_enabled = (repo.get_setting("monitor.collect_enabled", "1") or "1") == "1"
     ai_enabled = (repo.get_setting("monitor.ai_enabled", "1") or "1") == "1"
     interval_raw = repo.get_setting("monitor.interval_seconds", str(MONITOR_INTERVAL_SECONDS)) or str(MONITOR_INTERVAL_SECONDS)
@@ -205,11 +207,13 @@ def _get_monitor_config() -> dict[str, bool | int]:
     except ValueError:
         fetch_depth = DEFAULT_MONITOR_DEPTH
     fetch_depth = max(MIN_MONITOR_DEPTH, min(MAX_MONITOR_DEPTH, fetch_depth))
+    ai_prompt = (repo.get_setting("monitor.ai_prompt", "") or "").strip()
     return {
         "collect_enabled": collect_enabled,
         "ai_enabled": ai_enabled,
         "interval_seconds": interval_seconds,
         "fetch_depth": fetch_depth,
+        "ai_prompt": ai_prompt,
     }
 
 
@@ -390,6 +394,7 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.ai_enabled", "1" if payload.ai_enabled else "0")
     repo.set_setting("monitor.interval_seconds", str(payload.interval_seconds))
     repo.set_setting("monitor.fetch_depth", str(payload.fetch_depth))
+    repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
     return _get_monitor_config()
 
 
@@ -412,6 +417,8 @@ async def run_monitor_once() -> dict:
 
 
 async def _process_ai_queue(limit: int = 20) -> None:
+    if ai_processing_lock.locked():
+        return
     monitor_cfg = _get_monitor_config()
     if not monitor_cfg["ai_enabled"]:
         return
@@ -421,29 +428,44 @@ async def _process_ai_queue(limit: int = 20) -> None:
         return
     model = _resolve_claude_model(integrations.get("claude_model"))
     categories = [c.get("name", "").strip() for c in repo.list_categories() if c.get("name")]
-    pending = repo.list_ai_queue_pending(limit=limit)
-    if not pending:
-        return
+    ai_prompt = str(monitor_cfg.get("ai_prompt") or "").strip()
 
-    loop = asyncio.get_running_loop()
-    for item in pending:
-        message_id = int(item.get("message_id") or 0)
-        text = (item.get("text") or "").strip()
-        if message_id <= 0 or not text:
-            repo.mark_ai_error(message_id, "empty message text")
-            continue
-        try:
-            score, category = await loop.run_in_executor(
-                None,
-                _call_claude_score_sync,
-                api_key,
-                model,
-                text,
-                categories,
-            )
-            repo.mark_ai_result(message_id, score, category)
-        except Exception as exc:
-            repo.mark_ai_error(message_id, str(exc))
+    async with ai_processing_lock:
+        pending = repo.claim_ai_queue_pending(limit=limit)
+        if not pending:
+            return
+        loop = asyncio.get_running_loop()
+        for item in pending:
+            message_id = int(item.get("message_id") or 0)
+            text = (item.get("text") or "").strip()
+            if message_id <= 0 or not text:
+                repo.mark_ai_error(message_id, "empty message text")
+                continue
+            try:
+                score, category = await loop.run_in_executor(
+                    None,
+                    _call_claude_score_sync,
+                    api_key,
+                    model,
+                    _prepare_ai_text(text),
+                    categories,
+                    ai_prompt,
+                )
+                repo.mark_ai_result(message_id, score, category)
+            except Exception as exc:
+                repo.mark_ai_error(message_id, str(exc))
+
+
+def _prepare_ai_text(text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        return ""
+    lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
+    title = lines[0] if lines else ""
+    paragraphs = [p.strip() for p in cleaned.split("\n\n") if p.strip()]
+    first_paragraph = paragraphs[0] if paragraphs else title
+    reduced = f"Заголовок: {title}\nПерший абзац: {first_paragraph}".strip()
+    return reduced[:1600]
 
 
 def _call_claude_score_sync(
@@ -451,12 +473,17 @@ def _call_claude_score_sync(
     model: str,
     text: str,
     categories: list[str],
+    custom_prompt: str,
 ) -> tuple[int, str | None]:
     categories_text = ", ".join(categories) if categories else "Без категорії"
+    base_prompt = (
+        custom_prompt
+        or "Оціни медіа-важливість повідомлення від 1 до 10 і обери найкращу категорію."
+    )
     system_prompt = (
-        "Оціни медіа-важливість повідомлення від 1 до 10 та обери категорію "
-        f"лише з цього списку: {categories_text}. "
-        "Відповідай тільки JSON: {\"score\": <1-10>, \"category\": \"<назва>\"}."
+        f"{base_prompt}\n"
+        f"Категорії: {categories_text}.\n"
+        "Поверни ТІЛЬКИ JSON без пояснень, формат: {\"score\": 7, \"category\": \"Економіка\"}."
     )
     body = {
         "model": model,
@@ -492,7 +519,12 @@ def _call_claude_score_sync(
         for block in content:
             if isinstance(block, dict) and block.get("type") == "text":
                 text_payload += str(block.get("text") or "")
-    parsed = json.loads(text_payload.strip() or "{}")
+    payload = text_payload.strip()
+    try:
+        parsed = json.loads(payload or "{}")
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", payload, flags=re.DOTALL)
+        parsed = json.loads(match.group(0)) if match else {}
     score = int(parsed.get("score") or 0)
     score = max(1, min(10, score))
     category = str(parsed.get("category") or "").strip() or None

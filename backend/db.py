@@ -190,6 +190,7 @@ class Repository:
                        m.telegram_url, m.created_at
                 FROM messages m
                 JOIN sources s ON s.id = m.source_id
+                WHERE m.ai_status = 'done'
                 ORDER BY datetime(m.published_at) DESC, m.id DESC
                 LIMIT ?
                 """,
@@ -456,7 +457,7 @@ class Repository:
             ).fetchone()
         return dict(row)
 
-    def list_ai_queue_pending(self, limit: int = 20) -> list[dict[str, Any]]:
+    def claim_ai_queue_pending(self, limit: int = 20) -> list[dict[str, Any]]:
         with get_connection() as conn:
             rows = conn.execute(
                 """
@@ -469,6 +470,12 @@ class Repository:
                 """,
                 (limit,),
             ).fetchall()
+            ids = [int(r["message_id"]) for r in rows]
+            for message_id in ids:
+                conn.execute(
+                    "UPDATE ai_queue SET status = 'processing', updated_at = datetime('now') WHERE message_id = ?",
+                    (message_id,),
+                )
         return [dict(r) for r in rows]
 
     def mark_ai_result(self, message_id: int, score: int, category: str | None) -> None:
@@ -492,10 +499,14 @@ class Repository:
                 """
                 UPDATE ai_queue
                 SET retries = retries + 1,
-                    status = CASE WHEN retries + 1 >= 3 THEN 'error' ELSE 'pending' END,
+                    status = 'error',
                     last_error = ?,
                     updated_at = datetime('now')
                 WHERE message_id = ?
                 """,
                 (error[:500], message_id),
+            )
+            conn.execute(
+                "UPDATE messages SET ai_status = 'error', updated_at = datetime('now') WHERE id = ?",
+                (message_id,),
             )
