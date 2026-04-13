@@ -166,6 +166,8 @@ def init_db() -> None:
         )
         _ensure_column(conn, "sources", "ai_enabled", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "sources", "last_message_at", "TEXT NULL")
+        _ensure_column(conn, "sources", "tg_peer_id", "INTEGER NULL")
+        _ensure_column(conn, "sources", "tg_access_hash", "INTEGER NULL")
         _ensure_column(conn, "integrations", "claude_api_key", "TEXT NULL")
         _ensure_column(conn, "integrations", "claude_model", "TEXT NULL DEFAULT 'claude-haiku-4-5-20251001'")
         _ensure_column(conn, "integrations", "telegram_bot_token", "TEXT NULL")
@@ -267,7 +269,7 @@ class Repository:
         }.get(sort_by, "id DESC")
         with get_connection() as conn:
             rows = conn.execute(
-                f"SELECT id, name, url, is_active, ai_enabled, last_message_at, created_at FROM sources ORDER BY {order_by}"
+                f"SELECT id, name, url, is_active, ai_enabled, last_message_at, tg_peer_id, tg_access_hash, created_at FROM sources ORDER BY {order_by}"
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -278,7 +280,7 @@ class Repository:
                 (name, url),
             )
             row = conn.execute(
-                "SELECT id, name, url, is_active, ai_enabled, last_message_at, created_at FROM sources WHERE id = ?",
+                "SELECT id, name, url, is_active, ai_enabled, last_message_at, tg_peer_id, tg_access_hash, created_at FROM sources WHERE id = ?",
                 (cur.lastrowid,),
             ).fetchone()
         return dict(row)
@@ -293,7 +295,7 @@ class Repository:
             if ai_enabled is not None:
                 conn.execute("UPDATE sources SET ai_enabled = ? WHERE id = ?", (int(ai_enabled), source_id))
             updated = conn.execute(
-                "SELECT id, name, url, is_active, ai_enabled, last_message_at, created_at FROM sources WHERE id = ?",
+                "SELECT id, name, url, is_active, ai_enabled, last_message_at, tg_peer_id, tg_access_hash, created_at FROM sources WHERE id = ?",
                 (source_id,),
             ).fetchone()
         return dict(updated)
@@ -308,6 +310,13 @@ class Repository:
             conn.execute(
                 "UPDATE sources SET last_message_at = ? WHERE id = ?",
                 (last_message_at, source_id),
+            )
+
+    def update_source_tg_peer(self, source_id: int, peer_id: int, access_hash: int) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                "UPDATE sources SET tg_peer_id = ?, tg_access_hash = ? WHERE id = ?",
+                (int(peer_id), int(access_hash), source_id),
             )
 
     def list_categories(self) -> list[dict[str, Any]]:

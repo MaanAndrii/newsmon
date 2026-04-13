@@ -5,6 +5,7 @@ import sqlite3
 import asyncio
 import json
 import shutil
+import time
 from collections import deque
 from datetime import timedelta
 from datetime import datetime, timezone
@@ -39,6 +40,10 @@ telethon_client_lock = asyncio.Lock()
 ai_processing_lock = asyncio.Lock()
 claude_call_events: deque[dict[str, int | datetime]] = deque(maxlen=5000)
 telegram_call_events: deque[datetime] = deque(maxlen=10000)
+TELETHON_STATUS_CACHE_TTL = 30.0
+TELETHON_HEALTH_CACHE_TTL = 30.0
+_telethon_status_cache: dict[str, float | dict | None] = {"at": 0.0, "value": None}
+_telethon_health_cache: dict[str, float | dict | None] = {"at": 0.0, "value": None}
 monitor_status: dict[str, str | int | None] = {
     "state": "stopped",
     "last_run_at": None,
@@ -187,6 +192,13 @@ def _record_telegram_call() -> None:
     telegram_call_events.append(datetime.now(timezone.utc))
 
 
+def _invalidate_telethon_status_caches() -> None:
+    _telethon_status_cache["at"] = 0.0
+    _telethon_status_cache["value"] = None
+    _telethon_health_cache["at"] = 0.0
+    _telethon_health_cache["value"] = None
+
+
 def _record_claude_call(input_tokens: int, output_tokens: int) -> None:
     claude_call_events.append(
         {
@@ -266,6 +278,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
     try:
         from telethon import TelegramClient
         from telethon.sessions import StringSession
+        from telethon.tl.types import InputPeerChannel
     except ImportError:
         return 0, 0, 0, "Telethon не встановлено (виконайте: pip install -r backend/requirements.txt)"
 
@@ -290,21 +303,33 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                     if not username:
                         continue
                     try:
-                        entity = await client.get_entity(username)
-                        _record_telegram_call()
-                        latest = await client.get_messages(entity, limit=1)
-                        _record_telegram_call()
-                        if latest and latest[0] and latest[0].date:
-                            dt_utc = latest[0].date.astimezone(timezone.utc)
-                            repo.update_source_last_message(
-                                int(source["id"]),
-                                dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                            )
-                            updated += 1
+                        target: object | None = None
+                        cached_peer_id = source.get("tg_peer_id")
+                        cached_access_hash = source.get("tg_access_hash")
+                        if cached_peer_id and cached_access_hash is not None:
+                            try:
+                                target = InputPeerChannel(int(cached_peer_id), int(cached_access_hash))
+                            except Exception:
+                                target = None
+                        if target is None:
+                            entity = await client.get_entity(username)
+                            _record_telegram_call()
+                            try:
+                                channel_id = int(getattr(entity, "id", 0) or 0)
+                                channel_hash = int(getattr(entity, "access_hash", 0) or 0)
+                            except (TypeError, ValueError):
+                                channel_id = 0
+                                channel_hash = 0
+                            if channel_id and channel_hash:
+                                repo.update_source_tg_peer(int(source["id"]), channel_id, channel_hash)
+                                target = InputPeerChannel(channel_id, channel_hash)
+                            else:
+                                target = entity
 
                         last_known_id = repo.get_last_tg_message_id(int(source["id"]))
                         candidates: list[object] = []
-                        async for message in client.iter_messages(entity, limit=fetch_depth):
+                        latest_dt_utc: datetime | None = None
+                        async for message in client.iter_messages(target, limit=fetch_depth):
                             if not message:
                                 continue
                             message_id = int(getattr(message, "id", 0))
@@ -312,11 +337,21 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                             if message_id <= 0 or msg_date is None:
                                 continue
                             msg_date_utc = msg_date.astimezone(timezone.utc)
+                            if latest_dt_utc is None:
+                                latest_dt_utc = msg_date_utc
                             if message_id <= last_known_id:
                                 continue
                             if msg_date_utc < window_start:
                                 continue
                             candidates.append(message)
+                        _record_telegram_call()
+
+                        if latest_dt_utc is not None:
+                            repo.update_source_last_message(
+                                int(source["id"]),
+                                latest_dt_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                            )
+                            updated += 1
 
                         for message in reversed(candidates):
                             message_id = int(getattr(message, "id", 0))
@@ -342,10 +377,6 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                             )
                             if not (monitor_cfg["ai_enabled"] and bool(source.get("ai_enabled"))):
                                 repo.mark_message_no_ai(message_id, _get_default_category_name())
-                            repo.update_source_last_message(
-                                int(source["id"]),
-                                msg_date_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                            )
                             ingested += 1
                     except Exception:
                         continue
@@ -583,6 +614,12 @@ def _call_claude_score_sync(
 
 @app.get("/api/telethon/auth/status")
 async def telethon_auth_status() -> dict:
+    now_mono = time.monotonic()
+    cached_value = _telethon_status_cache.get("value")
+    cached_at = float(_telethon_status_cache.get("at") or 0.0)
+    if isinstance(cached_value, dict) and (now_mono - cached_at) < TELETHON_STATUS_CACHE_TTL:
+        return dict(cached_value)
+
     api_id, api_hash = _telethon_client_config()
     session_name = "telegram_user"
     try:
@@ -602,20 +639,33 @@ async def telethon_auth_status() -> dict:
             try:
                 await client.connect()
                 authorized = await client.is_user_authorized()
+                _record_telegram_call()
             finally:
                 await client.disconnect()
         except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
             _quarantine_telethon_session(str(exc))
-            return {
+            result = {
                 "authorized": False,
                 "session": session_name,
                 "detail": f"Telethon session file пошкоджений або заблокований: {exc}",
             }
-    return {"authorized": authorized, "session": session_name, "detail": None}
+            _telethon_status_cache["value"] = dict(result)
+            _telethon_status_cache["at"] = time.monotonic()
+            return result
+    result = {"authorized": authorized, "session": session_name, "detail": None}
+    _telethon_status_cache["value"] = dict(result)
+    _telethon_status_cache["at"] = time.monotonic()
+    return result
 
 
 @app.get("/api/telethon/session/health")
 async def telethon_session_health() -> dict:
+    now_mono = time.monotonic()
+    cached_value = _telethon_health_cache.get("value")
+    cached_at = float(_telethon_health_cache.get("at") or 0.0)
+    if isinstance(cached_value, dict) and (now_mono - cached_at) < TELETHON_HEALTH_CACHE_TTL:
+        return dict(cached_value)
+
     session_name = "telegram_user"
     session_path = _telethon_session_file()
     has_string_session = bool(_get_saved_string_session())
@@ -632,6 +682,8 @@ async def telethon_session_health() -> dict:
 
     if not session_path.exists() and not has_string_session:
         data["detail"] = "Session file/string_session ще не створено (це нормально до першого login)"
+        _telethon_health_cache["value"] = dict(data)
+        _telethon_health_cache["at"] = time.monotonic()
         return data
 
     def _sqlite_check() -> str | None:
@@ -657,6 +709,8 @@ async def telethon_session_health() -> dict:
     if sqlite_error:
         data["ok"] = False
         data["detail"] = sqlite_error
+        _telethon_health_cache["value"] = dict(data)
+        _telethon_health_cache["at"] = time.monotonic()
         return data
 
     try:
@@ -674,6 +728,7 @@ async def telethon_session_health() -> dict:
                 try:
                     await client.connect()
                     await client.is_user_authorized()
+                    _record_telegram_call()
                 finally:
                     await client.disconnect()
 
@@ -682,6 +737,8 @@ async def telethon_session_health() -> dict:
     except Exception as exc:
         data["ok"] = False
         data["detail"] = f"Session file проходить SQLite check, але Telethon probe впав: {exc}"
+    _telethon_health_cache["value"] = dict(data)
+    _telethon_health_cache["at"] = time.monotonic()
     return data
 
 
@@ -712,13 +769,16 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
                     try:
                         await client.connect()
                         if await client.is_user_authorized():
+                            _record_telegram_call()
                             return {
                                 "ok": True,
                                 "detail": "Сесію вже авторизовано. Код підтвердження не потрібен.",
                                 "phone": phone,
                             }
+                        _record_telegram_call()
                         try:
                             sent = await asyncio.wait_for(client.send_code_request(phone), timeout=25)
+                            _record_telegram_call()
                             telethon_auth_state[phone] = {
                                 "phone_code_hash": sent.phone_code_hash,
                                 "session": login_session.save(),
@@ -797,6 +857,7 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
                 await client.connect()
                 try:
                     await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
+                    _record_telegram_call()
                 except PhoneCodeInvalidError as exc:
                     raise HTTPException(status_code=400, detail="Невірний код підтвердження") from exc
                 except PhoneCodeExpiredError as exc:
@@ -807,13 +868,16 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
                         raise HTTPException(status_code=400, detail="Потрібен пароль 2FA (Telegram password)")
                     try:
                         await client.sign_in(password=payload.password)
+                        _record_telegram_call()
                     except Exception as exc:
                         raise HTTPException(status_code=400, detail="Невірний пароль 2FA") from exc
                 except Exception as exc:
                     raise HTTPException(status_code=400, detail=f"Помилка авторизації: {exc}") from exc
                 authorized = await client.is_user_authorized()
+                _record_telegram_call()
                 if authorized:
                     repo.set_setting("telethon.string_session", client.session.save())
+                    _invalidate_telethon_status_caches()
             finally:
                 await client.disconnect()
         except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
@@ -828,6 +892,7 @@ async def telethon_logout() -> dict:
         repo.set_setting("telethon.string_session", "")
         telethon_auth_state.clear()
         _quarantine_telethon_session("manual logout")
+        _invalidate_telethon_status_caches()
     return {"ok": True, "detail": "Telethon сесію очищено. Потрібна повторна авторизація."}
 
 
