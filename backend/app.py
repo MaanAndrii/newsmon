@@ -295,7 +295,9 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
             try:
                 await client.connect()
                 if not await client.is_user_authorized():
+                    _record_telegram_call()
                     return 0, len(sources), 0, "Telethon-сесія не авторизована (потрібен login)"
+                _record_telegram_call()
                 for source in sources:
                     if not source.get("is_active"):
                         continue
