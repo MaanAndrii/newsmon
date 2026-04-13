@@ -5,6 +5,7 @@ import sqlite3
 import asyncio
 import json
 import shutil
+import traceback
 from datetime import timedelta
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,7 +23,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 PROTOTYPE_DIR = ROOT_DIR / "prototype"
 MONITOR_INTERVAL_SECONDS = 600
 monitor_task: asyncio.Task | None = None
-telethon_auth_state: dict[str, str] = {}
+telethon_auth_state: dict[str, dict[str, str]] = {}
 telethon_client_lock = asyncio.Lock()
 monitor_status: dict[str, str | int | None] = {
     "state": "stopped",
@@ -56,6 +57,21 @@ def _quarantine_telethon_session(reason: str) -> None:
             except Exception:
                 continue
     monitor_status["last_error"] = f"Telethon session reset: {reason}"
+
+
+def _log_telethon_debug(message: str) -> None:
+    log_path = ROOT_DIR / "backend" / "telethon_debug.log"
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    with log_path.open("a", encoding="utf-8") as fp:
+        fp.write(f"[{stamp}] {message}\n")
+
+
+def _get_saved_string_session() -> str | None:
+    value = repo.get_setting("telethon.string_session", None)
+    if not value:
+        return None
+    value = value.strip()
+    return value or None
 
 
 class SourceCreate(BaseModel):
@@ -159,6 +175,13 @@ def _get_monitor_config() -> dict[str, bool]:
     return {"collect_enabled": collect_enabled, "ai_enabled": ai_enabled}
 
 
+def _telethon_client_init_data(api_id: int, api_hash: str) -> tuple[str, int, str]:
+    string_session = _get_saved_string_session()
+    if string_session:
+        return ("string", api_id, api_hash)
+    return ("file", api_id, api_hash)
+
+
 async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
     monitor_cfg = _get_monitor_config()
     if not monitor_cfg["collect_enabled"]:
@@ -174,6 +197,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
 
     try:
         from telethon import TelegramClient
+        from telethon.sessions import StringSession
     except ImportError:
         return 0, 0, 0, "Telethon не встановлено (виконайте: pip install -r backend/requirements.txt)"
 
@@ -184,7 +208,9 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
     window_start = datetime.now(timezone.utc) - timedelta(seconds=MONITOR_INTERVAL_SECONDS)
     async with telethon_client_lock:
         try:
-            async with TelegramClient(str(session_path), int(api_id), api_hash) as client:
+            client_mode, parsed_api_id, parsed_api_hash = _telethon_client_init_data(int(api_id), api_hash)
+            session_obj = StringSession(_get_saved_string_session()) if client_mode == "string" else str(session_path)
+            async with TelegramClient(session_obj, parsed_api_id, parsed_api_hash) as client:
                 if not await client.is_user_authorized():
                     return 0, len(sources), 0, "Telethon-сесія не авторизована (потрібен login)"
                 for source in sources:
@@ -305,6 +331,7 @@ async def telethon_auth_status() -> dict:
     session_name = "telegram_user"
     try:
         from telethon import TelegramClient
+        from telethon.sessions import StringSession
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
@@ -313,10 +340,13 @@ async def telethon_auth_status() -> dict:
     session_path = _telethon_session_base()
     async with telethon_client_lock:
         try:
-            async with TelegramClient(str(session_path), api_id, api_hash) as client:
+            mode, parsed_api_id, parsed_api_hash = _telethon_client_init_data(api_id, api_hash)
+            session_obj = StringSession(_get_saved_string_session()) if mode == "string" else str(session_path)
+            async with TelegramClient(session_obj, parsed_api_id, parsed_api_hash) as client:
                 authorized = await client.is_user_authorized()
         except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
             _quarantine_telethon_session(str(exc))
+            _log_telethon_debug(f"auth_status session error: {exc}")
             return {
                 "authorized": False,
                 "session": session_name,
@@ -329,48 +359,65 @@ async def telethon_auth_status() -> dict:
 def telethon_session_health() -> dict:
     session_name = "telegram_user"
     session_path = _telethon_session_file()
+    has_string_session = bool(_get_saved_string_session())
     data: dict[str, object] = {
         "session": session_name,
         "path": str(session_path),
         "exists": session_path.exists(),
+        "string_session_exists": has_string_session,
         "size_bytes": session_path.stat().st_size if session_path.exists() else 0,
         "writable": session_path.parent.exists() and session_path.parent.is_dir(),
         "ok": True,
-        "detail": "Session file виглядає коректним",
+        "detail": "Session storage виглядає коректним",
     }
-    if not session_path.exists():
-        data["detail"] = "Session file ще не створено (це нормально до першого login)"
+    if session_path.exists():
+        try:
+            with sqlite3.connect(f"file:{session_path}?mode=ro", uri=True, timeout=1) as conn:
+                conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
+                pragma = conn.execute("PRAGMA quick_check").fetchone()
+                if pragma and pragma[0] != "ok":
+                    data["ok"] = False
+                    data["detail"] = f"Session DB може бути пошкоджена: {pragma[0]}"
+        except sqlite3.OperationalError as exc:
+            message = str(exc)
+            data["ok"] = False
+            data["detail"] = "Session DB зараз заблокована іншим процесом" if "locked" in message.lower() else f"Session DB недоступна: {message}"
+        except sqlite3.DatabaseError as exc:
+            data["ok"] = False
+            data["detail"] = f"Session DB пошкоджена: {exc}"
+    elif not has_string_session:
+        data["detail"] = "Session file/string_session ще не створено (це нормально до першого login)"
         return data
-    try:
-        with sqlite3.connect(f"file:{session_path}?mode=ro", uri=True, timeout=1) as conn:
-            conn.execute("SELECT name FROM sqlite_master LIMIT 1").fetchone()
-            pragma = conn.execute("PRAGMA quick_check").fetchone()
-            if pragma and pragma[0] != "ok":
-                data["ok"] = False
-                data["detail"] = f"Session DB може бути пошкоджена: {pragma[0]}"
-    except sqlite3.OperationalError as exc:
-        message = str(exc)
-        data["ok"] = False
-        data["detail"] = "Session DB зараз заблокована іншим процесом" if "locked" in message.lower() else f"Session DB недоступна: {message}"
-    except sqlite3.DatabaseError as exc:
-        data["ok"] = False
-        data["detail"] = f"Session DB пошкоджена: {exc}"
     try:
         integrations = repo.get_integrations()
         api_id_raw = (integrations.get("telegram_api_id") or "").strip()
         api_hash = (integrations.get("telegram_api_hash") or "").strip()
         if data["ok"] and re.fullmatch(r"\d{5,12}", api_id_raw) and re.fullmatch(r"[a-fA-F0-9]{32}", api_hash):
             from telethon import TelegramClient  # type: ignore
+            from telethon.sessions import StringSession  # type: ignore
 
             async def _probe() -> None:
-                async with TelegramClient(str(_telethon_session_base()), int(api_id_raw), api_hash) as client:
+                mode, parsed_api_id, parsed_api_hash = _telethon_client_init_data(int(api_id_raw), api_hash)
+                session_obj = StringSession(_get_saved_string_session()) if mode == "string" else str(_telethon_session_base())
+                async with TelegramClient(session_obj, parsed_api_id, parsed_api_hash) as client:
                     await client.is_user_authorized()
 
             asyncio.run(_probe())
     except Exception as exc:
         data["ok"] = False
         data["detail"] = f"Session file проходить SQLite check, але Telethon probe впав: {exc}"
+        _log_telethon_debug(f"health_probe error: {exc}\n{traceback.format_exc()}")
     return data
+
+
+@app.get("/api/telethon/debug/recent")
+def telethon_debug_recent(lines: int = 200) -> dict:
+    safe_lines = max(10, min(lines, 2000))
+    log_path = ROOT_DIR / "backend" / "telethon_debug.log"
+    if not log_path.exists():
+        return {"lines": []}
+    content = log_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    return {"lines": content[-safe_lines:]}
 
 
 @app.post("/api/telethon/auth/request-code")
@@ -385,17 +432,18 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
     try:
         from telethon import TelegramClient
         from telethon.errors import FloodWaitError, PhoneNumberBannedError, PhoneNumberInvalidError
+        from telethon.sessions import StringSession
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
             detail="Telethon не встановлено. Виконайте: pip install -r backend/requirements.txt",
         ) from exc
-    session_path = _telethon_session_base()
     try:
         async with telethon_client_lock:
-            for attempt in range(2):
+            for attempt in range(3):
                 try:
-                    async with TelegramClient(str(session_path), api_id, api_hash) as client:
+                    login_session = StringSession()
+                    async with TelegramClient(login_session, api_id, api_hash) as client:
                         if await client.is_user_authorized():
                             return {
                                 "ok": True,
@@ -404,7 +452,11 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
                             }
                         try:
                             sent = await asyncio.wait_for(client.send_code_request(phone), timeout=25)
-                            telethon_auth_state[phone] = sent.phone_code_hash
+                            telethon_auth_state[phone] = {
+                                "phone_code_hash": sent.phone_code_hash,
+                                "session": login_session.save(),
+                            }
+                            _log_telethon_debug(f"request_code success for phone={phone}, attempt={attempt + 1}")
                             break
                         except PhoneNumberInvalidError as exc:
                             raise HTTPException(status_code=400, detail="Telegram не приймає цей номер телефону") from exc
@@ -418,14 +470,21 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
                             if "EOF when reading a line" in str(exc):
                                 if attempt == 0:
                                     _quarantine_telethon_session(str(exc))
+                                    _log_telethon_debug(f"request_code EOF detected, quarantine + retry, phone={phone}")
                                     continue
                                 raise HTTPException(status_code=500, detail="Пошкоджена Telethon-сесія. Перевір endpoint /api/telethon/session/health") from exc
                             raise HTTPException(status_code=400, detail=f"Не вдалося надіслати код: {exc}") from exc
                 except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
                     if attempt == 0:
                         _quarantine_telethon_session(str(exc))
+                        _log_telethon_debug(f"request_code outer session error, quarantine + retry, phone={phone}: {exc}")
                         continue
                     raise HTTPException(status_code=500, detail=f"Помилка Telethon-сесії: {exc}. Сесію скинуто, повтори запит коду.") from exc
+                except Exception as exc:
+                    _log_telethon_debug(f"request_code unexpected exception phone={phone}: {exc}\n{traceback.format_exc()}")
+                    if "EOF when reading a line" in str(exc) and attempt < 2:
+                        continue
+                    raise HTTPException(status_code=500, detail=f"Помилка Telethon request-code: {exc}") from exc
                 break
     except HTTPException:
         raise
@@ -442,9 +501,13 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
     code = payload.code.strip()
     if not phone or not code:
         raise HTTPException(status_code=400, detail="Вкажіть телефон і код")
-    phone_code_hash = telethon_auth_state.get(phone)
-    if not phone_code_hash:
+    auth_state = telethon_auth_state.get(phone)
+    if not auth_state:
         raise HTTPException(status_code=400, detail="Спочатку запитай код підтвердження")
+    phone_code_hash = auth_state.get("phone_code_hash")
+    login_session = auth_state.get("session")
+    if not phone_code_hash or not login_session:
+        raise HTTPException(status_code=400, detail="Внутрішня помилка стану авторизації. Запросіть код повторно.")
 
     api_id, api_hash = _telethon_client_config()
     session_name = "telegram_user"
@@ -455,15 +518,16 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
             PhoneCodeInvalidError,
             SessionPasswordNeededError,
         )
+        from telethon.sessions import StringSession
     except ImportError as exc:
         raise HTTPException(
             status_code=503,
             detail="Telethon не встановлено. Виконайте: pip install -r backend/requirements.txt",
         ) from exc
-    session_path = _telethon_session_base()
     async with telethon_client_lock:
         try:
-            async with TelegramClient(str(session_path), api_id, api_hash) as client:
+            session_obj = StringSession(login_session)
+            async with TelegramClient(session_obj, api_id, api_hash) as client:
                 try:
                     await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
                 except PhoneCodeInvalidError as exc:
@@ -481,6 +545,9 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
                 except Exception as exc:
                     raise HTTPException(status_code=400, detail=f"Помилка авторизації: {exc}") from exc
                 authorized = await client.is_user_authorized()
+                if authorized:
+                    repo.set_setting("telethon.string_session", client.session.save())
+                    _log_telethon_debug(f"verify_code success for phone={phone}, string_session saved")
         except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
             raise HTTPException(status_code=500, detail=f"Session file помилка: {exc}. Перевір /api/telethon/session/health") from exc
     telethon_auth_state.pop(phone, None)

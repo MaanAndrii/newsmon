@@ -41,5 +41,11 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 - `POST /api/monitor/config`
 - `GET /api/telethon/auth/status`
 - `GET /api/telethon/session/health`
+- `GET /api/telethon/debug/recent`
 - `POST /api/telethon/auth/request-code`
 - `POST /api/telethon/auth/verify-code`
+
+## Telethon troubleshooting
+
+- Use `GET /api/telethon/session/health` to verify both SQLite integrity and whether a string session is configured.
+- Use `GET /api/telethon/debug/recent` to inspect the latest server-side Telethon diagnostics when login fails.

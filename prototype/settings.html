@@ -88,6 +88,10 @@
               </div>
             </div>
             <p id="telethonAuthMessage" class="text-xs text-slate-400">Статус авторизації: невідомо</p>
+            <div class="flex gap-2">
+              <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs" onclick="loadTelethonDebug()">Показати Telethon debug</button>
+            </div>
+            <pre id="telethonDebugOutput" class="text-xs text-slate-300 bg-slate-950 border border-slate-800 rounded-lg p-2 max-h-40 overflow-auto whitespace-pre-wrap"></pre>
           </div>
           <div class="flex gap-2">
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveIntegrations()">Зберегти інтеграції</button>
@@ -433,6 +437,15 @@
         }
       }
 
+      async function loadTelethonDebug() {
+        const res = await fetch(`${apiBase}/api/telethon/debug/recent?lines=200`);
+        const data = await parseApiBody(res);
+        const lines = Array.isArray(data.lines) ? data.lines : [];
+        document.getElementById('telethonDebugOutput').textContent = lines.length
+          ? lines.join('\n')
+          : 'Debug лог порожній.';
+      }
+
       async function requestTelethonCode() {
         const phone = document.getElementById('telethonAuthPhone').value.trim();
         const button = document.getElementById('telethonCodeBtn');
@@ -454,6 +467,7 @@
             data.detail || (res.ok ? 'Запит оброблено' : 'Не вдалося запросити код');
         } catch (err) {
           document.getElementById('telethonAuthMessage').textContent = `Помилка запиту коду: ${err}`;
+          await loadTelethonDebug();
         } finally {
           button.disabled = false;
           button.classList.remove('opacity-60', 'cursor-not-allowed');
