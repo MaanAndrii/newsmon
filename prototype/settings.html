@@ -24,6 +24,7 @@
       <section class="rounded-xl border border-slate-800 bg-slate-900 p-4">
         <div class="flex flex-wrap gap-2 mb-5">
           <button class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm" onclick="switchTab('apiTab', this)">API та інтеграції</button>
+          <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('monitoringTab', this)">Моніторинг</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('taxonomyTab', this)">Категорії та ключові слова</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('alertsTab', this)">Сповіщення</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('sourcesTab', this)">Джерела</button>
@@ -93,6 +94,37 @@
             <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm" onclick="validateIntegrations()">Перевірити підключення</button>
           </div>
           <p id="validationMessage" class="text-xs text-slate-400"></p>
+        </div>
+
+        <div id="monitoringTab" class="tab-panel hidden space-y-4">
+          <h2 class="text-lg font-semibold">Моніторинг</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+              <div>
+                <p class="font-medium">Глобальна ШІ-оцінка</p>
+                <p class="text-xs text-slate-400">Вмикає/вимикає постановку повідомлень у AI queue для всіх каналів.</p>
+              </div>
+              <label class="inline-flex items-center cursor-pointer">
+                <input id="monitorAiEnabled" type="checkbox" class="sr-only peer" />
+                <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
+              </label>
+            </div>
+            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+              <div>
+                <p class="font-medium">Глобальний збір повідомлень</p>
+                <p class="text-xs text-slate-400">Вмикає/вимикає ingestion для всіх каналів.</p>
+              </div>
+              <label class="inline-flex items-center cursor-pointer">
+                <input id="monitorCollectEnabled" type="checkbox" class="sr-only peer" />
+                <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
+              </label>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveMonitorConfig()">Зберегти налаштування моніторингу</button>
+            <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="loadMonitorConfig()">Оновити стан</button>
+          </div>
+          <p id="monitorConfigMessage" class="text-xs text-slate-400"></p>
         </div>
 
         <div id="taxonomyTab" class="tab-panel hidden space-y-6">
@@ -350,8 +382,33 @@
         const res = await fetch(`${apiBase}/api/monitor/status`);
         if (!res.ok) return;
         const data = await res.json();
-        const info = `Моніторинг: ${data.state} • Оновлено: ${data.updated_sources}/${data.total_sources}`;
+        const info = `Моніторинг: ${data.state} • Оновлено: ${data.updated_sources}/${data.total_sources} • Ingested: ${data.ingested_messages || 0}`;
         setMonitorSignal(data.state, info);
+      }
+
+      async function loadMonitorConfig() {
+        const res = await fetch(`${apiBase}/api/monitor/config`);
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById('monitorAiEnabled').checked = !!data.ai_enabled;
+        document.getElementById('monitorCollectEnabled').checked = !!data.collect_enabled;
+        document.getElementById('monitorConfigMessage').textContent = 'Налаштування моніторингу завантажено.';
+      }
+
+      async function saveMonitorConfig() {
+        const payload = {
+          ai_enabled: document.getElementById('monitorAiEnabled').checked,
+          collect_enabled: document.getElementById('monitorCollectEnabled').checked,
+        };
+        const res = await fetch(`${apiBase}/api/monitor/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await parseApiBody(res);
+        document.getElementById('monitorConfigMessage').textContent = res.ok
+          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}.`
+          : (data.detail || 'Не вдалося зберегти налаштування моніторингу.');
       }
 
       async function loadTelethonAuthStatus() {
@@ -596,6 +653,7 @@
       }
 
       loadIntegrations();
+      loadMonitorConfig();
       loadSources();
       loadCategories();
       loadKeywords();

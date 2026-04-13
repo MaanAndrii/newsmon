@@ -37,6 +37,8 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 - `POST /api/integrations`
 - `POST /api/integrations/validate`
 - `GET /api/monitor/status`
+- `GET /api/monitor/config`
+- `POST /api/monitor/config`
 - `GET /api/telethon/auth/status`
 - `GET /api/telethon/session/health`
 - `POST /api/telethon/auth/request-code`

@@ -212,6 +212,7 @@ class Repository:
         media_type: str | None,
         telegram_url: str | None,
         raw_json: str | None,
+        enqueue_ai: bool = True,
     ) -> int:
         with get_connection() as conn:
             conn.execute(
@@ -235,14 +236,15 @@ class Repository:
                 (source_id, tg_message_id),
             ).fetchone()
             message_id = int(row["id"])
-            conn.execute(
-                """
-                INSERT INTO ai_queue(message_id, status, updated_at)
-                VALUES (?, 'pending', datetime('now'))
-                ON CONFLICT(message_id) DO NOTHING
-                """,
-                (message_id,),
-            )
+            if enqueue_ai:
+                conn.execute(
+                    """
+                    INSERT INTO ai_queue(message_id, status, updated_at)
+                    VALUES (?, 'pending', datetime('now'))
+                    ON CONFLICT(message_id) DO NOTHING
+                    """,
+                    (message_id,),
+                )
         return message_id
 
     def list_sources(self, sort_by: str = "created_desc") -> list[dict[str, Any]]:
@@ -384,6 +386,29 @@ class Repository:
                     """
                 ).fetchone()
         return dict(row)
+
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT value FROM settings WHERE key = ?",
+                (key,),
+            ).fetchone()
+        if row is None:
+            return default
+        return str(row["value"])
+
+    def set_setting(self, key: str, value: str) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO settings(key, value, updated_at)
+                VALUES (?, ?, datetime('now'))
+                ON CONFLICT(key) DO UPDATE SET
+                    value=excluded.value,
+                    updated_at=datetime('now')
+                """,
+                (key, value),
+            )
 
     def save_integrations(self, payload: dict[str, Any]) -> dict[str, Any]:
         with get_connection() as conn:

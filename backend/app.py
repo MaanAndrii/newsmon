@@ -99,6 +99,11 @@ class TelethonCodeVerify(BaseModel):
     password: str | None = None
 
 
+class MonitorConfigPayload(BaseModel):
+    collect_enabled: bool
+    ai_enabled: bool
+
+
 def _extract_telegram_username(raw: str) -> str | None:
     value = raw.strip()
     if value.startswith("@"):
@@ -148,7 +153,17 @@ def _detect_media_type(message: object) -> str | None:
     return "media"
 
 
+def _get_monitor_config() -> dict[str, bool]:
+    collect_enabled = (repo.get_setting("monitor.collect_enabled", "1") or "1") == "1"
+    ai_enabled = (repo.get_setting("monitor.ai_enabled", "1") or "1") == "1"
+    return {"collect_enabled": collect_enabled, "ai_enabled": ai_enabled}
+
+
 async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
+    monitor_cfg = _get_monitor_config()
+    if not monitor_cfg["collect_enabled"]:
+        return 0, 0, 0, "Збір повідомлень глобально вимкнений у вкладці Моніторинг"
+
     integrations = repo.get_integrations()
     api_id = (integrations.get("telegram_api_id") or "").strip()
     api_hash = (integrations.get("telegram_api_hash") or "").strip()
@@ -209,6 +224,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                                 media_type=_detect_media_type(message),
                                 telegram_url=f"https://t.me/{username}/{message_id}",
                                 raw_json=json.dumps(message.to_dict(), ensure_ascii=False, default=str),
+                                enqueue_ai=monitor_cfg["ai_enabled"] and bool(source.get("ai_enabled")),
                             )
                             ingested += 1
                     except Exception:
@@ -268,7 +284,19 @@ async def startup() -> None:
 
 @app.get("/api/monitor/status")
 def get_monitor_status() -> dict:
-    return monitor_status
+    return {**monitor_status, **_get_monitor_config()}
+
+
+@app.get("/api/monitor/config")
+def get_monitor_config() -> dict:
+    return _get_monitor_config()
+
+
+@app.post("/api/monitor/config")
+def save_monitor_config(payload: MonitorConfigPayload) -> dict:
+    repo.set_setting("monitor.collect_enabled", "1" if payload.collect_enabled else "0")
+    repo.set_setting("monitor.ai_enabled", "1" if payload.ai_enabled else "0")
+    return _get_monitor_config()
 
 
 @app.get("/api/telethon/auth/status")
@@ -288,11 +316,13 @@ async def telethon_auth_status() -> dict:
             async with TelegramClient(str(session_path), api_id, api_hash) as client:
                 authorized = await client.is_user_authorized()
         except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Telethon session file пошкоджений або заблокований: {exc}",
-            ) from exc
-    return {"authorized": authorized, "session": session_name}
+            _quarantine_telethon_session(str(exc))
+            return {
+                "authorized": False,
+                "session": session_name,
+                "detail": f"Telethon session file пошкоджений або заблокований: {exc}",
+            }
+    return {"authorized": authorized, "session": session_name, "detail": None}
 
 
 @app.get("/api/telethon/session/health")
@@ -325,6 +355,21 @@ def telethon_session_health() -> dict:
     except sqlite3.DatabaseError as exc:
         data["ok"] = False
         data["detail"] = f"Session DB пошкоджена: {exc}"
+    try:
+        integrations = repo.get_integrations()
+        api_id_raw = (integrations.get("telegram_api_id") or "").strip()
+        api_hash = (integrations.get("telegram_api_hash") or "").strip()
+        if data["ok"] and re.fullmatch(r"\d{5,12}", api_id_raw) and re.fullmatch(r"[a-fA-F0-9]{32}", api_hash):
+            from telethon import TelegramClient  # type: ignore
+
+            async def _probe() -> None:
+                async with TelegramClient(str(_telethon_session_base()), int(api_id_raw), api_hash) as client:
+                    await client.is_user_authorized()
+
+            asyncio.run(_probe())
+    except Exception as exc:
+        data["ok"] = False
+        data["detail"] = f"Session file проходить SQLite check, але Telethon probe впав: {exc}"
     return data
 
 
@@ -371,6 +416,9 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
                             if isinstance(exc, asyncio.TimeoutError):
                                 raise HTTPException(status_code=504, detail="Telegram не відповідає. Спробуй ще раз через 10-20 секунд.") from exc
                             if "EOF when reading a line" in str(exc):
+                                if attempt == 0:
+                                    _quarantine_telethon_session(str(exc))
+                                    continue
                                 raise HTTPException(status_code=500, detail="Пошкоджена Telethon-сесія. Перевір endpoint /api/telethon/session/health") from exc
                             raise HTTPException(status_code=400, detail=f"Не вдалося надіслати код: {exc}") from exc
                 except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
