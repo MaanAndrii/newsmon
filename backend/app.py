@@ -135,6 +135,10 @@ def _extract_telegram_username(raw: str) -> str | None:
     return None
 
 
+def _canonical_source_url(username: str) -> str:
+    return f"https://t.me/{username.lower()}"
+
+
 def _fetch_telegram_channel_title(username: str) -> str | None:
     url = f"https://t.me/{username}"
     req = request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -275,7 +279,12 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                             if message_id <= 0 or msg_date is None:
                                 continue
                             msg_date_utc = msg_date.astimezone(timezone.utc)
-                            text = getattr(message, "message", None) or getattr(message, "raw_text", None) or ""
+                            text = (
+                                getattr(message, "message", None)
+                                or getattr(message, "raw_text", None)
+                                or getattr(message, "text", None)
+                                or ""
+                            )
                             repo.upsert_message(
                                 source_id=int(source["id"]),
                                 tg_message_id=message_id,
@@ -285,6 +294,10 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                                 telegram_url=f"https://t.me/{username}/{message_id}",
                                 raw_json=json.dumps(message.to_dict(), ensure_ascii=False, default=str),
                                 enqueue_ai=monitor_cfg["ai_enabled"] and bool(source.get("ai_enabled")),
+                            )
+                            repo.update_source_last_message(
+                                int(source["id"]),
+                                msg_date_utc.strftime("%Y-%m-%d %H:%M:%S"),
                             )
                             ingested += 1
                     except Exception:
@@ -677,8 +690,14 @@ def create_source(payload: SourceCreate) -> dict:
             detail="Не вдалося перевірити доступність каналу або отримати його назву",
         )
 
+    canonical_url = _canonical_source_url(username)
+    existing_same_username = [
+        src for src in repo.list_sources()
+        if (_extract_telegram_username(src.get("url", "")) or "").lower() == username.lower()
+    ]
+    if existing_same_username:
+        raise HTTPException(status_code=409, detail="Source для цього каналу вже існує")
     try:
-        canonical_url = f"https://t.me/{username}"
         return repo.create_source(title, canonical_url)
     except sqlite3.IntegrityError as exc:
         raise HTTPException(status_code=409, detail="Source URL already exists") from exc

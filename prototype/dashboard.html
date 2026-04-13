@@ -46,6 +46,10 @@
               <div class="font-semibold">Опитування</div>
               <div id="statusPollTimer">--:--</div>
             </button>
+            <button id="statusNowTimeCard" class="px-3 py-2 rounded bg-indigo-700/60 text-left hover:bg-indigo-600/70 transition" onclick="openSystemStatusModal('now')">
+              <div class="font-semibold">Поточний час</div>
+              <div id="statusNowTime">--:--:--</div>
+            </button>
           </div>
         </div>
       </section>
@@ -105,7 +109,16 @@
       const modalText = document.getElementById('modalText');
       const modalTelegramLink = document.getElementById('modalTelegramLink');
       const messagesGrid = document.getElementById('messagesGrid');
-      const statusCache = { telegram: '', ai: '', channels: '', clock: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
+      const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
+
+      function escapeHtml(value) {
+        return String(value || '')
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
 
       function openMessageModal(button) {
         const channel = button.dataset.channel || '';
@@ -152,10 +165,11 @@
       }
 
       function renderMessageCard(item) {
-        const preview = (item.text || 'Повідомлення без тексту').slice(0, 280);
+        const preview = escapeHtml((item.text || 'Повідомлення без тексту').slice(0, 280));
+        const fullText = escapeHtml(item.text || '');
         return `<article class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex flex-col gap-3">
           <div class="flex items-center justify-between">
-            <div><p class="font-semibold">${item.source_name}</p><p class="text-xs text-slate-400">${formatPublishedAt(item.published_at)}</p></div>
+            <div><p class="font-semibold">${escapeHtml(item.source_name)}</p><p class="text-xs text-slate-400">${formatPublishedAt(item.published_at)}</p></div>
             ${scoreBadge(item.ai_score)}
           </div>
           <p class="text-sm leading-relaxed text-slate-200">${preview}</p>
@@ -163,7 +177,7 @@
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm">Взяв в роботу</button>
             <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm">Опрацьовано</button>
             <a href="${item.telegram_url || '#'}" target="_blank" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">Відкрити в Telegram</a>
-            <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" data-channel="${item.source_name}" data-date="${formatPublishedAt(item.published_at)}" data-score="${item.ai_score ?? '-'}" data-category="${item.ai_category || '—'}" data-telegramurl="${item.telegram_url || '#'}" data-fulltext="${(item.text || '').replace(/\"/g, '&quot;')}" onclick="openMessageModal(this)">Читати повністю</button>
+            <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" data-channel="${escapeHtml(item.source_name)}" data-date="${formatPublishedAt(item.published_at)}" data-score="${item.ai_score ?? '-'}" data-category="${escapeHtml(item.ai_category || '—')}" data-telegramurl="${item.telegram_url || '#'}" data-fulltext="${fullText}" onclick="openMessageModal(this)">Читати повністю</button>
           </div>
         </article>`;
       }
@@ -172,8 +186,16 @@
         try {
           const res = await fetch('/api/messages?limit=100');
           const items = res.ok ? await res.json() : [];
-          messagesGrid.innerHTML = items.length
-            ? items.map(renderMessageCard).join('')
+          const unique = [];
+          const seen = new Set();
+          for (const item of items) {
+            const key = `${item.source_id}:${item.tg_message_id}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            unique.push(item);
+          }
+          messagesGrid.innerHTML = unique.length
+            ? unique.map(renderMessageCard).join('')
             : `<article class="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-300">Поки що немає зібраних повідомлень.</article>`;
         } catch (error) {
           messagesGrid.innerHTML = `<article class="rounded-xl border border-rose-700/40 bg-rose-950/20 p-6 text-sm text-rose-200">Не вдалося завантажити стрічку: ${error}</article>`;
@@ -201,6 +223,13 @@
         timerEl.textContent = `${mm}:${ss}`;
       }
 
+      function updateCurrentTime() {
+        const now = new Date();
+        const nowText = now.toLocaleTimeString('uk-UA');
+        document.getElementById('statusNowTime').textContent = nowText;
+        statusCache.now = `Поточний час: ${now.toLocaleString('uk-UA')}`;
+      }
+
       async function loadSystemStatus() {
         try {
           const [monitorRes, sourcesRes] = await Promise.all([fetch('/api/monitor/status'), fetch('/api/sources')]);
@@ -218,6 +247,7 @@
           statusCache.ai = `AI: ${aiEnabled ? 'увімкнено' : 'вимкнено'}. Ingested: ${monitor?.ingested_messages || 0}`;
           statusCache.channels = `Активних ${activeSources}/${totalSources}, оновлено ${monitor?.updated_sources || 0}`;
           statusCache.clock = `Інтервал: ${statusCache.intervalSeconds} сек. Збір: ${collectEnabled ? 'увімкнено' : 'вимкнено'}`;
+          updateCurrentTime();
           statusCache.updatedAt = `Оновлено: ${new Date().toLocaleString('uk-UA')}`;
           document.getElementById('statusTelegram').textContent = monitorState === 'ok' ? 'активний' : monitorState;
           document.getElementById('statusAi').textContent = aiEnabled ? 'увімкнено' : 'вимкнено';
@@ -227,6 +257,7 @@
           paintStatusCard('statusAiCard', aiEnabled ? true : null);
           paintStatusCard('statusChannelsCard', activeSources > 0 ? true : null);
           paintStatusCard('statusClockCard', collectEnabled ? true : null);
+          paintStatusCard('statusNowTimeCard', true);
           updatePollCountdown();
         } catch (error) {
           document.getElementById('statusTelegram').textContent = 'помилка';
@@ -242,7 +273,7 @@
       }
 
       function openSystemStatusModal(type) {
-        const titles = { telegram: 'Telegram моніторинг', ai: 'Черга AI', channels: 'Стан каналів', clock: 'Таймер опитування' };
+        const titles = { telegram: 'Telegram моніторинг', ai: 'Черга AI', channels: 'Стан каналів', clock: 'Таймер опитування', now: 'Актуальний час' };
         document.getElementById('systemStatusTitle').textContent = titles[type] || 'Статус';
         document.getElementById('systemStatusDetail').textContent = statusCache[type] || 'Немає даних';
         document.getElementById('systemStatusUpdated').textContent = statusCache.updatedAt || '';
@@ -257,9 +288,10 @@
 
       loadMessages();
       loadSystemStatus();
-      setInterval(loadMessages, 30000);
+      setInterval(loadMessages, 10000);
       setInterval(loadSystemStatus, 10000);
       setInterval(updatePollCountdown, 1000);
+      setInterval(updateCurrentTime, 1000);
     </script>
   </body>
 </html>

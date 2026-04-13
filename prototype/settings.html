@@ -446,6 +446,7 @@
           ? `Ручний запуск завершено. Оновлено джерел: ${data.updated_sources}/${data.total_sources}, нових повідомлень: ${data.ingested_messages}.`
           : (data.detail || 'Не вдалося виконати ручний запуск.');
         await loadMonitorStatus();
+        await loadSources();
       }
 
       async function clearAllMessages() {
