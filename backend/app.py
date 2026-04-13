@@ -5,7 +5,6 @@ import sqlite3
 import asyncio
 import json
 import shutil
-import traceback
 from datetime import timedelta
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +21,8 @@ repo = Repository()
 ROOT_DIR = Path(__file__).resolve().parent.parent
 PROTOTYPE_DIR = ROOT_DIR / "prototype"
 MONITOR_INTERVAL_SECONDS = 600
+MIN_MONITOR_INTERVAL_SECONDS = 30
+MAX_MONITOR_INTERVAL_SECONDS = 3600
 monitor_task: asyncio.Task | None = None
 telethon_auth_state: dict[str, dict[str, str]] = {}
 telethon_client_lock = asyncio.Lock()
@@ -57,13 +58,6 @@ def _quarantine_telethon_session(reason: str) -> None:
             except Exception:
                 continue
     monitor_status["last_error"] = f"Telethon session reset: {reason}"
-
-
-def _log_telethon_debug(message: str) -> None:
-    log_path = ROOT_DIR / "backend" / "telethon_debug.log"
-    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    with log_path.open("a", encoding="utf-8") as fp:
-        fp.write(f"[{stamp}] {message}\n")
 
 
 def _get_saved_string_session() -> str | None:
@@ -118,6 +112,7 @@ class TelethonCodeVerify(BaseModel):
 class MonitorConfigPayload(BaseModel):
     collect_enabled: bool
     ai_enabled: bool
+    interval_seconds: int = Field(default=MONITOR_INTERVAL_SECONDS, ge=MIN_MONITOR_INTERVAL_SECONDS, le=MAX_MONITOR_INTERVAL_SECONDS)
 
 
 def _extract_telegram_username(raw: str) -> str | None:
@@ -169,10 +164,16 @@ def _detect_media_type(message: object) -> str | None:
     return "media"
 
 
-def _get_monitor_config() -> dict[str, bool]:
+def _get_monitor_config() -> dict[str, bool | int]:
     collect_enabled = (repo.get_setting("monitor.collect_enabled", "1") or "1") == "1"
     ai_enabled = (repo.get_setting("monitor.ai_enabled", "1") or "1") == "1"
-    return {"collect_enabled": collect_enabled, "ai_enabled": ai_enabled}
+    interval_raw = repo.get_setting("monitor.interval_seconds", str(MONITOR_INTERVAL_SECONDS)) or str(MONITOR_INTERVAL_SECONDS)
+    try:
+        interval_seconds = int(interval_raw)
+    except ValueError:
+        interval_seconds = MONITOR_INTERVAL_SECONDS
+    interval_seconds = max(MIN_MONITOR_INTERVAL_SECONDS, min(MAX_MONITOR_INTERVAL_SECONDS, interval_seconds))
+    return {"collect_enabled": collect_enabled, "ai_enabled": ai_enabled, "interval_seconds": interval_seconds}
 
 
 def _telethon_client_init_data(api_id: int, api_hash: str) -> tuple[str, int, str]:
@@ -281,6 +282,8 @@ def _telethon_client_config() -> tuple[int, str]:
 async def _monitor_loop() -> None:
     while True:
         try:
+            monitor_cfg = _get_monitor_config()
+            monitor_status["interval_seconds"] = int(monitor_cfg["interval_seconds"])
             monitor_status["state"] = "running"
             monitor_status["last_run_at"] = datetime.now(timezone.utc).strftime(
                 "%Y-%m-%d %H:%M:%S"
@@ -301,7 +304,7 @@ async def _monitor_loop() -> None:
         except Exception:
             monitor_status["state"] = "error"
             monitor_status["last_error"] = "Непередбачена помилка моніторингу"
-        await asyncio.sleep(MONITOR_INTERVAL_SECONDS)
+        await asyncio.sleep(int(_get_monitor_config()["interval_seconds"]))
 
 
 @app.on_event("startup")
@@ -326,7 +329,25 @@ def get_monitor_config() -> dict:
 def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.collect_enabled", "1" if payload.collect_enabled else "0")
     repo.set_setting("monitor.ai_enabled", "1" if payload.ai_enabled else "0")
+    repo.set_setting("monitor.interval_seconds", str(payload.interval_seconds))
     return _get_monitor_config()
+
+
+@app.post("/api/monitor/run-once")
+async def run_monitor_once() -> dict:
+    updated, total, ingested, err = await _sync_sources_last_messages()
+    monitor_status["last_run_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    monitor_status["updated_sources"] = updated
+    monitor_status["total_sources"] = total
+    monitor_status["ingested_messages"] = ingested
+    if err:
+        monitor_status["state"] = "warning"
+        monitor_status["last_error"] = err
+    else:
+        monitor_status["state"] = "ok"
+        monitor_status["last_error"] = None
+        monitor_status["last_success_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return {"ok": err is None, "updated_sources": updated, "total_sources": total, "ingested_messages": ingested, "detail": err}
 
 
 @app.get("/api/telethon/auth/status")
@@ -354,7 +375,6 @@ async def telethon_auth_status() -> dict:
                 await client.disconnect()
         except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
             _quarantine_telethon_session(str(exc))
-            _log_telethon_debug(f"auth_status session error: {exc}")
             return {
                 "authorized": False,
                 "session": session_name,
@@ -431,18 +451,7 @@ async def telethon_session_health() -> dict:
     except Exception as exc:
         data["ok"] = False
         data["detail"] = f"Session file проходить SQLite check, але Telethon probe впав: {exc}"
-        _log_telethon_debug(f"health_probe error: {exc}\n{traceback.format_exc()}")
     return data
-
-
-@app.get("/api/telethon/debug/recent")
-def telethon_debug_recent(lines: int = 200) -> dict:
-    safe_lines = max(10, min(lines, 2000))
-    log_path = ROOT_DIR / "backend" / "telethon_debug.log"
-    if not log_path.exists():
-        return {"lines": []}
-    content = log_path.read_text(encoding="utf-8", errors="ignore").splitlines()
-    return {"lines": content[-safe_lines:]}
 
 
 @app.post("/api/telethon/auth/request-code")
@@ -483,7 +492,6 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
                                 "phone_code_hash": sent.phone_code_hash,
                                 "session": login_session.save(),
                             }
-                            _log_telethon_debug(f"request_code success for phone={phone}, attempt={attempt + 1}")
                             break
                         except PhoneNumberInvalidError as exc:
                             raise HTTPException(status_code=400, detail="Telegram не приймає цей номер телефону") from exc
@@ -497,7 +505,6 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
                             if "EOF when reading a line" in str(exc):
                                 if attempt == 0:
                                     _quarantine_telethon_session(str(exc))
-                                    _log_telethon_debug(f"request_code EOF detected, quarantine + retry, phone={phone}")
                                     continue
                                 raise HTTPException(status_code=500, detail="Пошкоджена Telethon-сесія. Перевір endpoint /api/telethon/session/health") from exc
                             raise HTTPException(status_code=400, detail=f"Не вдалося надіслати код: {exc}") from exc
@@ -506,11 +513,9 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
                 except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
                     if attempt == 0:
                         _quarantine_telethon_session(str(exc))
-                        _log_telethon_debug(f"request_code outer session error, quarantine + retry, phone={phone}: {exc}")
                         continue
                     raise HTTPException(status_code=500, detail=f"Помилка Telethon-сесії: {exc}. Сесію скинуто, повтори запит коду.") from exc
                 except Exception as exc:
-                    _log_telethon_debug(f"request_code unexpected exception phone={phone}: {exc}\n{traceback.format_exc()}")
                     if "EOF when reading a line" in str(exc) and attempt < 2:
                         continue
                     raise HTTPException(status_code=500, detail=f"Помилка Telethon request-code: {exc}") from exc
@@ -578,7 +583,6 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
                 authorized = await client.is_user_authorized()
                 if authorized:
                     repo.set_setting("telethon.string_session", client.session.save())
-                    _log_telethon_debug(f"verify_code success for phone={phone}, string_session saved")
             finally:
                 await client.disconnect()
         except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:

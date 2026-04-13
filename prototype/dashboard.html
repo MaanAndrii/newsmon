@@ -26,6 +26,9 @@
       <section class="mb-5 p-4 rounded-xl bg-slate-900 border border-slate-800">
         <div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
           <h2 class="font-semibold text-lg">Статус системи</h2>
+          <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs" onclick="runMonitorOnce()">
+            Отримати повідомлення зараз
+          </button>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs w-full md:w-auto">
             <button id="statusTelegramCard" class="px-3 py-2 rounded bg-emerald-700/60 text-left hover:bg-emerald-600/70 transition" onclick="openSystemStatusModal('telegram')">
               <div class="font-semibold">Telegram</div>
@@ -183,24 +186,33 @@
           const activeSources = sources.filter((s) => s.is_active).length;
           const totalSources = sources.length;
           const monitorState = monitor?.state || 'unknown';
-          const pending = Math.max(0, totalSources - (monitor?.updated_sources || 0));
+          const aiEnabled = Boolean(monitor?.ai_enabled);
+          const collectEnabled = Boolean(monitor?.collect_enabled);
           statusCache.intervalSeconds = Number(monitor?.interval_seconds || 600);
           statusCache.lastRunAt = monitor?.last_run_at ? new Date((monitor.last_run_at || '').replace(' ', 'T') + 'Z') : null;
           statusCache.telegram = `Стан: ${monitorState}. Помилка: ${monitor?.last_error || 'немає'}`;
-          statusCache.ai = `Pending: ${pending}. Ingested: ${monitor?.ingested_messages || 0}`;
+          statusCache.ai = `AI: ${aiEnabled ? 'увімкнено' : 'вимкнено'}. Ingested: ${monitor?.ingested_messages || 0}`;
           statusCache.channels = `Активних ${activeSources}/${totalSources}, оновлено ${monitor?.updated_sources || 0}`;
-          statusCache.clock = `Інтервал опитування: ${statusCache.intervalSeconds} сек`;
+          statusCache.clock = `Інтервал: ${statusCache.intervalSeconds} сек. Збір: ${collectEnabled ? 'увімкнено' : 'вимкнено'}`;
           statusCache.updatedAt = `Оновлено: ${new Date().toLocaleString('uk-UA')}`;
           document.getElementById('statusTelegram').textContent = monitorState === 'ok' ? 'активний' : monitorState;
-          document.getElementById('statusAi').textContent = `pending ${pending}`;
+          document.getElementById('statusAi').textContent = aiEnabled ? 'увімкнено' : 'вимкнено';
           document.getElementById('statusChannels').textContent = `${activeSources}/${totalSources}`;
           paintStatusCard('statusTelegramCard', monitorState === 'ok');
-          paintStatusCard('statusAiCard', pending === 0 ? true : null);
-          paintStatusCard('statusChannelsCard', totalSources > 0 ? true : null);
+          paintStatusCard('statusAiCard', aiEnabled ? true : null);
+          paintStatusCard('statusChannelsCard', activeSources > 0 ? true : null);
+          paintStatusCard('statusClockCard', collectEnabled ? true : null);
           updatePollCountdown();
         } catch (error) {
           document.getElementById('statusTelegram').textContent = 'помилка';
           paintStatusCard('statusTelegramCard', false);
+        }
+      }
+
+      async function runMonitorOnce() {
+        const res = await fetch('/api/monitor/run-once', { method: 'POST' });
+        if (res.ok) {
+          await Promise.all([loadSystemStatus(), loadMessages()]);
         }
       }
 

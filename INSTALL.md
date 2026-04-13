@@ -223,3 +223,71 @@ pip install -r requirements.txt
 - Перевір `GET /api/messages?limit=5`.
 - Перевір `journalctl -u newsmon -f`.
 
+---
+
+## 13) Telethon не аутентифікується (EOF / readonly) — команди порядково
+
+> Виконуй **по черзі**, не пропускаючи кроки.
+
+### Крок 1. Перейти в проєкт і оновити код
+```bash
+cd /home/maan/newsmon
+git checkout work
+git pull --rebase
+```
+
+### Крок 2. Активувати venv і перевстановити залежності
+```bash
+cd /home/maan/newsmon/backend
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### Крок 3. Повністю видалити старі Telethon session-файли
+```bash
+cd /home/maan/newsmon/backend
+rm -f telegram_user.session
+rm -f telegram_user.session-journal
+rm -f telegram_user.session-wal
+rm -f telegram_user.session-shm
+rm -f telegram_user.session.broken_*
+```
+
+### Крок 4. Перевірити і виправити права доступу (щоб не було readonly)
+```bash
+cd /home/maan/newsmon
+sudo chown -R maan:maan /home/maan/newsmon
+chmod 755 /home/maan/newsmon/backend
+find /home/maan/newsmon/backend -type f -name "telegram_user.session*" -exec chmod 600 {} \;
+```
+
+### Крок 5. Перезапустити сервіс і перевірити статус
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart newsmon
+sudo systemctl status newsmon --no-pager
+```
+
+### Крок 6. Перевірити API health локально
+```bash
+curl -s http://127.0.0.1:8000/api/telethon/session/health | python3 -m json.tool
+curl -s http://127.0.0.1:8000/api/telethon/auth/status | python3 -m json.tool
+curl -s http://127.0.0.1:8000/api/monitor/status | python3 -m json.tool
+```
+
+### Крок 7. Відкрити UI і пройти авторизацію
+1. Відкрий `http://<IP_PI>:8000/settings.html`
+2. Введи номер у форматі `+380...`
+3. Натисни **Запросити код**
+4. Введи код і натисни **Підтвердити**
+
+### Крок 8. Якщо знову є помилка — дивитись live-логи
+```bash
+journalctl -u newsmon -f
+```
+
+Додатково (серверний debug-файл Telethon):
+```bash
+tail -n 200 /home/maan/newsmon/backend/telethon_debug.log
+```
