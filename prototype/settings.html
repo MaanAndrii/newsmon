@@ -16,6 +16,7 @@
         <nav class="flex gap-2 text-sm">
           <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="dashboard.html">Dashboard</a>
           <a class="px-3 py-2 rounded-lg bg-emerald-600 text-white" href="settings.html">Налаштування</a>
+          <button class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white" onclick="adminLogout()">Вихід адміна</button>
         </nav>
       </div>
     </header>
@@ -58,23 +59,26 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
             <label class="flex flex-col gap-1">
               <span class="text-slate-300">Claude API Key</span>
-              <input id="claudeApiKey" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="sk-ant-..." />
+              <input id="claudeApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="sk-ant-..." />
+              <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
             </label>
             <label class="flex flex-col gap-1">
               <span class="text-slate-300">Telegram API ID</span>
-              <input id="telegramApiId" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456" />
+              <input id="telegramApiId" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456" />
             </label>
             <label class="flex flex-col gap-1 md:col-span-2">
               <span class="text-slate-300">Telegram API Hash</span>
-              <input id="telegramApiHash" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="loremipsumhash" />
+              <input id="telegramApiHash" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="loremipsumhash" />
+              <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
             </label>
             <label class="flex flex-col gap-1">
               <span class="text-slate-300">Telegram Bot Token</span>
-              <input id="telegramBotToken" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456:AA...mock_token" />
+              <input id="telegramBotToken" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456:AA...mock_token" />
+              <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
             </label>
             <label class="flex flex-col gap-1">
               <span class="text-slate-300">Telegram Bot Chat ID</span>
-              <input id="telegramBotChatId" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="-1001234567890" />
+              <input id="telegramBotChatId" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="-1001234567890" />
             </label>
             <label class="flex flex-col gap-1">
               <span class="text-slate-300">Claude Model</span>
@@ -317,11 +321,77 @@
     </footer>
     <script>
       const apiBase = '';
+      const ADMIN_TOKEN_KEY = 'newsmon_admin_token';
       const categoryColorPicker = document.getElementById('categoryColorPicker');
       const categoryColorValue = document.getElementById('categoryColorValue');
       const sourcesBody = document.getElementById('sourcesBody');
       const categoriesBody = document.getElementById('categoriesBody');
       const keywordsBody = document.getElementById('keywordsBody');
+
+      function escapeHtml(value) {
+        if (value == null) return '';
+        return String(value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function getAdminToken() {
+        try {
+          return localStorage.getItem(ADMIN_TOKEN_KEY) || '';
+        } catch (_) {
+          return '';
+        }
+      }
+
+      function setAdminToken(token) {
+        try {
+          if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
+          else localStorage.removeItem(ADMIN_TOKEN_KEY);
+        } catch (_) {}
+      }
+
+      function promptAdminToken(message) {
+        const value = window.prompt(message || 'Введіть адмін-токен (NEWSMON_API_TOKEN):', '');
+        if (value == null) return '';
+        const trimmed = value.trim();
+        setAdminToken(trimmed);
+        return trimmed;
+      }
+
+      function ensureAdminToken() {
+        let token = getAdminToken();
+        if (!token) {
+          token = promptAdminToken('Потрібен адмін-токен для доступу до налаштувань.');
+        }
+        return token;
+      }
+
+      async function authFetch(url, options = {}) {
+        const opts = { ...options };
+        opts.headers = { ...(options.headers || {}) };
+        const token = ensureAdminToken();
+        if (token) {
+          opts.headers['Authorization'] = `Bearer ${token}`;
+        }
+        let res = await fetch(url, opts);
+        if (res.status === 401) {
+          setAdminToken('');
+          const retryToken = promptAdminToken('Невірний токен. Введіть ще раз:');
+          if (retryToken) {
+            opts.headers['Authorization'] = `Bearer ${retryToken}`;
+            res = await fetch(url, opts);
+          }
+        }
+        return res;
+      }
+
+      function adminLogout() {
+        setAdminToken('');
+        window.location.reload();
+      }
 
       categoryColorPicker.addEventListener('input', () => {
         categoryColorValue.textContent = categoryColorPicker.value.toUpperCase();
@@ -354,14 +424,19 @@
       }
 
       function integrationPayload() {
-        return {
-          claude_api_key: document.getElementById('claudeApiKey').value,
-          claude_model: document.getElementById('claudeModel').value,
-          telegram_api_id: document.getElementById('telegramApiId').value,
-          telegram_api_hash: document.getElementById('telegramApiHash').value,
-          telegram_bot_token: document.getElementById('telegramBotToken').value,
-          telegram_bot_chat_id: document.getElementById('telegramBotChatId').value,
-        };
+        const payload = { claude_model: document.getElementById('claudeModel').value };
+        const trim = (id) => document.getElementById(id).value.trim();
+        const claudeKey = trim('claudeApiKey');
+        const apiId = trim('telegramApiId');
+        const apiHash = trim('telegramApiHash');
+        const botToken = trim('telegramBotToken');
+        const botChatId = trim('telegramBotChatId');
+        if (claudeKey) payload.claude_api_key = claudeKey;
+        if (apiId) payload.telegram_api_id = apiId;
+        if (apiHash) payload.telegram_api_hash = apiHash;
+        if (botToken) payload.telegram_bot_token = botToken;
+        if (botChatId) payload.telegram_bot_chat_id = botChatId;
+        return payload;
       }
 
       function setSignal(id, ok) {
@@ -380,31 +455,44 @@
         }
       }
 
+      function applySecretPlaceholder(inputId, isSet, preview) {
+        const el = document.getElementById(inputId);
+        if (!el) return;
+        el.value = '';
+        if (isSet) {
+          el.placeholder = preview ? `Поточне: ${preview} (залиш пустим — не змінювати)` : 'Поточне значення збережено (залиш пустим — не змінювати)';
+        }
+      }
+
       async function loadIntegrations() {
-        const res = await fetch(`${apiBase}/api/integrations`);
+        const res = await authFetch(`${apiBase}/api/integrations`);
         if (!res.ok) return;
         const data = await res.json();
-        document.getElementById('claudeApiKey').value = data.claude_api_key || '';
+        applySecretPlaceholder('claudeApiKey', data.claude_api_key_set, data.claude_api_key_preview);
+        applySecretPlaceholder('telegramApiHash', data.telegram_api_hash_set, data.telegram_api_hash_preview);
+        applySecretPlaceholder('telegramBotToken', data.telegram_bot_token_set, data.telegram_bot_token_preview);
         document.getElementById('claudeModel').value = data.claude_model || 'claude-haiku-4-5-20251001';
         document.getElementById('telegramApiId').value = data.telegram_api_id || '';
-        document.getElementById('telegramApiHash').value = data.telegram_api_hash || '';
-        document.getElementById('telegramBotToken').value = data.telegram_bot_token || '';
         document.getElementById('telegramBotChatId').value = data.telegram_bot_chat_id || '';
       }
 
       async function saveIntegrations() {
-        const res = await fetch(`${apiBase}/api/integrations`, {
+        const res = await authFetch(`${apiBase}/api/integrations`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(integrationPayload()),
         });
         if (res.ok) {
+          await loadIntegrations();
           await validateIntegrations();
+        } else {
+          const data = await parseApiBody(res);
+          document.getElementById('validationMessage').textContent = data.detail || 'Не вдалося зберегти інтеграції.';
         }
       }
 
       async function validateIntegrations() {
-        const res = await fetch(`${apiBase}/api/integrations/validate`, {
+        const res = await authFetch(`${apiBase}/api/integrations/validate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(integrationPayload()),
@@ -443,7 +531,7 @@
       }
 
       async function loadDebugStats() {
-        const res = await fetch(`${apiBase}/api/debug/stats`);
+        const res = await authFetch(`${apiBase}/api/debug/stats`);
         if (!res.ok) return;
         const data = await res.json();
         document.getElementById('dbgClaudeReq').textContent = `Запитів: ${data.claude_requests_24h ?? 0}`;
@@ -453,7 +541,7 @@
       }
 
       async function loadMonitorConfig() {
-        const res = await fetch(`${apiBase}/api/monitor/config`);
+        const res = await authFetch(`${apiBase}/api/monitor/config`);
         if (!res.ok) return;
         const data = await res.json();
         document.getElementById('monitorAiEnabled').checked = !!data.ai_enabled;
@@ -480,7 +568,7 @@
           fetch_depth: Number(document.getElementById('monitorFetchDepth').value || 3),
           ai_prompt: document.getElementById('monitorAiPrompt').value,
         };
-        const res = await fetch(`${apiBase}/api/monitor/config`, {
+        const res = await authFetch(`${apiBase}/api/monitor/config`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -492,7 +580,7 @@
       }
 
       async function runMonitorOnce() {
-        const res = await fetch(`${apiBase}/api/monitor/run-once`, { method: 'POST' });
+        const res = await authFetch(`${apiBase}/api/monitor/run-once`, { method: 'POST' });
         const data = await parseApiBody(res);
         document.getElementById('monitorConfigMessage').textContent = res.ok
           ? `Ручний запуск завершено. Оновлено джерел: ${data.updated_sources}/${data.total_sources}, нових повідомлень: ${data.ingested_messages}.`
@@ -505,7 +593,7 @@
       async function clearAllMessages() {
         const ok = window.confirm('Видалити ВСІ отримані повідомлення без можливості відновлення?');
         if (!ok) return;
-        const res = await fetch(`${apiBase}/api/messages/clear-all`, {
+        const res = await authFetch(`${apiBase}/api/messages/clear-all`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ confirm: true }),
@@ -519,8 +607,8 @@
       async function loadTelethonAuthStatus() {
         try {
           const [res, healthRes] = await Promise.all([
-            fetch(`${apiBase}/api/telethon/auth/status`),
-            fetch(`${apiBase}/api/telethon/session/health`)
+            authFetch(`${apiBase}/api/telethon/auth/status`),
+            authFetch(`${apiBase}/api/telethon/session/health`)
           ]);
           const data = await parseApiBody(res);
           const health = await parseApiBody(healthRes);
@@ -549,7 +637,7 @@
         button.classList.add('opacity-60', 'cursor-not-allowed');
         document.getElementById('telethonAuthMessage').textContent = 'Надсилаємо код...';
         try {
-          const res = await fetch(`${apiBase}/api/telethon/auth/request-code`, {
+          const res = await authFetch(`${apiBase}/api/telethon/auth/request-code`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone }),
@@ -573,7 +661,7 @@
         button.disabled = true;
         button.classList.add('opacity-60', 'cursor-not-allowed');
         try {
-          const res = await fetch(`${apiBase}/api/telethon/auth/verify-code`, {
+          const res = await authFetch(`${apiBase}/api/telethon/auth/verify-code`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone, code, password: password || null }),
@@ -593,7 +681,7 @@
       async function logoutTelethon() {
         const ok = window.confirm('Вийти з Telethon і скинути поточну сесію?');
         if (!ok) return;
-        const res = await fetch(`${apiBase}/api/telethon/auth/logout`, {
+        const res = await authFetch(`${apiBase}/api/telethon/auth/logout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
         });
@@ -617,8 +705,8 @@
           : 'bg-rose-500';
         const dateText = formatLocalDateTime(item.last_message_at);
         return `<tr class="border-t border-slate-800">
-            <td class="p-3">${item.name}</td>
-            <td class="p-3">${dateText}</td>
+            <td class="p-3">${escapeHtml(item.name)}</td>
+            <td class="p-3">${escapeHtml(dateText)}</td>
             <td class="p-3"><span class="inline-block w-3 h-3 rounded-full ${dot}"></span></td>
             <td class="p-3">
               <label class="inline-flex items-center cursor-pointer">
@@ -650,7 +738,7 @@
         const value = document.getElementById('sourceInput').value.trim();
         if (!value) return;
         const payload = { name: value, url: value };
-        const res = await fetch(`${apiBase}/api/sources`, {
+        const res = await authFetch(`${apiBase}/api/sources`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -666,7 +754,7 @@
       }
 
       async function toggleSource(id, field, checked) {
-        await fetch(`${apiBase}/api/sources/${id}`, {
+        await authFetch(`${apiBase}/api/sources/${id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ [field]: checked }),
@@ -674,19 +762,20 @@
       }
 
       async function deleteSource(id) {
-        const res = await fetch(`${apiBase}/api/sources/${id}`, { method: 'DELETE' });
+        const res = await authFetch(`${apiBase}/api/sources/${id}`, { method: 'DELETE' });
         if (res.ok) {
           await loadSources();
         }
       }
 
       function categoryRow(item) {
-        const color = (item.color || '#64748b').toUpperCase();
+        const rawColor = (item.color || '#64748b').toUpperCase();
+        const safeColor = /^#[0-9A-F]{6}$/i.test(rawColor) ? rawColor : '#64748B';
         return `<tr class="border-t border-slate-800">
-          <td class="p-3">${item.name}</td>
-          <td class="p-3"><span class="inline-flex items-center gap-2"><span class="w-4 h-4 rounded-full" style="background:${color}"></span>${color}</span></td>
+          <td class="p-3">${escapeHtml(item.name)}</td>
+          <td class="p-3"><span class="inline-flex items-center gap-2"><span class="w-4 h-4 rounded-full" style="background:${safeColor}"></span>${escapeHtml(safeColor)}</span></td>
           <td class="p-3">${item.is_default ? 'Так' : 'Ні'}</td>
-          <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteCategory(${item.id})">Видалити</button></td>
+          <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteCategory(${Number(item.id)})">Видалити</button></td>
         </tr>`;
       }
 
@@ -696,7 +785,7 @@
         const rows = await res.json();
         categoriesBody.innerHTML = rows.map(categoryRow).join('');
         const select = document.getElementById('keywordCategoryInput');
-        select.innerHTML = '<option value="">Без категорії</option>' + rows.map((row) => `<option value="${row.id}">${row.name}</option>`).join('');
+        select.innerHTML = '<option value="">Без категорії</option>' + rows.map((row) => `<option value="${Number(row.id)}">${escapeHtml(row.name)}</option>`).join('');
       }
 
       async function addCategory() {
@@ -707,7 +796,7 @@
           document.getElementById('categoryMessage').textContent = 'Вкажи назву категорії.';
           return;
         }
-        const res = await fetch(`${apiBase}/api/categories`, {
+        const res = await authFetch(`${apiBase}/api/categories`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name, color, is_default }),
@@ -722,7 +811,7 @@
       }
 
       async function deleteCategory(id) {
-        const res = await fetch(`${apiBase}/api/categories/${id}`, { method: 'DELETE' });
+        const res = await authFetch(`${apiBase}/api/categories/${id}`, { method: 'DELETE' });
         document.getElementById('categoryMessage').textContent = res.ok ? 'Категорію видалено.' : 'Не вдалося видалити категорію.';
         if (res.ok) {
           await loadCategories();
@@ -732,10 +821,10 @@
 
       function keywordRow(item) {
         return `<tr class="border-t border-slate-800">
-          <td class="p-3">${item.phrase}</td>
-          <td class="p-3">${item.category_name || '—'}</td>
-          <td class="p-3">${item.min_score ?? 0}</td>
-          <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteKeyword(${item.id})">Видалити</button></td>
+          <td class="p-3">${escapeHtml(item.phrase)}</td>
+          <td class="p-3">${escapeHtml(item.category_name || '—')}</td>
+          <td class="p-3">${Number(item.min_score ?? 0)}</td>
+          <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteKeyword(${Number(item.id)})">Видалити</button></td>
         </tr>`;
       }
 
@@ -756,7 +845,7 @@
           document.getElementById('keywordMessage').textContent = 'Вкажи ключове слово.';
           return;
         }
-        const res = await fetch(`${apiBase}/api/keywords`, {
+        const res = await authFetch(`${apiBase}/api/keywords`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phrase, category_id, min_score: Number.isNaN(min_score) ? 0 : min_score, is_regex: false }),
@@ -771,7 +860,7 @@
       }
 
       async function deleteKeyword(id) {
-        const res = await fetch(`${apiBase}/api/keywords/${id}`, { method: 'DELETE' });
+        const res = await authFetch(`${apiBase}/api/keywords/${id}`, { method: 'DELETE' });
         document.getElementById('keywordMessage').textContent = res.ok ? 'Ключове слово видалено.' : 'Не вдалося видалити ключове слово.';
         if (res.ok) await loadKeywords();
       }

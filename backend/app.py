@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import os
+import hmac
 import sqlite3
 import asyncio
 import json
@@ -12,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib import parse, request
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -44,6 +46,10 @@ TELETHON_STATUS_CACHE_TTL = 30.0
 TELETHON_HEALTH_CACHE_TTL = 30.0
 _telethon_status_cache: dict[str, float | dict | None] = {"at": 0.0, "value": None}
 _telethon_health_cache: dict[str, float | dict | None] = {"at": 0.0, "value": None}
+ADMIN_TOKEN_ENV = "NEWSMON_API_TOKEN"
+TELETHON_AUTH_RATE_MAX = 3
+TELETHON_AUTH_RATE_WINDOW_SECONDS = 300.0
+_rate_limit_buckets: dict[str, deque[float]] = {}
 monitor_status: dict[str, str | int | None] = {
     "state": "stopped",
     "last_run_at": None,
@@ -98,7 +104,7 @@ class SourceUpdate(BaseModel):
 
 class CategoryCreate(BaseModel):
     name: str = Field(min_length=2, max_length=80)
-    color: str = Field(default="#64748b", min_length=4, max_length=20)
+    color: str = Field(default="#64748b", pattern=r"^#[0-9a-fA-F]{6}$")
     is_default: bool = False
 
 
@@ -199,6 +205,85 @@ def _invalidate_telethon_status_caches() -> None:
     _telethon_health_cache["value"] = None
 
 
+def _get_admin_token() -> str:
+    return (os.environ.get(ADMIN_TOKEN_ENV) or "").strip()
+
+
+def require_admin(authorization: str | None = Header(None)) -> None:
+    expected = _get_admin_token()
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Сервер не налаштовано: змінна оточення {ADMIN_TOKEN_ENV} не задана. "
+                "Адмін має встановити її перед запуском."
+            ),
+        )
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Потрібен Bearer-токен")
+    token = authorization[len("Bearer ") :].strip()
+    if not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="Невірний токен")
+
+
+def _client_ip(request_obj: Request) -> str:
+    cf = request_obj.headers.get("CF-Connecting-IP")
+    if cf:
+        return cf.strip()
+    xff = request_obj.headers.get("X-Forwarded-For")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request_obj.client.host if request_obj.client else "unknown"
+
+
+def _rate_limit_hit(bucket_key: str, max_hits: int, window_seconds: float) -> bool:
+    now_mono = time.monotonic()
+    bucket = _rate_limit_buckets.setdefault(bucket_key, deque())
+    while bucket and now_mono - bucket[0] > window_seconds:
+        bucket.popleft()
+    if len(bucket) >= max_hits:
+        return False
+    bucket.append(now_mono)
+    return True
+
+
+def _enforce_telethon_auth_rate_limit(request_obj: Request, phone: str) -> None:
+    ip = _client_ip(request_obj)
+    if not _rate_limit_hit(f"tg_auth_ip:{ip}", TELETHON_AUTH_RATE_MAX, TELETHON_AUTH_RATE_WINDOW_SECONDS):
+        raise HTTPException(
+            status_code=429,
+            detail="Забагато спроб з цього IP. Спробуй за 5 хв.",
+        )
+    phone_key = re.sub(r"[^\d+]", "", phone or "")
+    if phone_key and not _rate_limit_hit(f"tg_auth_phone:{phone_key}", TELETHON_AUTH_RATE_MAX, TELETHON_AUTH_RATE_WINDOW_SECONDS):
+        raise HTTPException(
+            status_code=429,
+            detail="Забагато спроб для цього номера. Спробуй за 5 хв.",
+        )
+
+
+def _mask_secret(value: str | None, keep: int = 4) -> str:
+    if not value:
+        return ""
+    value = value.strip()
+    if len(value) <= keep:
+        return "***"
+    return f"***{value[-keep:]}"
+
+
+def _chmod_session_files(quiet: bool = True) -> None:
+    base = _telethon_session_base()
+    for suffix in (".session", ".session-journal", ".session-wal", ".session-shm"):
+        path = Path(f"{base}{suffix}")
+        if not path.exists():
+            continue
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            if not quiet:
+                raise
+
+
 def _record_claude_call(input_tokens: int, output_tokens: int) -> None:
     claude_call_events.append(
         {
@@ -295,7 +380,9 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
             try:
                 await client.connect()
                 if not await client.is_user_authorized():
+                    _record_telegram_call()
                     return 0, len(sources), 0, "Telethon-сесія не авторизована (потрібен login)"
+                _record_telegram_call()
                 for source in sources:
                     if not source.get("is_active"):
                         continue
@@ -443,12 +530,12 @@ def get_monitor_status() -> dict:
     return {**monitor_status, **_get_monitor_config()}
 
 
-@app.get("/api/monitor/config")
+@app.get("/api/monitor/config", dependencies=[Depends(require_admin)])
 def get_monitor_config() -> dict:
     return _get_monitor_config()
 
 
-@app.post("/api/monitor/config")
+@app.post("/api/monitor/config", dependencies=[Depends(require_admin)])
 def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.collect_enabled", "1" if payload.collect_enabled else "0")
     repo.set_setting("monitor.ai_enabled", "1" if payload.ai_enabled else "0")
@@ -458,7 +545,7 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     return _get_monitor_config()
 
 
-@app.get("/api/debug/stats")
+@app.get("/api/debug/stats", dependencies=[Depends(require_admin)])
 def get_debug_stats() -> dict:
     now = datetime.now(timezone.utc)
     day_ago = now - timedelta(hours=24)
@@ -475,7 +562,7 @@ def get_debug_stats() -> dict:
     }
 
 
-@app.post("/api/monitor/run-once")
+@app.post("/api/monitor/run-once", dependencies=[Depends(require_admin)])
 async def run_monitor_once() -> dict:
     updated, total, ingested, err = await _sync_sources_last_messages()
     monitor_status["last_run_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -612,7 +699,7 @@ def _call_claude_score_sync(
     return score, category
 
 
-@app.get("/api/telethon/auth/status")
+@app.get("/api/telethon/auth/status", dependencies=[Depends(require_admin)])
 async def telethon_auth_status() -> dict:
     now_mono = time.monotonic()
     cached_value = _telethon_status_cache.get("value")
@@ -658,7 +745,7 @@ async def telethon_auth_status() -> dict:
     return result
 
 
-@app.get("/api/telethon/session/health")
+@app.get("/api/telethon/session/health", dependencies=[Depends(require_admin)])
 async def telethon_session_health() -> dict:
     now_mono = time.monotonic()
     cached_value = _telethon_health_cache.get("value")
@@ -742,13 +829,14 @@ async def telethon_session_health() -> dict:
     return data
 
 
-@app.post("/api/telethon/auth/request-code")
-async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
+@app.post("/api/telethon/auth/request-code", dependencies=[Depends(require_admin)])
+async def telethon_request_code(payload: TelethonCodeRequest, request: Request) -> dict:
     phone = payload.phone.strip().replace(" ", "").replace("-", "")
     if phone.startswith("00"):
         phone = f"+{phone[2:]}"
     if not re.fullmatch(r"\+\d{10,15}", phone):
         raise HTTPException(status_code=400, detail="Невірний формат телефону. Використай міжнародний формат, наприклад +380...")
+    _enforce_telethon_auth_rate_limit(request, phone)
     api_id, api_hash = _telethon_client_config()
     session_name = "telegram_user"
     try:
@@ -818,14 +906,15 @@ async def telethon_request_code(payload: TelethonCodeRequest) -> dict:
     return {"ok": True, "detail": "Код підтвердження надіслано", "phone": phone}
 
 
-@app.post("/api/telethon/auth/verify-code")
-async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
+@app.post("/api/telethon/auth/verify-code", dependencies=[Depends(require_admin)])
+async def telethon_verify_code(payload: TelethonCodeVerify, request: Request) -> dict:
     phone = payload.phone.strip().replace(" ", "").replace("-", "")
     if phone.startswith("00"):
         phone = f"+{phone[2:]}"
     code = payload.code.strip()
     if not phone or not code:
         raise HTTPException(status_code=400, detail="Вкажіть телефон і код")
+    _enforce_telethon_auth_rate_limit(request, phone)
     auth_state = telethon_auth_state.get(phone)
     if not auth_state:
         raise HTTPException(status_code=400, detail="Спочатку запитай код підтвердження")
@@ -877,6 +966,7 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
                 _record_telegram_call()
                 if authorized:
                     repo.set_setting("telethon.string_session", client.session.save())
+                    _chmod_session_files()
                     _invalidate_telethon_status_caches()
             finally:
                 await client.disconnect()
@@ -886,7 +976,7 @@ async def telethon_verify_code(payload: TelethonCodeVerify) -> dict:
     return {"ok": authorized, "detail": "Telethon авторизовано" if authorized else "Авторизація не завершена"}
 
 
-@app.post("/api/telethon/auth/logout")
+@app.post("/api/telethon/auth/logout", dependencies=[Depends(require_admin)])
 async def telethon_logout() -> dict:
     async with telethon_client_lock:
         repo.set_setting("telethon.string_session", "")
@@ -927,7 +1017,7 @@ def list_messages(limit: int = 100) -> list[dict]:
     return repo.list_messages(limit=safe_limit)
 
 
-@app.post("/api/messages/clear-all")
+@app.post("/api/messages/clear-all", dependencies=[Depends(require_admin)])
 def clear_all_messages(payload: ClearMessagesPayload) -> dict:
     if not payload.confirm:
         raise HTTPException(status_code=400, detail="Підтвердіть очищення (confirm=true)")
@@ -935,7 +1025,7 @@ def clear_all_messages(payload: ClearMessagesPayload) -> dict:
     return {"ok": True, "deleted_messages": deleted}
 
 
-@app.post("/api/sources", status_code=201)
+@app.post("/api/sources", status_code=201, dependencies=[Depends(require_admin)])
 def create_source(payload: SourceCreate) -> dict:
     username = _extract_telegram_username(payload.url)
     if not username:
@@ -963,7 +1053,7 @@ def create_source(payload: SourceCreate) -> dict:
         raise HTTPException(status_code=409, detail="Source URL already exists") from exc
 
 
-@app.patch("/api/sources/{source_id}")
+@app.patch("/api/sources/{source_id}", dependencies=[Depends(require_admin)])
 def update_source(source_id: int, payload: SourceUpdate) -> dict:
     updated = repo.update_source(source_id, payload.is_active, payload.ai_enabled)
     if updated is None:
@@ -971,7 +1061,7 @@ def update_source(source_id: int, payload: SourceUpdate) -> dict:
     return updated
 
 
-@app.delete("/api/sources/{source_id}", status_code=204)
+@app.delete("/api/sources/{source_id}", status_code=204, dependencies=[Depends(require_admin)])
 def delete_source(source_id: int) -> None:
     deleted = repo.delete_source(source_id)
     if not deleted:
@@ -983,7 +1073,7 @@ def list_categories() -> list[dict]:
     return repo.list_categories()
 
 
-@app.post("/api/categories", status_code=201)
+@app.post("/api/categories", status_code=201, dependencies=[Depends(require_admin)])
 def create_category(payload: CategoryCreate) -> dict:
     try:
         return repo.create_category(
@@ -995,7 +1085,7 @@ def create_category(payload: CategoryCreate) -> dict:
         raise HTTPException(status_code=409, detail="Category name already exists") from exc
 
 
-@app.delete("/api/categories/{category_id}", status_code=204)
+@app.delete("/api/categories/{category_id}", status_code=204, dependencies=[Depends(require_admin)])
 def delete_category(category_id: int) -> None:
     deleted = repo.delete_category(category_id)
     if not deleted:
@@ -1007,7 +1097,7 @@ def list_keywords() -> list[dict]:
     return repo.list_keywords()
 
 
-@app.post("/api/keywords", status_code=201)
+@app.post("/api/keywords", status_code=201, dependencies=[Depends(require_admin)])
 def create_keyword(payload: KeywordCreate) -> dict:
     try:
         return repo.create_keyword(
@@ -1020,37 +1110,73 @@ def create_keyword(payload: KeywordCreate) -> dict:
         raise HTTPException(status_code=409, detail="Keyword already exists for this category") from exc
 
 
-@app.delete("/api/keywords/{keyword_id}", status_code=204)
+@app.delete("/api/keywords/{keyword_id}", status_code=204, dependencies=[Depends(require_admin)])
 def delete_keyword(keyword_id: int) -> None:
     deleted = repo.delete_keyword(keyword_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Keyword not found")
 
 
-@app.get("/api/integrations")
+SECRET_INTEGRATION_FIELDS = (
+    "claude_api_key",
+    "telegram_api_hash",
+    "telegram_bot_token",
+)
+PUBLIC_INTEGRATION_FIELDS = (
+    "telegram_api_id",
+    "telegram_bot_chat_id",
+)
+
+
+def _integrations_public_view(data: dict) -> dict:
+    result: dict[str, object] = {}
+    for key in SECRET_INTEGRATION_FIELDS:
+        raw = (data.get(key) or "").strip()
+        result[f"{key}_set"] = bool(raw)
+        result[f"{key}_preview"] = _mask_secret(raw)
+    for key in PUBLIC_INTEGRATION_FIELDS:
+        result[key] = (data.get(key) or "").strip()
+    result["claude_model"] = _resolve_claude_model(data.get("claude_model"))
+    return result
+
+
+@app.get("/api/integrations", dependencies=[Depends(require_admin)])
 def get_integrations() -> dict:
-    data = repo.get_integrations()
-    data["claude_model"] = _resolve_claude_model(data.get("claude_model"))
-    return data
+    return _integrations_public_view(repo.get_integrations())
 
 
-@app.post("/api/integrations")
+@app.post("/api/integrations", dependencies=[Depends(require_admin)])
 def save_integrations(payload: IntegrationsPayload) -> dict:
-    data = payload.model_dump()
-    clean = {k: v.strip() if isinstance(v, str) else v for k, v in data.items()}
-    clean["claude_model"] = _resolve_claude_model(clean.get("claude_model"))
-    return repo.save_integrations(clean)
+    incoming = payload.model_dump()
+    existing = repo.get_integrations()
+    merged: dict[str, object] = {}
+    for key in SECRET_INTEGRATION_FIELDS:
+        new_value = (incoming.get(key) or "").strip() if isinstance(incoming.get(key), str) else ""
+        merged[key] = new_value or (existing.get(key) or "").strip()
+    for key in PUBLIC_INTEGRATION_FIELDS:
+        new_value = (incoming.get(key) or "").strip() if isinstance(incoming.get(key), str) else ""
+        merged[key] = new_value or (existing.get(key) or "").strip()
+    merged["claude_model"] = _resolve_claude_model(incoming.get("claude_model"))
+    saved = repo.save_integrations(merged)
+    return _integrations_public_view(saved)
 
 
-@app.post("/api/integrations/validate")
+@app.post("/api/integrations/validate", dependencies=[Depends(require_admin)])
 def validate_integrations(payload: IntegrationsPayload) -> dict:
     data = payload.model_dump()
-    claude_key = (data.get("claude_api_key") or "").strip()
-    claude_model = _resolve_claude_model(data.get("claude_model"))
-    telegram_api_id = (data.get("telegram_api_id") or "").strip()
-    telegram_api_hash = (data.get("telegram_api_hash") or "").strip()
-    telegram_bot_token = (data.get("telegram_bot_token") or "").strip()
-    telegram_bot_chat_id = (data.get("telegram_bot_chat_id") or "").strip()
+    existing = repo.get_integrations()
+
+    def _pick(key: str) -> str:
+        raw = data.get(key)
+        raw_str = (raw or "").strip() if isinstance(raw, str) else ""
+        return raw_str or (existing.get(key) or "").strip()
+
+    claude_key = _pick("claude_api_key")
+    claude_model = _resolve_claude_model(data.get("claude_model") or existing.get("claude_model"))
+    telegram_api_id = _pick("telegram_api_id")
+    telegram_api_hash = _pick("telegram_api_hash")
+    telegram_bot_token = _pick("telegram_bot_token")
+    telegram_bot_chat_id = _pick("telegram_bot_chat_id")
 
     claude_format = bool(
         re.fullmatch(r"sk-ant-(?:api03-)?[A-Za-z0-9_-]{20,}", claude_key)
