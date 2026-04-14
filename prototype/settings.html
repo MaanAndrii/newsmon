@@ -15,7 +15,6 @@
         </div>
         <nav class="flex gap-2 text-sm">
           <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="dashboard.html">Dashboard</a>
-          <a class="px-3 py-2 rounded-lg bg-emerald-600 text-white" href="settings.html">Налаштування</a>
           <button class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-white" onclick="adminLogout()">Вихід адміна</button>
         </nav>
       </div>
@@ -353,44 +352,52 @@
         } catch (_) {}
       }
 
-      function promptAdminToken(message) {
-        const value = window.prompt(message || 'Введіть адмін-токен (NEWSMON_API_TOKEN):', '');
-        if (value == null) return '';
-        const trimmed = value.trim();
-        setAdminToken(trimmed);
-        return trimmed;
-      }
+      // Один активний prompt на всі concurrent authFetch-виклики:
+      // якщо кілька запитів одночасно отримали 401, вони чекають один prompt,
+      // а не відкривають новий для кожного.
+      let pendingTokenPrompt = null;
 
-      function ensureAdminToken() {
-        let token = getAdminToken();
-        if (!token) {
-          token = promptAdminToken('Потрібен адмін-токен для доступу до налаштувань.');
-        }
-        return token;
+      function requestNewAdminToken(message) {
+        if (pendingTokenPrompt) return pendingTokenPrompt;
+        pendingTokenPrompt = Promise.resolve().then(() => {
+          setAdminToken('');
+          const value = window.prompt(message || 'Введіть адмін-токен (NEWSMON_API_TOKEN):', '');
+          if (value == null) return '';
+          const trimmed = value.trim();
+          setAdminToken(trimmed);
+          return trimmed;
+        }).finally(() => {
+          pendingTokenPrompt = null;
+        });
+        return pendingTokenPrompt;
       }
 
       async function authFetch(url, options = {}) {
         const opts = { ...options };
         opts.headers = { ...(options.headers || {}) };
-        const token = ensureAdminToken();
-        if (token) {
-          opts.headers['Authorization'] = `Bearer ${token}`;
-        }
-        let res = await fetch(url, opts);
-        if (res.status === 401) {
-          setAdminToken('');
-          const retryToken = promptAdminToken('Невірний токен. Введіть ще раз:');
-          if (retryToken) {
-            opts.headers['Authorization'] = `Bearer ${retryToken}`;
-            res = await fetch(url, opts);
+        let token = getAdminToken();
+        if (!token) {
+          token = await requestNewAdminToken('Потрібен адмін-токен для доступу до налаштувань.');
+          if (!token) {
+            return new Response(JSON.stringify({ detail: 'Токен не введено' }), { status: 401 });
           }
         }
-        return res;
+        // Нескінченний (максимум 5 спроб) retry-loop: якщо сервер каже 401,
+        // просимо користувача ввести токен заново і повторюємо саме цей запит.
+        for (let attempt = 0; attempt < 5; attempt++) {
+          opts.headers['Authorization'] = `Bearer ${token}`;
+          const res = await fetch(url, opts);
+          if (res.status !== 401) return res;
+          token = await requestNewAdminToken('Невірний токен. Введіть ще раз:');
+          if (!token) return res;
+        }
+        opts.headers['Authorization'] = `Bearer ${token}`;
+        return fetch(url, opts);
       }
 
       function adminLogout() {
         setAdminToken('');
-        window.location.reload();
+        window.location.href = 'dashboard.html';
       }
 
       categoryColorPicker.addEventListener('input', () => {
