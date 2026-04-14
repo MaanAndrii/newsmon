@@ -25,7 +25,7 @@
         <div class="flex flex-wrap gap-2 mb-5">
           <button class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm" onclick="switchTab('apiTab', this)">API та інтеграції</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('monitoringTab', this)">Моніторинг</button>
-          <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('taxonomyTab', this)">Категорії та ключові слова</button>
+          <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('taxonomyTab', this)">Категорії</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('alertsTab', this)">Сповіщення</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('sourcesTab', this)">Джерела</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('debugTab', this)">Debug</button>
@@ -194,31 +194,6 @@
             <p id="categoryMessage" class="text-xs text-slate-400 mt-2"></p>
           </div>
 
-          <div>
-            <h2 class="text-lg font-semibold mb-3">Ключові слова (табличний вигляд)</h2>
-            <div class="overflow-x-auto rounded-lg border border-slate-800">
-              <table class="min-w-full text-sm">
-                <thead class="bg-slate-800 text-slate-300">
-                  <tr>
-                    <th class="text-left p-3">Ключове слово</th>
-                    <th class="text-left p-3">Категорія</th>
-                    <th class="text-left p-3">Мін. оцінка</th>
-                    <th class="text-left p-3">Дія</th>
-                  </tr>
-                </thead>
-                <tbody id="keywordsBody"></tbody>
-              </table>
-            </div>
-            <div class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
-              <input id="keywordPhraseInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Нове ключове слово" />
-              <select id="keywordCategoryInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
-                <option value="">Без категорії</option>
-              </select>
-              <input id="keywordMinScoreInput" type="number" min="0" max="10" value="0" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Мін. оцінка" />
-              <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500" onclick="addKeyword()">Додати ключове слово</button>
-            </div>
-            <p id="keywordMessage" class="text-xs text-slate-400 mt-2"></p>
-          </div>
         </div>
 
         <div id="alertsTab" class="tab-panel hidden space-y-4">
@@ -349,7 +324,6 @@
       const categoryColorValue = document.getElementById('categoryColorValue');
       const sourcesBody = document.getElementById('sourcesBody');
       const categoriesBody = document.getElementById('categoriesBody');
-      const keywordsBody = document.getElementById('keywordsBody');
       const alertsBody = document.getElementById('alertsBody');
       let editingAlertId = null;
 
@@ -506,7 +480,6 @@
         loadMonitorConfig();
         loadSources();
         loadCategories();
-        loadKeywords();
         loadAlerts();
         loadMonitorStatus();
         loadTelethonAuthStatus();
@@ -928,8 +901,6 @@
         if (!res.ok) return;
         const rows = await res.json();
         categoriesBody.innerHTML = rows.map(categoryRow).join('');
-        const select = document.getElementById('keywordCategoryInput');
-        select.innerHTML = '<option value="">Без категорії</option>' + rows.map((row) => `<option value="${Number(row.id)}">${escapeHtml(row.name)}</option>`).join('');
       }
 
       async function addCategory() {
@@ -959,54 +930,108 @@
         document.getElementById('categoryMessage').textContent = res.ok ? 'Категорію видалено.' : 'Не вдалося видалити категорію.';
         if (res.ok) {
           await loadCategories();
-          await loadKeywords();
         }
       }
 
-      function keywordRow(item) {
+      function alertTypeLabel(value) {
+        if (value === 'new_message') return 'Нове повідомлення';
+        if (value === 'min_score') return 'Оцінка >= min';
+        if (value === 'keyword_ai') return 'Ключове слово (AI)';
+        return value || '—';
+      }
+
+      function alertRow(item) {
         return `<tr class="border-t border-slate-800">
-          <td class="p-3">${escapeHtml(item.phrase)}</td>
-          <td class="p-3">${escapeHtml(item.category_name || '—')}</td>
-          <td class="p-3">${Number(item.min_score ?? 0)}</td>
-          <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteKeyword(${Number(item.id)})">Видалити</button></td>
+          <td class="p-3">${escapeHtml(item.name)}</td>
+          <td class="p-3">${escapeHtml(alertTypeLabel(item.alert_type))}</td>
+          <td class="p-3">${escapeHtml(item.source_name || 'Усі')}</td>
+          <td class="p-3">${escapeHtml(item.pattern || '—')}</td>
+          <td class="p-3">${item.min_score == null ? '—' : Number(item.min_score)}</td>
+          <td class="p-3">${escapeHtml(item.target_chat_id || '—')}</td>
+          <td class="p-3">${item.is_enabled ? '<span class="px-2 py-1 rounded bg-emerald-700 text-xs">Увімкнено</span>' : '<span class="px-2 py-1 rounded bg-slate-600 text-xs">Вимкнено</span>'}</td>
+          <td class="p-3 flex gap-2">
+            <button class="px-2 py-1 rounded bg-sky-700 hover:bg-sky-600 text-xs" onclick="startEditAlert(${Number(item.id)})">Редагувати</button>
+            <button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteAlert(${Number(item.id)})">Видалити</button>
+          </td>
         </tr>`;
       }
 
-      async function loadKeywords() {
-        const res = await fetch(`${apiBase}/api/keywords`);
-        if (!res.ok) return;
-        const rows = await res.json();
-        keywordsBody.innerHTML = rows.map(keywordRow).join('');
+      async function loadAlerts() {
+        const [alertsRes, sourcesRes] = await Promise.all([
+          authFetch(`${apiBase}/api/alerts`),
+          fetch(`${apiBase}/api/sources?sort=alpha`),
+        ]);
+        if (!alertsRes.ok) return;
+        const rows = await alertsRes.json();
+        alertsBody.innerHTML = rows.map(alertRow).join('');
+        if (sourcesRes.ok) {
+          const sources = await sourcesRes.json();
+          const select = document.getElementById('alertSourceInput');
+          const selected = select.value;
+          select.innerHTML = '<option value="">Усі канали</option>' + sources.map((s) => `<option value="${Number(s.id)}">${escapeHtml(s.name)}</option>`).join('');
+          if (selected) select.value = selected;
+        }
       }
 
-      async function addKeyword() {
-        const phrase = document.getElementById('keywordPhraseInput').value.trim();
-        const categoryRaw = document.getElementById('keywordCategoryInput').value;
-        const minScoreRaw = document.getElementById('keywordMinScoreInput').value;
-        const min_score = Number.parseInt(minScoreRaw, 10);
-        const category_id = categoryRaw ? Number.parseInt(categoryRaw, 10) : null;
-        if (!phrase) {
-          document.getElementById('keywordMessage').textContent = 'Вкажи ключове слово.';
+      async function saveAlert() {
+        const payload = {
+          name: document.getElementById('alertNameInput').value.trim(),
+          alert_type: document.getElementById('alertTypeInput').value,
+          source_id: document.getElementById('alertSourceInput').value ? Number(document.getElementById('alertSourceInput').value) : null,
+          pattern: document.getElementById('alertPatternInput').value.trim(),
+          min_score: document.getElementById('alertMinScoreInput').value ? Number(document.getElementById('alertMinScoreInput').value) : null,
+          target_chat_id: document.getElementById('alertTargetChatInput').value.trim(),
+          is_enabled: true,
+          is_ai_keyword: true,
+        };
+        if (!payload.name || !payload.target_chat_id) {
+          document.getElementById('alertMessage').textContent = 'Вкажіть назву правила і target chat id.';
           return;
         }
-        const res = await authFetch(`${apiBase}/api/keywords`, {
-          method: 'POST',
+        const method = editingAlertId ? 'PATCH' : 'POST';
+        const url = editingAlertId ? `${apiBase}/api/alerts/${editingAlertId}` : `${apiBase}/api/alerts`;
+        const res = await authFetch(url, {
+          method,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phrase, category_id, min_score: Number.isNaN(min_score) ? 0 : min_score, is_regex: false }),
+          body: JSON.stringify(payload),
         });
         const data = await parseApiBody(res);
-        document.getElementById('keywordMessage').textContent = res.ok ? 'Ключове слово додано.' : (data.detail || 'Не вдалося додати ключове слово.');
+        document.getElementById('alertMessage').textContent = res.ok
+          ? (editingAlertId ? 'Правило оновлено.' : 'Правило створено.')
+          : (data.detail || 'Не вдалося зберегти правило.');
         if (res.ok) {
-          document.getElementById('keywordPhraseInput').value = '';
-          document.getElementById('keywordMinScoreInput').value = '0';
-          await loadKeywords();
+          editingAlertId = null;
+          document.getElementById('alertNameInput').value = '';
+          document.getElementById('alertPatternInput').value = '';
+          document.getElementById('alertTargetChatInput').value = '';
+          document.getElementById('alertMinScoreInput').value = '7';
+          document.getElementById('alertSourceInput').value = '';
+          await loadAlerts();
         }
       }
 
-      async function deleteKeyword(id) {
-        const res = await authFetch(`${apiBase}/api/keywords/${id}`, { method: 'DELETE' });
-        document.getElementById('keywordMessage').textContent = res.ok ? 'Ключове слово видалено.' : 'Не вдалося видалити ключове слово.';
-        if (res.ok) await loadKeywords();
+      async function startEditAlert(alertId) {
+        const res = await authFetch(`${apiBase}/api/alerts`);
+        if (!res.ok) return;
+        const rows = await res.json();
+        const item = rows.find((r) => Number(r.id) === Number(alertId));
+        if (!item) return;
+        editingAlertId = Number(item.id);
+        document.getElementById('alertNameInput').value = item.name || '';
+        document.getElementById('alertTypeInput').value = item.alert_type || 'new_message';
+        document.getElementById('alertSourceInput').value = item.source_id ? String(Number(item.source_id)) : '';
+        document.getElementById('alertPatternInput').value = item.pattern || '';
+        document.getElementById('alertMinScoreInput').value = item.min_score == null ? '7' : String(Number(item.min_score));
+        document.getElementById('alertTargetChatInput').value = item.target_chat_id || '';
+        document.getElementById('alertMessage').textContent = `Редагування правила #${item.id}`;
+      }
+
+      async function deleteAlert(alertId) {
+        const ok = window.confirm('Видалити правило сповіщення?');
+        if (!ok) return;
+        const res = await authFetch(`${apiBase}/api/alerts/${alertId}`, { method: 'DELETE' });
+        document.getElementById('alertMessage').textContent = res.ok ? 'Правило видалено.' : 'Не вдалося видалити правило.';
+        if (res.ok) await loadAlerts();
       }
 
       function alertTypeLabel(value) {

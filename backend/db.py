@@ -731,6 +731,20 @@ class Repository:
             cur = conn.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
         return cur.rowcount > 0
 
+    def list_alert_keywords(self) -> list[str]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT TRIM(pattern) AS keyword
+                FROM alerts
+                WHERE alert_type = 'keyword_ai'
+                  AND is_enabled = 1
+                  AND TRIM(pattern) <> ''
+                ORDER BY LOWER(TRIM(pattern)) ASC
+                """
+            ).fetchall()
+        return [str(r["keyword"]) for r in rows if r["keyword"]]
+
     def get_message_by_id(self, message_id: int) -> dict[str, Any] | None:
         with get_connection() as conn:
             row = conn.execute(

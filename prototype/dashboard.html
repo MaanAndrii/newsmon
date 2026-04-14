@@ -276,7 +276,7 @@
           const [catRes, sourceRes, keywordsRes] = await Promise.all([
             fetch('/api/categories'),
             fetch('/api/sources?sort=alpha'),
-            fetch('/api/keywords'),
+            fetch('/api/filters/keywords'),
           ]);
           if (catRes.ok) {
             const categories = await catRes.json();
@@ -303,10 +303,10 @@
           if (keywordsRes.ok) {
             const keywords = await keywordsRes.json();
             filterKeywordInput.innerHTML = '<option value="">Всі ключові слова</option>';
-            for (const keyword of keywords) {
+            for (const keyword of keywords || []) {
               const opt = document.createElement('option');
-              opt.value = keyword.phrase || '';
-              opt.textContent = keyword.phrase || '—';
+              opt.value = keyword || '';
+              opt.textContent = keyword || '—';
               filterKeywordInput.appendChild(opt);
             }
             filterKeywordInput.value = queryStateCache.keyword || '';

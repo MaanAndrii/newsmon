@@ -651,6 +651,8 @@ async def _process_ai_queue(limit: int = 20) -> None:
                     categories,
                     ai_prompt,
                 )
+                if category is None:
+                    category = _get_default_category_name()
                 repo.mark_ai_result(message_id, score, category)
                 await _process_alerts_for_message(message_id, "ai_scored", score=score)
             except Exception as exc:
@@ -1241,6 +1243,11 @@ def list_messages(
         source_id=source_filter,
         keyword=keyword_filter,
     )
+
+
+@app.get("/api/filters/keywords")
+def list_filter_keywords() -> list[str]:
+    return repo.list_alert_keywords()
 
 
 @app.post("/api/messages/clear-all", dependencies=[Depends(require_admin)])

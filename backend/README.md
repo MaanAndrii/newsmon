@@ -27,6 +27,7 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 - `PATCH /api/sources/{id}`
 - `DELETE /api/sources/{id}`
 - `GET /api/messages`
+- `GET /api/filters/keywords`
 - `POST /api/messages/clear-all`
 - `GET /api/categories`
 - `POST /api/categories`
