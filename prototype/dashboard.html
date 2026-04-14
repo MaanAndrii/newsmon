@@ -13,11 +13,12 @@
           <h1 class="text-xl font-bold">NewsMon — Моніторинг Telegram-каналів</h1>
           <p class="text-xs text-slate-400">Прототип Dashboard (mock дані)</p>
         </div>
-        <nav class="flex gap-2 text-sm">
+        <nav class="flex flex-wrap gap-2 text-sm items-center">
           <a class="px-3 py-2 rounded-lg bg-emerald-600 text-white" href="dashboard.html">Dashboard</a>
           <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="settings.html">Налаштування</a>
-          <!-- <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Пошук</a> -->
-          <!-- <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Сповіщення</a> -->
+          <input id="searchInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 placeholder:text-slate-400 min-w-56" placeholder="Пошук по всіх повідомленнях..." />
+          <button id="filterBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">Фільтр</button>
+          <button id="resetFiltersBtn" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600">Скинути</button>
         </nav>
       </div>
     </header>
@@ -53,6 +54,7 @@
         </div>
       </section>
 
+      <section id="queryState" class="mb-4 text-xs text-slate-400"></section>
       <section id="messagesGrid" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></section>
     </main>
 
@@ -91,6 +93,38 @@
         </div>
       </div>
     </div>
+    <div id="filtersModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+      <div class="w-full max-w-xl rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+          <h3 class="font-semibold text-lg">Фільтри стрічки</h3>
+          <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeFiltersModal()">Закрити</button>
+        </div>
+        <div class="p-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <label class="flex flex-col gap-1">
+            <span class="text-slate-300">Категорія</span>
+            <select id="filterCategoryInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700">
+              <option value="">Всі категорії</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-slate-300">Канал</span>
+            <select id="filterSourceInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700">
+              <option value="">Всі канали</option>
+            </select>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-slate-300">Ключове слово</span>
+            <select id="filterKeywordInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700">
+              <option value="">Всі ключові слова</option>
+            </select>
+          </label>
+        </div>
+        <div class="px-4 pb-4 flex gap-2 justify-end">
+          <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="clearModalFilters()">Очистити</button>
+          <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="applyModalFilters()">Застосувати</button>
+        </div>
+      </div>
+    </div>
 
     <footer class="border-t border-slate-800 bg-slate-900">
       <div class="max-w-7xl mx-auto px-4 py-3 text-xs text-slate-400 flex justify-between">
@@ -108,7 +142,14 @@
       const modalText = document.getElementById('modalText');
       const modalTelegramLink = document.getElementById('modalTelegramLink');
       const messagesGrid = document.getElementById('messagesGrid');
+      const filtersModal = document.getElementById('filtersModal');
+      const queryState = document.getElementById('queryState');
+      const searchInput = document.getElementById('searchInput');
+      const filterCategoryInput = document.getElementById('filterCategoryInput');
+      const filterSourceInput = document.getElementById('filterSourceInput');
+      const filterKeywordInput = document.getElementById('filterKeywordInput');
       const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
+      const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '' };
 
       function escapeHtml(value) {
         return String(value || '')
@@ -163,6 +204,24 @@
         return `<span class="px-2 py-1 rounded text-sm bg-slate-600">${score}</span>`;
       }
 
+      function updateQueryStateLabel() {
+        const parts = [];
+        if (queryStateCache.search) parts.push(`Пошук: "${queryStateCache.search}"`);
+        if (queryStateCache.category) parts.push(`Категорія: ${queryStateCache.category}`);
+        if (queryStateCache.sourceName) parts.push(`Канал: ${queryStateCache.sourceName}`);
+        if (queryStateCache.keyword) parts.push(`Ключове слово: ${queryStateCache.keyword}`);
+        queryState.textContent = parts.length
+          ? `${parts.join(' • ')}. Показано результати за датою (новіші зверху).`
+          : 'Показано всі новини за датою (новіші зверху).';
+      }
+
+      function applyCategoryFilter(categoryName) {
+        const normalized = String(categoryName || '').trim();
+        queryStateCache.category = normalized;
+        filterCategoryInput.value = normalized;
+        loadMessages();
+      }
+
       function renderMessageCard(item) {
         const preview = escapeHtml((item.text || 'Повідомлення без тексту').slice(0, 280));
         const fullText = escapeHtml(item.text || '');
@@ -171,7 +230,9 @@
             <div><p class="font-semibold">${escapeHtml(item.source_name)}</p><p class="text-xs text-slate-400">${formatPublishedAt(item.published_at)}</p></div>
             <div class="flex gap-1 items-center">
               ${scoreBadge(item.ai_score)}
-              <span class="px-2 py-1 rounded text-sm bg-sky-700">${escapeHtml(item.ai_category || '—')}</span>
+              <button class="px-2 py-1 rounded text-sm bg-sky-700 hover:bg-sky-600" data-category="${escapeHtml(item.ai_category || '')}" onclick="applyCategoryFilter(this.dataset.category)" title="Фільтрувати за категорією">
+                ${escapeHtml(item.ai_category || '—')}
+              </button>
             </div>
           </div>
           <p class="text-sm leading-relaxed text-slate-200">${preview}</p>
@@ -186,7 +247,12 @@
 
       async function loadMessages() {
         try {
-          const res = await fetch('/api/messages?limit=100');
+          const params = new URLSearchParams({ limit: '200' });
+          if (queryStateCache.search) params.set('q', queryStateCache.search);
+          if (queryStateCache.category) params.set('category', queryStateCache.category);
+          if (queryStateCache.sourceId) params.set('source_id', queryStateCache.sourceId);
+          if (queryStateCache.keyword) params.set('keyword', queryStateCache.keyword);
+          const res = await fetch(`/api/messages?${params.toString()}`);
           const items = res.ok ? await res.json() : [];
           const unique = [];
           const seen = new Set();
@@ -199,9 +265,84 @@
           messagesGrid.innerHTML = unique.length
             ? unique.map(renderMessageCard).join('')
             : `<article class="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-300">Поки що немає зібраних повідомлень.</article>`;
+          updateQueryStateLabel();
         } catch (error) {
           messagesGrid.innerHTML = `<article class="rounded-xl border border-rose-700/40 bg-rose-950/20 p-6 text-sm text-rose-200">Не вдалося завантажити стрічку: ${error}</article>`;
         }
+      }
+
+      async function loadFilterOptions() {
+        try {
+          const [catRes, sourceRes, keywordsRes] = await Promise.all([
+            fetch('/api/categories'),
+            fetch('/api/sources?sort=alpha'),
+            fetch('/api/keywords'),
+          ]);
+          if (catRes.ok) {
+            const categories = await catRes.json();
+            filterCategoryInput.innerHTML = '<option value="">Всі категорії</option>';
+            for (const category of categories) {
+              const opt = document.createElement('option');
+              opt.value = category.name || '';
+              opt.textContent = category.name || '—';
+              filterCategoryInput.appendChild(opt);
+            }
+            filterCategoryInput.value = queryStateCache.category || '';
+          }
+          if (sourceRes.ok) {
+            const sources = await sourceRes.json();
+            filterSourceInput.innerHTML = '<option value="">Всі канали</option>';
+            for (const source of sources) {
+              const opt = document.createElement('option');
+              opt.value = String(Number(source.id || 0));
+              opt.textContent = source.name || '—';
+              filterSourceInput.appendChild(opt);
+            }
+            filterSourceInput.value = queryStateCache.sourceId || '';
+          }
+          if (keywordsRes.ok) {
+            const keywords = await keywordsRes.json();
+            filterKeywordInput.innerHTML = '<option value="">Всі ключові слова</option>';
+            for (const keyword of keywords) {
+              const opt = document.createElement('option');
+              opt.value = keyword.phrase || '';
+              opt.textContent = keyword.phrase || '—';
+              filterKeywordInput.appendChild(opt);
+            }
+            filterKeywordInput.value = queryStateCache.keyword || '';
+          }
+        } catch (e) {
+          // ignore filters loading errors for dashboard fallback
+        }
+      }
+
+      function openFiltersModal() {
+        filterCategoryInput.value = queryStateCache.category || '';
+        filterSourceInput.value = queryStateCache.sourceId || '';
+        filterKeywordInput.value = queryStateCache.keyword || '';
+        filtersModal.classList.remove('hidden');
+        filtersModal.classList.add('flex');
+      }
+
+      function closeFiltersModal() {
+        filtersModal.classList.add('hidden');
+        filtersModal.classList.remove('flex');
+      }
+
+      function clearModalFilters() {
+        filterCategoryInput.value = '';
+        filterSourceInput.value = '';
+        filterKeywordInput.value = '';
+      }
+
+      function applyModalFilters() {
+        queryStateCache.category = filterCategoryInput.value.trim();
+        queryStateCache.sourceId = filterSourceInput.value.trim();
+        queryStateCache.keyword = filterKeywordInput.value.trim();
+        const sourceOption = filterSourceInput.options[filterSourceInput.selectedIndex];
+        queryStateCache.sourceName = queryStateCache.sourceId ? String(sourceOption?.textContent || '') : '';
+        closeFiltersModal();
+        loadMessages();
       }
 
       function paintStatusCard(cardId, isOk) {
@@ -288,6 +429,27 @@
         systemStatusModal.classList.remove('flex');
       }
 
+      searchInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          queryStateCache.search = searchInput.value.trim();
+          loadMessages();
+        }
+      });
+      document.getElementById('filterBtn').addEventListener('click', () => {
+        openFiltersModal();
+      });
+      document.getElementById('resetFiltersBtn').addEventListener('click', () => {
+        queryStateCache.search = '';
+        queryStateCache.category = '';
+        queryStateCache.sourceId = '';
+        queryStateCache.sourceName = '';
+        queryStateCache.keyword = '';
+        searchInput.value = '';
+        clearModalFilters();
+        loadMessages();
+      });
+
+      loadFilterOptions();
       loadMessages();
       loadSystemStatus();
       setInterval(loadMessages, 10000);
