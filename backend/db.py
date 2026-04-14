@@ -206,11 +206,14 @@ class Repository:
         limit: int = 100,
         search_query: str | None = None,
         category: str | None = None,
+        source_id: int | None = None,
+        keyword: str | None = None,
     ) -> list[dict[str, Any]]:
         where_parts = ["m.ai_status = 'done'"]
         params: list[Any] = []
         search_raw = (search_query or "").strip()
         category_raw = (category or "").strip()
+        keyword_raw = (keyword or "").strip()
         if search_raw:
             where_parts.append(
                 "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)"
@@ -219,6 +222,12 @@ class Repository:
         if category_raw:
             where_parts.append("m.ai_category = ?")
             params.append(category_raw)
+        if source_id is not None and int(source_id) > 0:
+            where_parts.append("m.source_id = ?")
+            params.append(int(source_id))
+        if keyword_raw:
+            where_parts.append("LOWER(COALESCE(m.text, '')) LIKE LOWER(?)")
+            params.append(f"%{keyword_raw}%")
         params.append(limit)
         query = f"""
             SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
@@ -243,6 +252,12 @@ class Repository:
                     if category_raw:
                         fallback_where.append("m.ai_category = ?")
                         fallback_params.append(category_raw)
+                    if source_id is not None and int(source_id) > 0:
+                        fallback_where.append("m.source_id = ?")
+                        fallback_params.append(int(source_id))
+                    if keyword_raw:
+                        fallback_where.append("LOWER(COALESCE(m.text, '')) LIKE LOWER(?)")
+                        fallback_params.append(f"%{keyword_raw}%")
                     fallback_params.append(limit)
                     fallback_query = f"""
                         SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
