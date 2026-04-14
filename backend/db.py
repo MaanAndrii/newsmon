@@ -130,6 +130,11 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 pattern TEXT NOT NULL,
+                alert_type TEXT NOT NULL DEFAULT 'new_message',
+                source_id INTEGER NULL REFERENCES sources(id) ON DELETE SET NULL,
+                min_score INTEGER NULL CHECK(min_score BETWEEN 0 AND 10),
+                target_chat_id TEXT NOT NULL DEFAULT '',
+                is_ai_keyword INTEGER NOT NULL DEFAULT 0,
                 is_enabled INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
@@ -162,6 +167,15 @@ def init_db() -> None:
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS alert_deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_id INTEGER NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
+                message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+                matched_keyword TEXT NULL,
+                delivered_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(alert_id, message_id)
+            );
             """
         )
         _ensure_column(conn, "sources", "ai_enabled", "INTEGER NOT NULL DEFAULT 1")
@@ -172,6 +186,11 @@ def init_db() -> None:
         _ensure_column(conn, "integrations", "claude_model", "TEXT NULL DEFAULT 'claude-haiku-4-5-20251001'")
         _ensure_column(conn, "integrations", "telegram_bot_token", "TEXT NULL")
         _ensure_column(conn, "integrations", "telegram_bot_chat_id", "TEXT NULL")
+        _ensure_column(conn, "alerts", "alert_type", "TEXT NOT NULL DEFAULT 'new_message'")
+        _ensure_column(conn, "alerts", "source_id", "INTEGER NULL REFERENCES sources(id) ON DELETE SET NULL")
+        _ensure_column(conn, "alerts", "min_score", "INTEGER NULL CHECK(min_score BETWEEN 0 AND 10)")
+        _ensure_column(conn, "alerts", "target_chat_id", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "alerts", "is_ai_keyword", "INTEGER NOT NULL DEFAULT 0")
 
 
 def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, ddl: str) -> None:
@@ -253,6 +272,30 @@ class Repository:
         with get_connection() as conn:
             row = conn.execute("SELECT COUNT(*) AS cnt FROM messages").fetchone()
         return int(row["cnt"] or 0)
+
+    def enforce_max_messages(self, max_messages: int) -> int:
+        safe_limit = max(500, min(10000, int(max_messages)))
+        with get_connection() as conn:
+            row = conn.execute("SELECT COUNT(*) AS cnt FROM messages").fetchone()
+            total = int(row["cnt"] or 0)
+            excess = max(0, total - safe_limit)
+            if excess <= 0:
+                return 0
+            old_rows = conn.execute(
+                """
+                SELECT id
+                FROM messages
+                ORDER BY datetime(published_at) ASC, id ASC
+                LIMIT ?
+                """,
+                (excess,),
+            ).fetchall()
+            ids = [int(r["id"]) for r in old_rows]
+            if not ids:
+                return 0
+            placeholders = ",".join("?" for _ in ids)
+            conn.execute(f"DELETE FROM messages WHERE id IN ({placeholders})", ids)
+        return excess
 
     def upsert_message(
         self,
@@ -575,4 +618,133 @@ class Repository:
             conn.execute(
                 "UPDATE messages SET ai_status = 'error', updated_at = datetime('now') WHERE id = ?",
                 (message_id,),
+            )
+
+    def list_alerts(self) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT a.id, a.name, a.pattern, a.alert_type, a.source_id,
+                       s.name AS source_name, a.min_score, a.target_chat_id,
+                       a.is_ai_keyword, a.is_enabled, a.created_at
+                FROM alerts a
+                LEFT JOIN sources s ON s.id = a.source_id
+                ORDER BY a.id DESC
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def create_alert(
+        self,
+        name: str,
+        pattern: str,
+        alert_type: str,
+        source_id: int | None,
+        min_score: int | None,
+        target_chat_id: str,
+        is_ai_keyword: bool,
+        is_enabled: bool,
+    ) -> dict[str, Any]:
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO alerts(name, pattern, alert_type, source_id, min_score, target_chat_id, is_ai_keyword, is_enabled)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (name, pattern, alert_type, source_id, min_score, target_chat_id, int(is_ai_keyword), int(is_enabled)),
+            )
+            row = conn.execute(
+                """
+                SELECT a.id, a.name, a.pattern, a.alert_type, a.source_id,
+                       s.name AS source_name, a.min_score, a.target_chat_id,
+                       a.is_ai_keyword, a.is_enabled, a.created_at
+                FROM alerts a
+                LEFT JOIN sources s ON s.id = a.source_id
+                WHERE a.id = ?
+                """,
+                (cur.lastrowid,),
+            ).fetchone()
+        return dict(row)
+
+    def update_alert(
+        self,
+        alert_id: int,
+        name: str | None = None,
+        pattern: str | None = None,
+        alert_type: str | None = None,
+        source_id: int | None = None,
+        min_score: int | None = None,
+        target_chat_id: str | None = None,
+        is_ai_keyword: bool | None = None,
+        is_enabled: bool | None = None,
+    ) -> dict[str, Any] | None:
+        with get_connection() as conn:
+            row = conn.execute("SELECT id FROM alerts WHERE id = ?", (alert_id,)).fetchone()
+            if not row:
+                return None
+            if name is not None:
+                conn.execute("UPDATE alerts SET name = ? WHERE id = ?", (name, alert_id))
+            if pattern is not None:
+                conn.execute("UPDATE alerts SET pattern = ? WHERE id = ?", (pattern, alert_id))
+            if alert_type is not None:
+                conn.execute("UPDATE alerts SET alert_type = ? WHERE id = ?", (alert_type, alert_id))
+            if source_id is not None:
+                conn.execute("UPDATE alerts SET source_id = ? WHERE id = ?", (source_id, alert_id))
+            if min_score is not None:
+                conn.execute("UPDATE alerts SET min_score = ? WHERE id = ?", (min_score, alert_id))
+            if target_chat_id is not None:
+                conn.execute("UPDATE alerts SET target_chat_id = ? WHERE id = ?", (target_chat_id, alert_id))
+            if is_ai_keyword is not None:
+                conn.execute("UPDATE alerts SET is_ai_keyword = ? WHERE id = ?", (int(is_ai_keyword), alert_id))
+            if is_enabled is not None:
+                conn.execute("UPDATE alerts SET is_enabled = ? WHERE id = ?", (int(is_enabled), alert_id))
+            updated = conn.execute(
+                """
+                SELECT a.id, a.name, a.pattern, a.alert_type, a.source_id,
+                       s.name AS source_name, a.min_score, a.target_chat_id,
+                       a.is_ai_keyword, a.is_enabled, a.created_at
+                FROM alerts a
+                LEFT JOIN sources s ON s.id = a.source_id
+                WHERE a.id = ?
+                """,
+                (alert_id,),
+            ).fetchone()
+        return dict(updated) if updated else None
+
+    def delete_alert(self, alert_id: int) -> bool:
+        with get_connection() as conn:
+            cur = conn.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
+        return cur.rowcount > 0
+
+    def get_message_by_id(self, message_id: int) -> dict[str, Any] | None:
+        with get_connection() as conn:
+            row = conn.execute(
+                """
+                SELECT m.id, m.source_id, s.name AS source_name, m.tg_message_id, m.published_at,
+                       m.text, m.ai_score, m.ai_category, m.telegram_url
+                FROM messages m
+                JOIN sources s ON s.id = m.source_id
+                WHERE m.id = ?
+                """,
+                (message_id,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def is_alert_delivered(self, alert_id: int, message_id: int) -> bool:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT 1 AS ok FROM alert_deliveries WHERE alert_id = ? AND message_id = ?",
+                (alert_id, message_id),
+            ).fetchone()
+        return bool(row)
+
+    def mark_alert_delivered(self, alert_id: int, message_id: int, matched_keyword: str | None = None) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO alert_deliveries(alert_id, message_id, matched_keyword, delivered_at)
+                VALUES (?, ?, ?, datetime('now'))
+                ON CONFLICT(alert_id, message_id) DO NOTHING
+                """,
+                (alert_id, message_id, matched_keyword),
             )

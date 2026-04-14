@@ -16,7 +16,6 @@
         <nav class="flex flex-wrap gap-2 text-sm items-center">
           <a class="px-3 py-2 rounded-lg bg-emerald-600 text-white" href="dashboard.html">Dashboard</a>
           <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="settings.html">Налаштування</a>
-          <button id="searchBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">Пошук</button>
           <input id="searchInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 placeholder:text-slate-400 min-w-56" placeholder="Пошук по всіх повідомленнях..." />
           <button id="filterBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">Фільтр</button>
           <select id="categoryFilter" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 hidden min-w-48">
@@ -339,10 +338,6 @@
         systemStatusModal.classList.remove('flex');
       }
 
-      document.getElementById('searchBtn').addEventListener('click', () => {
-        queryStateCache.search = searchInput.value.trim();
-        loadMessages();
-      });
       searchInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
           queryStateCache.search = searchInput.value.trim();

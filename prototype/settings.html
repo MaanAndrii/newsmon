@@ -76,10 +76,6 @@
               <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
             </label>
             <label class="flex flex-col gap-1">
-              <span class="text-slate-300">Telegram Bot Chat ID</span>
-              <input id="telegramBotChatId" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="-1001234567890" />
-            </label>
-            <label class="flex flex-col gap-1">
               <span class="text-slate-300">Claude Model</span>
               <select id="claudeModel" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
                 <option value="claude-opus-4-6">Claude Opus 4.6</option>
@@ -145,6 +141,13 @@
                 <p class="text-xs text-slate-400">Скільки старих повідомлень можна дозавантажити за один запуск (1..10).</p>
               </div>
               <input id="monitorFetchDepth" type="number" min="1" max="10" step="1" class="w-20 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="3" />
+            </div>
+            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+              <div>
+                <p class="font-medium">Макс. повідомлень у БД</p>
+                <p class="text-xs text-slate-400">Зберігати від 500 до 10000 повідомлень. Старіші будуть видалятись автоматично.</p>
+              </div>
+              <input id="monitorMaxMessages" type="number" min="500" max="10000" step="100" class="w-28 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="5000" />
             </div>
             <div class="rounded-lg border border-slate-800 p-3 md:col-span-2">
               <p class="font-medium mb-1">Промт для оцінки важливості</p>
@@ -224,38 +227,35 @@
             <table class="min-w-full text-sm">
               <thead class="bg-slate-800 text-slate-300">
                 <tr>
-                  <th class="text-left p-3">Правило</th>
+                  <th class="text-left p-3">Назва</th>
+                  <th class="text-left p-3">Тип</th>
                   <th class="text-left p-3">Канал</th>
-                  <th class="text-left p-3">Категорія</th>
+                  <th class="text-left p-3">Pattern/keyword</th>
                   <th class="text-left p-3">Мін. оцінка</th>
+                  <th class="text-left p-3">Target chat</th>
                   <th class="text-left p-3">Статус</th>
+                  <th class="text-left p-3">Дії</th>
                 </tr>
               </thead>
-              <tbody>
-                <tr class="border-t border-slate-800">
-                  <td class="p-3">вибух</td>
-                  <td class="p-3">@ukraine_news</td>
-                  <td class="p-3">Надзвичайні події</td>
-                  <td class="p-3">7</td>
-                  <td class="p-3"><span class="px-2 py-1 rounded bg-emerald-700 text-xs">Увімкнено</span></td>
-                </tr>
-                <tr class="border-t border-slate-800">
-                  <td class="p-3">кадрові зміни</td>
-                  <td class="p-3">@city_live</td>
-                  <td class="p-3">Політика</td>
-                  <td class="p-3">6</td>
-                  <td class="p-3"><span class="px-2 py-1 rounded bg-slate-600 text-xs">Вимкнено</span></td>
-                </tr>
-              </tbody>
+              <tbody id="alertsBody"></tbody>
             </table>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-5 gap-2 text-sm">
-            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Ключове слово / regex" />
-            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Канал" />
-            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Категорія" />
-            <input class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Мін. оцінка" />
-            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500">Додати правило</button>
+          <div class="grid grid-cols-1 md:grid-cols-7 gap-2 text-sm">
+            <input id="alertNameInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Назва правила" />
+            <select id="alertTypeInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
+              <option value="new_message">Нове повідомлення</option>
+              <option value="min_score">Оцінка >= min</option>
+              <option value="keyword_ai">Ключове слово (AI)</option>
+            </select>
+            <select id="alertSourceInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
+              <option value="">Усі канали</option>
+            </select>
+            <input id="alertPatternInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Ключове слово / pattern" />
+            <input id="alertMinScoreInput" type="number" min="0" max="10" value="7" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Мін. оцінка" />
+            <input id="alertTargetChatInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="-100..." />
+            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500" onclick="saveAlert()">Зберегти правило</button>
           </div>
+          <p id="alertMessage" class="text-xs text-slate-400"></p>
         </div>
 
         <div id="sourcesTab" class="tab-panel hidden space-y-4">
@@ -350,6 +350,8 @@
       const sourcesBody = document.getElementById('sourcesBody');
       const categoriesBody = document.getElementById('categoriesBody');
       const keywordsBody = document.getElementById('keywordsBody');
+      const alertsBody = document.getElementById('alertsBody');
+      let editingAlertId = null;
 
       function escapeHtml(value) {
         if (value == null) return '';
@@ -505,6 +507,7 @@
         loadSources();
         loadCategories();
         loadKeywords();
+        loadAlerts();
         loadMonitorStatus();
         loadTelethonAuthStatus();
         loadDebugStats();
@@ -560,6 +563,7 @@
           loadMonitorConfig();
           loadMonitorStatus();
         }
+        if (tabId === 'alertsTab') loadAlerts();
         if (tabId === 'debugTab') loadDebugStats();
       }
 
@@ -570,12 +574,10 @@
         const apiId = trim('telegramApiId');
         const apiHash = trim('telegramApiHash');
         const botToken = trim('telegramBotToken');
-        const botChatId = trim('telegramBotChatId');
         if (claudeKey) payload.claude_api_key = claudeKey;
         if (apiId) payload.telegram_api_id = apiId;
         if (apiHash) payload.telegram_api_hash = apiHash;
         if (botToken) payload.telegram_bot_token = botToken;
-        if (botChatId) payload.telegram_bot_chat_id = botChatId;
         return payload;
       }
 
@@ -613,7 +615,6 @@
         applySecretPlaceholder('telegramBotToken', data.telegram_bot_token_set, data.telegram_bot_token_preview);
         document.getElementById('claudeModel').value = data.claude_model || 'claude-haiku-4-5-20251001';
         document.getElementById('telegramApiId').value = data.telegram_api_id || '';
-        document.getElementById('telegramBotChatId').value = data.telegram_bot_chat_id || '';
       }
 
       async function saveIntegrations() {
@@ -689,6 +690,7 @@
         document.getElementById('monitorCollectEnabled').checked = !!data.collect_enabled;
         document.getElementById('monitorIntervalSeconds').value = Number(data.interval_seconds || 600);
         document.getElementById('monitorFetchDepth').value = Number(data.fetch_depth || 3);
+        document.getElementById('monitorMaxMessages').value = Number(data.max_messages || 5000);
         document.getElementById('monitorAiPrompt').value = data.ai_prompt || '';
         updateMonitorFormState();
         document.getElementById('monitorConfigMessage').textContent = 'Налаштування моніторингу завантажено.';
@@ -707,6 +709,7 @@
           collect_enabled: document.getElementById('monitorCollectEnabled').checked,
           interval_seconds: Number(document.getElementById('monitorIntervalSeconds').value || 600),
           fetch_depth: Number(document.getElementById('monitorFetchDepth').value || 3),
+          max_messages: Number(document.getElementById('monitorMaxMessages').value || 5000),
           ai_prompt: document.getElementById('monitorAiPrompt').value,
         };
         const res = await authFetch(`${apiBase}/api/monitor/config`, {
@@ -716,7 +719,7 @@
         });
         const data = await parseApiBody(res);
         document.getElementById('monitorConfigMessage').textContent = res.ok
-          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, інтервал: ${data.interval_seconds} сек, глибина: ${data.fetch_depth}.`
+          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, інтервал: ${data.interval_seconds} сек, глибина: ${data.fetch_depth}, ліміт БД: ${data.max_messages}.`
           : (data.detail || 'Не вдалося зберегти налаштування моніторингу.');
       }
 
@@ -1004,6 +1007,107 @@
         const res = await authFetch(`${apiBase}/api/keywords/${id}`, { method: 'DELETE' });
         document.getElementById('keywordMessage').textContent = res.ok ? 'Ключове слово видалено.' : 'Не вдалося видалити ключове слово.';
         if (res.ok) await loadKeywords();
+      }
+
+      function alertTypeLabel(value) {
+        if (value === 'new_message') return 'Нове повідомлення';
+        if (value === 'min_score') return 'Оцінка >= min';
+        if (value === 'keyword_ai') return 'Ключове слово (AI)';
+        return value || '—';
+      }
+
+      function alertRow(item) {
+        return `<tr class="border-t border-slate-800">
+          <td class="p-3">${escapeHtml(item.name)}</td>
+          <td class="p-3">${escapeHtml(alertTypeLabel(item.alert_type))}</td>
+          <td class="p-3">${escapeHtml(item.source_name || 'Усі')}</td>
+          <td class="p-3">${escapeHtml(item.pattern || '—')}</td>
+          <td class="p-3">${item.min_score == null ? '—' : Number(item.min_score)}</td>
+          <td class="p-3">${escapeHtml(item.target_chat_id || '—')}</td>
+          <td class="p-3">${item.is_enabled ? '<span class="px-2 py-1 rounded bg-emerald-700 text-xs">Увімкнено</span>' : '<span class="px-2 py-1 rounded bg-slate-600 text-xs">Вимкнено</span>'}</td>
+          <td class="p-3 flex gap-2">
+            <button class="px-2 py-1 rounded bg-sky-700 hover:bg-sky-600 text-xs" onclick="startEditAlert(${Number(item.id)})">Редагувати</button>
+            <button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteAlert(${Number(item.id)})">Видалити</button>
+          </td>
+        </tr>`;
+      }
+
+      async function loadAlerts() {
+        const [alertsRes, sourcesRes] = await Promise.all([
+          authFetch(`${apiBase}/api/alerts`),
+          fetch(`${apiBase}/api/sources?sort=alpha`),
+        ]);
+        if (!alertsRes.ok) return;
+        const rows = await alertsRes.json();
+        alertsBody.innerHTML = rows.map(alertRow).join('');
+        if (sourcesRes.ok) {
+          const sources = await sourcesRes.json();
+          const select = document.getElementById('alertSourceInput');
+          const selected = select.value;
+          select.innerHTML = '<option value="">Усі канали</option>' + sources.map((s) => `<option value="${Number(s.id)}">${escapeHtml(s.name)}</option>`).join('');
+          if (selected) select.value = selected;
+        }
+      }
+
+      async function saveAlert() {
+        const payload = {
+          name: document.getElementById('alertNameInput').value.trim(),
+          alert_type: document.getElementById('alertTypeInput').value,
+          source_id: document.getElementById('alertSourceInput').value ? Number(document.getElementById('alertSourceInput').value) : null,
+          pattern: document.getElementById('alertPatternInput').value.trim(),
+          min_score: document.getElementById('alertMinScoreInput').value ? Number(document.getElementById('alertMinScoreInput').value) : null,
+          target_chat_id: document.getElementById('alertTargetChatInput').value.trim(),
+          is_enabled: true,
+          is_ai_keyword: true,
+        };
+        if (!payload.name || !payload.target_chat_id) {
+          document.getElementById('alertMessage').textContent = 'Вкажіть назву правила і target chat id.';
+          return;
+        }
+        const method = editingAlertId ? 'PATCH' : 'POST';
+        const url = editingAlertId ? `${apiBase}/api/alerts/${editingAlertId}` : `${apiBase}/api/alerts`;
+        const res = await authFetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await parseApiBody(res);
+        document.getElementById('alertMessage').textContent = res.ok
+          ? (editingAlertId ? 'Правило оновлено.' : 'Правило створено.')
+          : (data.detail || 'Не вдалося зберегти правило.');
+        if (res.ok) {
+          editingAlertId = null;
+          document.getElementById('alertNameInput').value = '';
+          document.getElementById('alertPatternInput').value = '';
+          document.getElementById('alertTargetChatInput').value = '';
+          document.getElementById('alertMinScoreInput').value = '7';
+          document.getElementById('alertSourceInput').value = '';
+          await loadAlerts();
+        }
+      }
+
+      async function startEditAlert(alertId) {
+        const res = await authFetch(`${apiBase}/api/alerts`);
+        if (!res.ok) return;
+        const rows = await res.json();
+        const item = rows.find((r) => Number(r.id) === Number(alertId));
+        if (!item) return;
+        editingAlertId = Number(item.id);
+        document.getElementById('alertNameInput').value = item.name || '';
+        document.getElementById('alertTypeInput').value = item.alert_type || 'new_message';
+        document.getElementById('alertSourceInput').value = item.source_id ? String(Number(item.source_id)) : '';
+        document.getElementById('alertPatternInput').value = item.pattern || '';
+        document.getElementById('alertMinScoreInput').value = item.min_score == null ? '7' : String(Number(item.min_score));
+        document.getElementById('alertTargetChatInput').value = item.target_chat_id || '';
+        document.getElementById('alertMessage').textContent = `Редагування правила #${item.id}`;
+      }
+
+      async function deleteAlert(alertId) {
+        const ok = window.confirm('Видалити правило сповіщення?');
+        if (!ok) return;
+        const res = await authFetch(`${apiBase}/api/alerts/${alertId}`, { method: 'DELETE' });
+        document.getElementById('alertMessage').textContent = res.ok ? 'Правило видалено.' : 'Не вдалося видалити правило.';
+        if (res.ok) await loadAlerts();
       }
 
       initSettingsPage();
