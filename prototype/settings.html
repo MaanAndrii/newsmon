@@ -20,7 +20,7 @@
       </div>
     </header>
 
-    <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
+    <main id="settingsMain" class="flex-1 max-w-7xl mx-auto w-full px-4 py-6 hidden">
       <section class="rounded-xl border border-slate-800 bg-slate-900 p-4">
         <div class="flex flex-wrap gap-2 mb-5">
           <button class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm" onclick="switchTab('apiTab', this)">API та інтеграції</button>
@@ -318,6 +318,26 @@
         <span>Автор: Andrii Maryniuk</span>
       </div>
     </footer>
+
+    <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden">
+      <div class="w-full max-w-sm mx-4 rounded-xl border border-slate-700 bg-slate-900 shadow-2xl p-6">
+        <h2 class="text-lg font-semibold mb-1">Вхід у налаштування</h2>
+        <p class="text-xs text-slate-400 mb-4">Введи адмін-токен NEWSMON_API_TOKEN, який задано на сервері.</p>
+        <form id="authModalForm" onsubmit="event.preventDefault(); submitAuthModal();" class="space-y-3">
+          <input id="authModalInput" type="password" autocomplete="off" autofocus
+                 class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm"
+                 placeholder="Адмін-токен" />
+          <p id="authModalError" class="text-xs text-rose-400 hidden"></p>
+          <div class="flex gap-2 justify-end">
+            <button type="button" onclick="cancelAuthModal()"
+                    class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">Скасувати</button>
+            <button id="authModalSubmit" type="submit"
+                    class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm text-white">Увійти</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <script>
       const apiBase = '';
       const ADMIN_TOKEN_KEY = 'newsmon_admin_token';
@@ -352,52 +372,161 @@
         } catch (_) {}
       }
 
-      // Один активний prompt на всі concurrent authFetch-виклики:
-      // якщо кілька запитів одночасно отримали 401, вони чекають один prompt,
-      // а не відкривають новий для кожного.
-      let pendingTokenPrompt = null;
+      // --- Auth modal + bootstrap ---------------------------------------
 
-      function requestNewAdminToken(message) {
-        if (pendingTokenPrompt) return pendingTokenPrompt;
-        pendingTokenPrompt = Promise.resolve().then(() => {
+      let authFailureHandled = false;
+
+      function showAuthModal(errorMessage) {
+        const modal = document.getElementById('authModal');
+        const input = document.getElementById('authModalInput');
+        const err = document.getElementById('authModalError');
+        const submitBtn = document.getElementById('authModalSubmit');
+        if (errorMessage) {
+          err.textContent = errorMessage;
+          err.classList.remove('hidden');
+        } else {
+          err.textContent = '';
+          err.classList.add('hidden');
+        }
+        input.value = '';
+        input.disabled = false;
+        submitBtn.disabled = false;
+        modal.classList.remove('hidden');
+        setTimeout(() => input.focus(), 0);
+      }
+
+      function hideAuthModal() {
+        document.getElementById('authModal').classList.add('hidden');
+      }
+
+      function redirectToDashboard(delayMs) {
+        const target = 'dashboard.html';
+        if (delayMs && delayMs > 0) {
+          setTimeout(() => { window.location.href = target; }, delayMs);
+        } else {
+          window.location.href = target;
+        }
+      }
+
+      function cancelAuthModal() {
+        setAdminToken('');
+        redirectToDashboard(0);
+      }
+
+      async function submitAuthModal() {
+        const input = document.getElementById('authModalInput');
+        const err = document.getElementById('authModalError');
+        const submitBtn = document.getElementById('authModalSubmit');
+        const token = (input.value || '').trim();
+        if (!token) {
+          err.textContent = 'Введи токен.';
+          err.classList.remove('hidden');
+          return;
+        }
+        submitBtn.disabled = true;
+        input.disabled = true;
+        err.textContent = 'Перевіряємо токен...';
+        err.classList.remove('hidden');
+        const result = await validateToken(token);
+        if (result.ok) {
+          setAdminToken(token);
+          hideAuthModal();
+          bootstrapSettings();
+          return;
+        }
+        if (result.unauthorized) {
           setAdminToken('');
-          const value = window.prompt(message || 'Введіть адмін-токен (NEWSMON_API_TOKEN):', '');
-          if (value == null) return '';
-          const trimmed = value.trim();
-          setAdminToken(trimmed);
-          return trimmed;
-        }).finally(() => {
-          pendingTokenPrompt = null;
-        });
-        return pendingTokenPrompt;
+          err.textContent = 'Невірний токен. Повертаємось на Dashboard...';
+          redirectToDashboard(1500);
+          return;
+        }
+        err.textContent = result.detail || 'Не вдалося перевірити токен.';
+        submitBtn.disabled = false;
+        input.disabled = false;
+      }
+
+      async function validateToken(token) {
+        try {
+          const res = await fetch(`${apiBase}/api/integrations`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          if (res.status === 200) return { ok: true };
+          if (res.status === 401) return { ok: false, unauthorized: true };
+          const data = await parseApiBody(res);
+          return { ok: false, detail: data.detail || `Сервер відповів ${res.status}` };
+        } catch (e) {
+          return { ok: false, detail: `Помилка мережі: ${e}` };
+        }
+      }
+
+      function handleAuthFailure(message) {
+        if (authFailureHandled) return;
+        authFailureHandled = true;
+        setAdminToken('');
+        const main = document.getElementById('settingsMain');
+        if (main) main.classList.add('hidden');
+        showAuthModal(message || 'Сесію завершено. Повертаємось на Dashboard...');
+        const input = document.getElementById('authModalInput');
+        const submitBtn = document.getElementById('authModalSubmit');
+        if (input) input.disabled = true;
+        if (submitBtn) submitBtn.disabled = true;
+        redirectToDashboard(1500);
       }
 
       async function authFetch(url, options = {}) {
         const opts = { ...options };
         opts.headers = { ...(options.headers || {}) };
-        let token = getAdminToken();
+        const token = getAdminToken();
         if (!token) {
-          token = await requestNewAdminToken('Потрібен адмін-токен для доступу до налаштувань.');
-          if (!token) {
-            return new Response(JSON.stringify({ detail: 'Токен не введено' }), { status: 401 });
-          }
-        }
-        // Нескінченний (максимум 5 спроб) retry-loop: якщо сервер каже 401,
-        // просимо користувача ввести токен заново і повторюємо саме цей запит.
-        for (let attempt = 0; attempt < 5; attempt++) {
-          opts.headers['Authorization'] = `Bearer ${token}`;
-          const res = await fetch(url, opts);
-          if (res.status !== 401) return res;
-          token = await requestNewAdminToken('Невірний токен. Введіть ще раз:');
-          if (!token) return res;
+          handleAuthFailure('Сесію завершено. Повертаємось на Dashboard...');
+          return new Response(null, { status: 401 });
         }
         opts.headers['Authorization'] = `Bearer ${token}`;
-        return fetch(url, opts);
+        const res = await fetch(url, opts);
+        if (res.status === 401) {
+          handleAuthFailure('Токен більше не дійсний. Повертаємось на Dashboard...');
+        }
+        return res;
       }
 
       function adminLogout() {
         setAdminToken('');
-        window.location.href = 'dashboard.html';
+        redirectToDashboard(0);
+      }
+
+      function bootstrapSettings() {
+        document.getElementById('settingsMain').classList.remove('hidden');
+        loadIntegrations();
+        loadMonitorConfig();
+        loadSources();
+        loadCategories();
+        loadKeywords();
+        loadMonitorStatus();
+        loadTelethonAuthStatus();
+        loadDebugStats();
+        setInterval(loadMonitorStatus, 10000);
+        setInterval(loadMonitorConfig, 15000);
+        setInterval(loadTelethonAuthStatus, 30000);
+        setInterval(loadDebugStats, 60000);
+      }
+
+      async function initSettingsPage() {
+        const token = getAdminToken();
+        if (!token) {
+          showAuthModal();
+          return;
+        }
+        const result = await validateToken(token);
+        if (result.ok) {
+          bootstrapSettings();
+          return;
+        }
+        setAdminToken('');
+        if (result.unauthorized) {
+          showAuthModal('Попередня сесія застаріла. Введи токен ще раз.');
+        } else {
+          showAuthModal(result.detail || 'Не вдалося перевірити токен.');
+        }
       }
 
       categoryColorPicker.addEventListener('input', () => {
@@ -872,18 +1001,7 @@
         if (res.ok) await loadKeywords();
       }
 
-      loadIntegrations();
-      loadMonitorConfig();
-      loadSources();
-      loadCategories();
-      loadKeywords();
-      loadMonitorStatus();
-      loadTelethonAuthStatus();
-      loadDebugStats();
-      setInterval(loadMonitorStatus, 10000);
-      setInterval(loadMonitorConfig, 15000);
-      setInterval(loadTelethonAuthStatus, 30000);
-      setInterval(loadDebugStats, 60000);
+      initSettingsPage();
     </script>
   </body>
 </html>
