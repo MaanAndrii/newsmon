@@ -182,22 +182,63 @@ def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, 
 
 
 class Repository:
-    def list_messages(self, limit: int = 100) -> list[dict[str, Any]]:
+    def list_messages(
+        self,
+        limit: int = 100,
+        search_query: str | None = None,
+        category: str | None = None,
+    ) -> list[dict[str, Any]]:
+        where_parts = ["m.ai_status = 'done'"]
+        params: list[Any] = []
+        search_raw = (search_query or "").strip()
+        category_raw = (category or "").strip()
+        if search_raw:
+            where_parts.append(
+                "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)"
+            )
+            params.append(search_raw)
+        if category_raw:
+            where_parts.append("m.ai_category = ?")
+            params.append(category_raw)
+        params.append(limit)
+        query = f"""
+            SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
+                   m.tg_message_id, m.published_at, m.text, m.media_type,
+                   m.ai_score, m.ai_category, m.ai_status, m.workflow_status,
+                   m.telegram_url, m.created_at
+            FROM messages m
+            JOIN sources s ON s.id = m.source_id
+            WHERE {" AND ".join(where_parts)}
+            ORDER BY datetime(m.published_at) DESC, m.id DESC
+            LIMIT ?
+        """
         with get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
-                       m.tg_message_id, m.published_at, m.text, m.media_type,
-                       m.ai_score, m.ai_category, m.ai_status, m.workflow_status,
-                       m.telegram_url, m.created_at
-                FROM messages m
-                JOIN sources s ON s.id = m.source_id
-                WHERE m.ai_status = 'done'
-                ORDER BY datetime(m.published_at) DESC, m.id DESC
-                LIMIT ?
-                """,
-                (limit,),
-            ).fetchall()
+            try:
+                rows = conn.execute(query, params).fetchall()
+            except sqlite3.OperationalError:
+                if search_raw:
+                    fallback_params: list[Any] = []
+                    fallback_where = ["m.ai_status = 'done'"]
+                    fallback_where.append("COALESCE(m.text, '') LIKE ?")
+                    fallback_params.append(f"%{search_raw}%")
+                    if category_raw:
+                        fallback_where.append("m.ai_category = ?")
+                        fallback_params.append(category_raw)
+                    fallback_params.append(limit)
+                    fallback_query = f"""
+                        SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
+                               m.tg_message_id, m.published_at, m.text, m.media_type,
+                               m.ai_score, m.ai_category, m.ai_status, m.workflow_status,
+                               m.telegram_url, m.created_at
+                        FROM messages m
+                        JOIN sources s ON s.id = m.source_id
+                        WHERE {" AND ".join(fallback_where)}
+                        ORDER BY datetime(m.published_at) DESC, m.id DESC
+                        LIMIT ?
+                    """
+                    rows = conn.execute(fallback_query, fallback_params).fetchall()
+                else:
+                    raise
         return [dict(r) for r in rows]
 
     def get_last_tg_message_id(self, source_id: int) -> int:
@@ -207,6 +248,11 @@ class Repository:
                 (source_id,),
             ).fetchone()
         return int(row["max_id"] or 0)
+
+    def count_messages(self) -> int:
+        with get_connection() as conn:
+            row = conn.execute("SELECT COUNT(*) AS cnt FROM messages").fetchone()
+        return int(row["cnt"] or 0)
 
     def upsert_message(
         self,

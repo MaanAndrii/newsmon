@@ -13,11 +13,16 @@
           <h1 class="text-xl font-bold">NewsMon — Моніторинг Telegram-каналів</h1>
           <p class="text-xs text-slate-400">Прототип Dashboard (mock дані)</p>
         </div>
-        <nav class="flex gap-2 text-sm">
+        <nav class="flex flex-wrap gap-2 text-sm items-center">
           <a class="px-3 py-2 rounded-lg bg-emerald-600 text-white" href="dashboard.html">Dashboard</a>
           <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="settings.html">Налаштування</a>
-          <!-- <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Пошук</a> -->
-          <!-- <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="#">Сповіщення</a> -->
+          <button id="searchBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">Пошук</button>
+          <input id="searchInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 placeholder:text-slate-400 min-w-56" placeholder="Пошук по всіх повідомленнях..." />
+          <button id="filterBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">Фільтр</button>
+          <select id="categoryFilter" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 hidden min-w-48">
+            <option value="">Всі категорії</option>
+          </select>
+          <button id="resetFiltersBtn" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600">Скинути</button>
         </nav>
       </div>
     </header>
@@ -53,6 +58,7 @@
         </div>
       </section>
 
+      <section id="queryState" class="mb-4 text-xs text-slate-400"></section>
       <section id="messagesGrid" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></section>
     </main>
 
@@ -108,7 +114,11 @@
       const modalText = document.getElementById('modalText');
       const modalTelegramLink = document.getElementById('modalTelegramLink');
       const messagesGrid = document.getElementById('messagesGrid');
+      const queryState = document.getElementById('queryState');
+      const searchInput = document.getElementById('searchInput');
+      const categoryFilter = document.getElementById('categoryFilter');
       const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
+      const queryStateCache = { search: '', category: '' };
 
       function escapeHtml(value) {
         return String(value || '')
@@ -163,6 +173,22 @@
         return `<span class="px-2 py-1 rounded text-sm bg-slate-600">${score}</span>`;
       }
 
+      function updateQueryStateLabel() {
+        const parts = [];
+        if (queryStateCache.search) parts.push(`Пошук: "${queryStateCache.search}"`);
+        if (queryStateCache.category) parts.push(`Категорія: ${queryStateCache.category}`);
+        queryState.textContent = parts.length
+          ? `${parts.join(' • ')}. Показано результати за датою (новіші зверху).`
+          : 'Показано всі новини за датою (новіші зверху).';
+      }
+
+      function applyCategoryFilter(categoryName) {
+        const normalized = String(categoryName || '').trim();
+        queryStateCache.category = normalized;
+        categoryFilter.value = normalized;
+        loadMessages();
+      }
+
       function renderMessageCard(item) {
         const preview = escapeHtml((item.text || 'Повідомлення без тексту').slice(0, 280));
         const fullText = escapeHtml(item.text || '');
@@ -171,7 +197,9 @@
             <div><p class="font-semibold">${escapeHtml(item.source_name)}</p><p class="text-xs text-slate-400">${formatPublishedAt(item.published_at)}</p></div>
             <div class="flex gap-1 items-center">
               ${scoreBadge(item.ai_score)}
-              <span class="px-2 py-1 rounded text-sm bg-sky-700">${escapeHtml(item.ai_category || '—')}</span>
+              <button class="px-2 py-1 rounded text-sm bg-sky-700 hover:bg-sky-600" data-category="${escapeHtml(item.ai_category || '')}" onclick="applyCategoryFilter(this.dataset.category)" title="Фільтрувати за категорією">
+                ${escapeHtml(item.ai_category || '—')}
+              </button>
             </div>
           </div>
           <p class="text-sm leading-relaxed text-slate-200">${preview}</p>
@@ -186,7 +214,10 @@
 
       async function loadMessages() {
         try {
-          const res = await fetch('/api/messages?limit=100');
+          const params = new URLSearchParams({ limit: '200' });
+          if (queryStateCache.search) params.set('q', queryStateCache.search);
+          if (queryStateCache.category) params.set('category', queryStateCache.category);
+          const res = await fetch(`/api/messages?${params.toString()}`);
           const items = res.ok ? await res.json() : [];
           const unique = [];
           const seen = new Set();
@@ -199,8 +230,28 @@
           messagesGrid.innerHTML = unique.length
             ? unique.map(renderMessageCard).join('')
             : `<article class="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-300">Поки що немає зібраних повідомлень.</article>`;
+          updateQueryStateLabel();
         } catch (error) {
           messagesGrid.innerHTML = `<article class="rounded-xl border border-rose-700/40 bg-rose-950/20 p-6 text-sm text-rose-200">Не вдалося завантажити стрічку: ${error}</article>`;
+        }
+      }
+
+      async function loadCategoryFilterOptions() {
+        try {
+          const res = await fetch('/api/categories');
+          if (!res.ok) return;
+          const categories = await res.json();
+          const selected = queryStateCache.category;
+          categoryFilter.innerHTML = '<option value="">Всі категорії</option>';
+          for (const category of categories) {
+            const opt = document.createElement('option');
+            opt.value = category.name || '';
+            opt.textContent = category.name || '—';
+            categoryFilter.appendChild(opt);
+          }
+          categoryFilter.value = selected || '';
+        } catch (e) {
+          // ignore categories loading errors for dashboard fallback
         }
       }
 
@@ -288,6 +339,33 @@
         systemStatusModal.classList.remove('flex');
       }
 
+      document.getElementById('searchBtn').addEventListener('click', () => {
+        queryStateCache.search = searchInput.value.trim();
+        loadMessages();
+      });
+      searchInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          queryStateCache.search = searchInput.value.trim();
+          loadMessages();
+        }
+      });
+      document.getElementById('filterBtn').addEventListener('click', () => {
+        categoryFilter.classList.toggle('hidden');
+      });
+      categoryFilter.addEventListener('change', () => {
+        queryStateCache.category = categoryFilter.value.trim();
+        loadMessages();
+      });
+      document.getElementById('resetFiltersBtn').addEventListener('click', () => {
+        queryStateCache.search = '';
+        queryStateCache.category = '';
+        searchInput.value = '';
+        categoryFilter.value = '';
+        categoryFilter.classList.add('hidden');
+        loadMessages();
+      });
+
+      loadCategoryFilterOptions();
       loadMessages();
       loadSystemStatus();
       setInterval(loadMessages, 10000);
