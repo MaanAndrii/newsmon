@@ -34,6 +34,10 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 - `GET /api/keywords`
 - `POST /api/keywords`
 - `DELETE /api/keywords/{id}`
+- `GET /api/alerts`
+- `POST /api/alerts`
+- `PATCH /api/alerts/{id}`
+- `DELETE /api/alerts/{id}`
 - `GET /api/integrations`
 - `POST /api/integrations`
 - `POST /api/integrations/validate`
