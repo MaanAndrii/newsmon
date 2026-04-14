@@ -27,6 +27,7 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 - `PATCH /api/sources/{id}`
 - `DELETE /api/sources/{id}`
 - `GET /api/messages`
+- `GET /api/filters/keywords`
 - `POST /api/messages/clear-all`
 - `GET /api/categories`
 - `POST /api/categories`
@@ -34,6 +35,10 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 - `GET /api/keywords`
 - `POST /api/keywords`
 - `DELETE /api/keywords/{id}`
+- `GET /api/alerts`
+- `POST /api/alerts`
+- `PATCH /api/alerts/{id}`
+- `DELETE /api/alerts/{id}`
 - `GET /api/integrations`
 - `POST /api/integrations`
 - `POST /api/integrations/validate`

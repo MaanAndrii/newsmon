@@ -30,6 +30,9 @@ MAX_MONITOR_INTERVAL_SECONDS = 1800
 DEFAULT_MONITOR_DEPTH = 3
 MIN_MONITOR_DEPTH = 1
 MAX_MONITOR_DEPTH = 10
+DEFAULT_MAX_MESSAGES = 5000
+MIN_MAX_MESSAGES = 500
+MAX_MAX_MESSAGES = 10000
 CLAUDE_MODELS = {
     "claude-opus-4-6",
     "claude-sonnet-4-6",
@@ -121,7 +124,6 @@ class IntegrationsPayload(BaseModel):
     telegram_api_id: str | None = None
     telegram_api_hash: str | None = None
     telegram_bot_token: str | None = None
-    telegram_bot_chat_id: str | None = None
 
 
 class TelethonCodeRequest(BaseModel):
@@ -139,11 +141,34 @@ class MonitorConfigPayload(BaseModel):
     ai_enabled: bool
     interval_seconds: int = Field(default=MONITOR_INTERVAL_SECONDS, ge=MIN_MONITOR_INTERVAL_SECONDS, le=MAX_MONITOR_INTERVAL_SECONDS)
     fetch_depth: int = Field(default=DEFAULT_MONITOR_DEPTH, ge=MIN_MONITOR_DEPTH, le=MAX_MONITOR_DEPTH)
+    max_messages: int = Field(default=DEFAULT_MAX_MESSAGES, ge=MIN_MAX_MESSAGES, le=MAX_MAX_MESSAGES)
     ai_prompt: str | None = None
 
 
 class ClearMessagesPayload(BaseModel):
     confirm: bool = False
+
+
+class AlertCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    alert_type: str = Field(pattern=r"^(new_message|min_score|keyword_ai)$")
+    source_id: int | None = None
+    min_score: int | None = Field(default=None, ge=0, le=10)
+    pattern: str = Field(default="", max_length=500)
+    target_chat_id: str = Field(min_length=3, max_length=64)
+    is_enabled: bool = True
+    is_ai_keyword: bool = True
+
+
+class AlertUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    alert_type: str | None = Field(default=None, pattern=r"^(new_message|min_score|keyword_ai)$")
+    source_id: int | None = None
+    min_score: int | None = Field(default=None, ge=0, le=10)
+    pattern: str | None = Field(default=None, max_length=500)
+    target_chat_id: str | None = Field(default=None, min_length=3, max_length=64)
+    is_enabled: bool | None = None
+    is_ai_keyword: bool | None = None
 
 
 def _extract_telegram_username(raw: str) -> str | None:
@@ -329,12 +354,19 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
     except ValueError:
         fetch_depth = DEFAULT_MONITOR_DEPTH
     fetch_depth = max(MIN_MONITOR_DEPTH, min(MAX_MONITOR_DEPTH, fetch_depth))
+    max_messages_raw = repo.get_setting("monitor.max_messages", str(DEFAULT_MAX_MESSAGES)) or str(DEFAULT_MAX_MESSAGES)
+    try:
+        max_messages = int(max_messages_raw)
+    except ValueError:
+        max_messages = DEFAULT_MAX_MESSAGES
+    max_messages = max(MIN_MAX_MESSAGES, min(MAX_MAX_MESSAGES, max_messages))
     ai_prompt = (repo.get_setting("monitor.ai_prompt", "") or "").strip()
     return {
         "collect_enabled": collect_enabled,
         "ai_enabled": ai_enabled,
         "interval_seconds": interval_seconds,
         "fetch_depth": fetch_depth,
+        "max_messages": max_messages,
         "ai_prompt": ai_prompt,
     }
 
@@ -465,8 +497,10 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                             if not (monitor_cfg["ai_enabled"] and bool(source.get("ai_enabled"))):
                                 repo.mark_message_no_ai(message_id, _get_default_category_name())
                             ingested += 1
+                            await _process_alerts_for_message(message_id, "new_message")
                     except Exception:
                         continue
+                repo.enforce_max_messages(int(monitor_cfg["max_messages"]))
             finally:
                 await client.disconnect()
         except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
@@ -541,6 +575,7 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.ai_enabled", "1" if payload.ai_enabled else "0")
     repo.set_setting("monitor.interval_seconds", str(payload.interval_seconds))
     repo.set_setting("monitor.fetch_depth", str(payload.fetch_depth))
+    repo.set_setting("monitor.max_messages", str(payload.max_messages))
     repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
     return _get_monitor_config()
 
@@ -559,6 +594,7 @@ def get_debug_stats() -> dict:
         "claude_output_tokens_24h": sum(int(e.get("output_tokens") or 0) for e in claude_24h),
         "telegram_requests_24h": len(telegram_24h),
         "telegram_requests_60m": len(telegram_60m),
+        "total_messages": repo.count_messages(),
     }
 
 
@@ -615,7 +651,10 @@ async def _process_ai_queue(limit: int = 20) -> None:
                     categories,
                     ai_prompt,
                 )
+                if category is None:
+                    category = _get_default_category_name()
                 repo.mark_ai_result(message_id, score, category)
+                await _process_alerts_for_message(message_id, "ai_scored", score=score)
             except Exception as exc:
                 repo.mark_ai_error(message_id, str(exc))
 
@@ -697,6 +736,179 @@ def _call_claude_score_sync(
     if categories and category not in categories:
         category = None
     return score, category
+
+
+def _send_telegram_bot_message(bot_token: str, chat_id: str, text: str) -> None:
+    if not bot_token or not chat_id:
+        return
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    body = json.dumps(
+        {
+            "chat_id": chat_id,
+            "text": text[:3900],
+            "disable_web_page_preview": True,
+        }
+    ).encode("utf-8")
+    req = request.Request(
+        url,
+        data=body,
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+    with request.urlopen(req, timeout=12):
+        _record_telegram_call()
+
+
+def _call_claude_keyword_match_sync(
+    api_key: str,
+    model: str,
+    text: str,
+    keywords: list[str],
+) -> str | None:
+    if not api_key or not keywords:
+        return None
+    normalized_keywords = [k.strip() for k in keywords if k and k.strip()]
+    if not normalized_keywords:
+        return None
+    system_prompt = (
+        "Отримай текст новини та список ключових слів. "
+        "Визнач, чи є в тексті одне з ключових слів з урахуванням відмінків/словоформ. "
+        "Поверни ТІЛЬКИ JSON формату {\"matched_keyword\": \"...\"} або {\"matched_keyword\": null}."
+    )
+    body = {
+        "model": model,
+        "max_tokens": 80,
+        "system": [{"type": "text", "text": system_prompt}],
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {"keywords": normalized_keywords, "text": text[:2000]},
+                            ensure_ascii=False,
+                        ),
+                    }
+                ],
+            }
+        ],
+    }
+    req = request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=json.dumps(body).encode("utf-8"),
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+    with request.urlopen(req, timeout=25) as resp:
+        raw = json.loads(resp.read().decode("utf-8"))
+    usage = raw.get("usage") or {}
+    _record_claude_call(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0))
+    payload = ""
+    for block in raw.get("content") or []:
+        if isinstance(block, dict) and block.get("type") == "text":
+            payload += str(block.get("text") or "")
+    try:
+        parsed = json.loads(payload or "{}")
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", payload, flags=re.DOTALL)
+        parsed = json.loads(match.group(0)) if match else {}
+    matched = str(parsed.get("matched_keyword") or "").strip()
+    if not matched:
+        return None
+    for kw in normalized_keywords:
+        if kw.lower() == matched.lower():
+            return kw
+    return None
+
+
+async def _process_alerts_for_message(
+    message_id: int,
+    event_type: str,
+    score: int | None = None,
+) -> None:
+    integrations = repo.get_integrations()
+    bot_token = (integrations.get("telegram_bot_token") or "").strip()
+    if not bot_token:
+        return
+    message = repo.get_message_by_id(message_id)
+    if not message:
+        return
+    alerts = [a for a in repo.list_alerts() if int(a.get("is_enabled") or 0) == 1]
+    if not alerts:
+        return
+    source_id = int(message.get("source_id") or 0)
+    text = str(message.get("text") or "")
+    ai_category = str(message.get("ai_category") or "—")
+    ai_score = int(score if score is not None else (message.get("ai_score") or 0))
+    telegram_url = str(message.get("telegram_url") or "")
+    published_at = str(message.get("published_at") or "")
+    source_name = str(message.get("source_name") or "Канал")
+    keyword_alerts = [a for a in alerts if a.get("alert_type") == "keyword_ai"]
+    matched_keyword: str | None = None
+    if event_type == "ai_scored" and keyword_alerts:
+        keyword_candidates = list({str(a.get("pattern") or "").strip() for a in keyword_alerts if str(a.get("pattern") or "").strip()})
+        claude_key = (integrations.get("claude_api_key") or "").strip()
+        model = _resolve_claude_model(integrations.get("claude_model"))
+        if claude_key and keyword_candidates and text.strip():
+            loop = asyncio.get_running_loop()
+            try:
+                matched_keyword = await loop.run_in_executor(
+                    None,
+                    _call_claude_keyword_match_sync,
+                    claude_key,
+                    model,
+                    _prepare_ai_text(text),
+                    keyword_candidates,
+                )
+            except Exception:
+                matched_keyword = None
+    for alert in alerts:
+        alert_id = int(alert.get("id") or 0)
+        if alert_id <= 0:
+            continue
+        if repo.is_alert_delivered(alert_id, message_id):
+            continue
+        alert_type = str(alert.get("alert_type") or "new_message")
+        alert_source = int(alert.get("source_id") or 0)
+        if alert_source and alert_source != source_id:
+            continue
+        should_send = False
+        keyword_for_delivery: str | None = None
+        if alert_type == "new_message" and event_type == "new_message":
+            should_send = True
+        elif alert_type == "min_score" and event_type == "ai_scored":
+            min_score = int(alert.get("min_score") or 0)
+            should_send = ai_score >= min_score
+        elif alert_type == "keyword_ai" and event_type == "ai_scored":
+            expected = str(alert.get("pattern") or "").strip()
+            should_send = bool(matched_keyword and expected and matched_keyword.lower() == expected.lower())
+            keyword_for_delivery = matched_keyword
+        if not should_send:
+            continue
+        target_chat_id = str(alert.get("target_chat_id") or "").strip()
+        if not target_chat_id:
+            continue
+        alert_name = str(alert.get("name") or "Alert")
+        msg = (
+            f"🔔 {alert_name}\n"
+            f"Канал: {source_name}\n"
+            f"Час: {published_at}\n"
+            f"Оцінка: {ai_score}\n"
+            f"Категорія: {ai_category}\n"
+            f"{'Ключове слово: ' + keyword_for_delivery + chr(10) if keyword_for_delivery else ''}"
+            f"Текст: {(text or '—')[:800]}\n"
+            f"{telegram_url}"
+        )
+        try:
+            _send_telegram_bot_message(bot_token, target_chat_id, msg)
+            repo.mark_alert_delivered(alert_id, message_id, keyword_for_delivery)
+        except Exception:
+            continue
 
 
 @app.get("/api/telethon/auth/status", dependencies=[Depends(require_admin)])
@@ -1012,9 +1224,30 @@ def list_sources(sort: str = "created_desc") -> list[dict]:
 
 
 @app.get("/api/messages")
-def list_messages(limit: int = 100) -> list[dict]:
+def list_messages(
+    limit: int = 100,
+    q: str | None = None,
+    category: str | None = None,
+    source_id: int | None = None,
+    keyword: str | None = None,
+) -> list[dict]:
     safe_limit = max(1, min(limit, 500))
-    return repo.list_messages(limit=safe_limit)
+    search_query = (q or "").strip() or None
+    category_filter = (category or "").strip() or None
+    keyword_filter = (keyword or "").strip() or None
+    source_filter = source_id if source_id and source_id > 0 else None
+    return repo.list_messages(
+        limit=safe_limit,
+        search_query=search_query,
+        category=category_filter,
+        source_id=source_filter,
+        keyword=keyword_filter,
+    )
+
+
+@app.get("/api/filters/keywords")
+def list_filter_keywords() -> list[str]:
+    return repo.list_alert_keywords()
 
 
 @app.post("/api/messages/clear-all", dependencies=[Depends(require_admin)])
@@ -1117,6 +1350,55 @@ def delete_keyword(keyword_id: int) -> None:
         raise HTTPException(status_code=404, detail="Keyword not found")
 
 
+@app.get("/api/alerts", dependencies=[Depends(require_admin)])
+def list_alerts() -> list[dict]:
+    return repo.list_alerts()
+
+
+@app.post("/api/alerts", status_code=201, dependencies=[Depends(require_admin)])
+def create_alert(payload: AlertCreate) -> dict:
+    pattern = (payload.pattern or "").strip()
+    if payload.alert_type == "keyword_ai" and not pattern:
+        raise HTTPException(status_code=400, detail="Для keyword_ai вкажіть ключове слово у pattern")
+    if payload.alert_type == "min_score" and payload.min_score is None:
+        raise HTTPException(status_code=400, detail="Для min_score вкажіть min_score")
+    return repo.create_alert(
+        name=payload.name.strip(),
+        pattern=pattern,
+        alert_type=payload.alert_type,
+        source_id=payload.source_id,
+        min_score=payload.min_score,
+        target_chat_id=payload.target_chat_id.strip(),
+        is_ai_keyword=payload.is_ai_keyword,
+        is_enabled=payload.is_enabled,
+    )
+
+
+@app.patch("/api/alerts/{alert_id}", dependencies=[Depends(require_admin)])
+def update_alert(alert_id: int, payload: AlertUpdate) -> dict:
+    data = payload.model_dump(exclude_unset=True)
+    updated = repo.update_alert(
+        alert_id=alert_id,
+        name=(data.get("name") or "").strip() if "name" in data else None,
+        pattern=(data.get("pattern") or "").strip() if "pattern" in data else None,
+        alert_type=data.get("alert_type"),
+        source_id=data.get("source_id") if "source_id" in data else None,
+        min_score=data.get("min_score") if "min_score" in data else None,
+        target_chat_id=(data.get("target_chat_id") or "").strip() if "target_chat_id" in data else None,
+        is_ai_keyword=data.get("is_ai_keyword"),
+        is_enabled=data.get("is_enabled"),
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return updated
+
+
+@app.delete("/api/alerts/{alert_id}", status_code=204, dependencies=[Depends(require_admin)])
+def delete_alert(alert_id: int) -> None:
+    if not repo.delete_alert(alert_id):
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+
 SECRET_INTEGRATION_FIELDS = (
     "claude_api_key",
     "telegram_api_hash",
@@ -1124,7 +1406,6 @@ SECRET_INTEGRATION_FIELDS = (
 )
 PUBLIC_INTEGRATION_FIELDS = (
     "telegram_api_id",
-    "telegram_bot_chat_id",
 )
 
 
@@ -1176,7 +1457,6 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
     telegram_api_id = _pick("telegram_api_id")
     telegram_api_hash = _pick("telegram_api_hash")
     telegram_bot_token = _pick("telegram_bot_token")
-    telegram_bot_chat_id = _pick("telegram_bot_chat_id")
 
     claude_format = bool(
         re.fullmatch(r"sk-ant-(?:api03-)?[A-Za-z0-9_-]{20,}", claude_key)
@@ -1187,7 +1467,6 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
     )
     telegram_bot_format = bool(
         re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,}", telegram_bot_token)
-        and re.fullmatch(r"-?(?:100\d{8,}|[1-9]\d{4,})", telegram_bot_chat_id)
     )
     claude_model_ok = claude_model in CLAUDE_MODELS
     claude_ok = claude_format and claude_model_ok
@@ -1198,7 +1477,7 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
         else "API ID має бути числом, API Hash — 32 hex-символи"
     )
     telegram_bot_ok = telegram_bot_format
-    telegram_bot_reason = None if telegram_bot_ok else "Bot token/chat id не відповідають формату Telegram"
+    telegram_bot_reason = None if telegram_bot_ok else "Bot token не відповідає формату Telegram"
     return {
         "claude": {
             "ok": claude_ok,
