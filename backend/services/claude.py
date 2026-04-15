@@ -4,8 +4,6 @@ import json
 import re
 from datetime import datetime, timezone
 
-import anthropic
-
 from config import (
     CLAUDE_MODELS,
     DEFAULT_CLAUDE_MODEL,
@@ -42,10 +40,6 @@ def _prepare_ai_text(text: str) -> str:
     return reduced[:1600]
 
 
-def _make_client(api_key: str) -> anthropic.Anthropic:
-    return anthropic.Anthropic(api_key=api_key, timeout=25.0)
-
-
 def _call_claude_score_sync(
     api_key: str,
     model: str,
@@ -53,6 +47,13 @@ def _call_claude_score_sync(
     categories: list[str],
     custom_prompt: str,
 ) -> tuple[int, str | None]:
+    try:
+        import anthropic
+    except ImportError as exc:
+        raise RuntimeError(
+            "Пакет anthropic не встановлено. Виконайте: pip install -r backend/requirements.txt"
+        ) from exc
+
     categories_text = ", ".join(categories) if categories else "Без категорії"
     base_prompt = (
         custom_prompt
@@ -64,7 +65,7 @@ def _call_claude_score_sync(
         "Поверни ТІЛЬКИ JSON без пояснень, формат: {\"score\": 7, \"category\": \"Економіка\"}."
     )
 
-    client = _make_client(api_key)
+    client = anthropic.Anthropic(api_key=api_key, timeout=25.0)
     response = client.messages.create(
         model=model,
         max_tokens=120,
@@ -125,6 +126,13 @@ def _call_claude_keyword_match_sync(
     if not normalized_keywords:
         return None
 
+    try:
+        import anthropic
+    except ImportError as exc:
+        raise RuntimeError(
+            "Пакет anthropic не встановлено. Виконайте: pip install -r backend/requirements.txt"
+        ) from exc
+
     system_prompt = (
         "Отримай текст новини та список ключових слів. "
         "Визнач, чи є в тексті одне з ключових слів з урахуванням відмінків/словоформ. "
@@ -135,7 +143,7 @@ def _call_claude_keyword_match_sync(
         ensure_ascii=False,
     )
 
-    client = _make_client(api_key)
+    client = anthropic.Anthropic(api_key=api_key, timeout=25.0)
     response = client.messages.create(
         model=model,
         max_tokens=80,
