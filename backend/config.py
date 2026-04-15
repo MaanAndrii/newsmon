@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+import asyncio
+from collections import deque
+from datetime import datetime
+from pathlib import Path
+
+from db import Repository
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+ROOT_DIR = Path(__file__).resolve().parent.parent
+PROTOTYPE_DIR = ROOT_DIR / "prototype"
+
+# ---------------------------------------------------------------------------
+# Monitor constants
+# ---------------------------------------------------------------------------
+MONITOR_INTERVAL_SECONDS = 600
+MIN_MONITOR_INTERVAL_SECONDS = 300
+MAX_MONITOR_INTERVAL_SECONDS = 1800
+DEFAULT_MONITOR_DEPTH = 3
+MIN_MONITOR_DEPTH = 1
+MAX_MONITOR_DEPTH = 10
+DEFAULT_MAX_MESSAGES = 5000
+MIN_MAX_MESSAGES = 500
+MAX_MAX_MESSAGES = 10000
+
+# ---------------------------------------------------------------------------
+# Claude constants
+# ---------------------------------------------------------------------------
+CLAUDE_MODELS = {
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+}
+DEFAULT_CLAUDE_MODEL = "claude-haiku-4-5-20251001"
+
+# ---------------------------------------------------------------------------
+# Security constants
+# ---------------------------------------------------------------------------
+ADMIN_TOKEN_ENV = "NEWSMON_API_TOKEN"
+TELETHON_AUTH_RATE_MAX = 3
+TELETHON_AUTH_RATE_WINDOW_SECONDS = 300.0
+
+# ---------------------------------------------------------------------------
+# Cache TTLs
+# ---------------------------------------------------------------------------
+TELETHON_STATUS_CACHE_TTL = 30.0
+TELETHON_HEALTH_CACHE_TTL = 30.0
+
+# ---------------------------------------------------------------------------
+# Shared repository instance
+# ---------------------------------------------------------------------------
+repo = Repository()
+
+# ---------------------------------------------------------------------------
+# Background task handle
+# ---------------------------------------------------------------------------
+monitor_task: asyncio.Task | None = None
+
+# ---------------------------------------------------------------------------
+# Shared mutable state
+# ---------------------------------------------------------------------------
+telethon_auth_state: dict[str, dict[str, str]] = {}
+
+telethon_client_lock = asyncio.Lock()
+ai_processing_lock = asyncio.Lock()
+
+claude_call_events: deque[dict[str, int | datetime]] = deque(maxlen=5000)
+telegram_call_events: deque[datetime] = deque(maxlen=10000)
+
+_telethon_status_cache: dict[str, float | dict | None] = {"at": 0.0, "value": None}
+_telethon_health_cache: dict[str, float | dict | None] = {"at": 0.0, "value": None}
+
+_rate_limit_buckets: dict[str, deque[float]] = {}
+
+monitor_status: dict[str, str | int | None] = {
+    "state": "stopped",
+    "last_run_at": None,
+    "last_success_at": None,
+    "last_error": None,
+    "updated_sources": 0,
+    "total_sources": 0,
+    "ingested_messages": 0,
+    "interval_seconds": MONITOR_INTERVAL_SECONDS,
+}
