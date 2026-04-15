@@ -168,6 +168,22 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
+            CREATE TABLE IF NOT EXISTS dashboard_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_key TEXT NOT NULL UNIQUE,
+                ip TEXT NOT NULL,
+                first_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+                last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+                active_seconds INTEGER NOT NULL DEFAULT 0,
+                heartbeat_count INTEGER NOT NULL DEFAULT 0,
+                user_agent TEXT NULL,
+                language TEXT NULL,
+                timezone TEXT NULL,
+                screen TEXT NULL,
+                last_path TEXT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_dashboard_sessions_last_seen ON dashboard_sessions(last_seen_at DESC);
+
             CREATE TABLE IF NOT EXISTS alert_deliveries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 alert_id INTEGER NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
@@ -569,6 +585,91 @@ class Repository:
                 """
             ).fetchone()
         return dict(row)
+
+    def record_dashboard_session(
+        self,
+        *,
+        session_key: str,
+        ip: str,
+        active_seconds: int,
+        user_agent: str | None,
+        language: str | None,
+        timezone: str | None,
+        screen: str | None,
+        path: str | None,
+    ) -> None:
+        safe_session_key = session_key.strip()[:120]
+        safe_ip = ip.strip()[:80] or "unknown"
+        safe_active_seconds = max(0, min(int(active_seconds), 86_400))
+        safe_user_agent = (user_agent or "").strip()[:300]
+        safe_language = (language or "").strip()[:32]
+        safe_timezone = (timezone or "").strip()[:64]
+        safe_screen = (screen or "").strip()[:32]
+        safe_path = (path or "").strip()[:120]
+        if not safe_session_key:
+            return
+
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO dashboard_sessions(
+                    session_key, ip, first_seen_at, last_seen_at, active_seconds,
+                    heartbeat_count, user_agent, language, timezone, screen, last_path
+                )
+                VALUES (?, ?, datetime('now'), datetime('now'), ?, 1, ?, ?, ?, ?, ?)
+                ON CONFLICT(session_key) DO UPDATE SET
+                    ip = excluded.ip,
+                    last_seen_at = datetime('now'),
+                    active_seconds = MAX(dashboard_sessions.active_seconds, excluded.active_seconds),
+                    heartbeat_count = dashboard_sessions.heartbeat_count + 1,
+                    user_agent = CASE
+                        WHEN LENGTH(TRIM(excluded.user_agent)) > 0 THEN excluded.user_agent
+                        ELSE dashboard_sessions.user_agent
+                    END,
+                    language = CASE
+                        WHEN LENGTH(TRIM(excluded.language)) > 0 THEN excluded.language
+                        ELSE dashboard_sessions.language
+                    END,
+                    timezone = CASE
+                        WHEN LENGTH(TRIM(excluded.timezone)) > 0 THEN excluded.timezone
+                        ELSE dashboard_sessions.timezone
+                    END,
+                    screen = CASE
+                        WHEN LENGTH(TRIM(excluded.screen)) > 0 THEN excluded.screen
+                        ELSE dashboard_sessions.screen
+                    END,
+                    last_path = CASE
+                        WHEN LENGTH(TRIM(excluded.last_path)) > 0 THEN excluded.last_path
+                        ELSE dashboard_sessions.last_path
+                    END
+                """,
+                (
+                    safe_session_key,
+                    safe_ip,
+                    safe_active_seconds,
+                    safe_user_agent,
+                    safe_language,
+                    safe_timezone,
+                    safe_screen,
+                    safe_path,
+                ),
+            )
+
+    def list_dashboard_sessions(self, limit: int = 200) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 1000))
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, session_key, ip, first_seen_at, last_seen_at,
+                       active_seconds, heartbeat_count, user_agent, language,
+                       timezone, screen, last_path
+                FROM dashboard_sessions
+                ORDER BY datetime(last_seen_at) DESC, id DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def claim_ai_queue_pending(self, limit: int = 20) -> list[dict[str, Any]]:
         with get_connection() as conn:

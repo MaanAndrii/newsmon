@@ -168,6 +168,20 @@
       const PAGE_SIZE = 60;
       let visibleCount = PAGE_SIZE;
       let latestItems = [];
+      const dashboardSessionKey = (() => {
+        try {
+          const storageKey = 'newsmon_dashboard_session_key';
+          let value = localStorage.getItem(storageKey) || '';
+          if (!value) {
+            value = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+            localStorage.setItem(storageKey, value);
+          }
+          return value;
+        } catch (_) {
+          return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        }
+      })();
+      const dashboardSessionStartAt = Date.now();
 
       function escapeHtml(value) {
         return String(value || '')
@@ -489,6 +503,27 @@
         loadMessages();
       }
 
+      async function sendDashboardHeartbeat() {
+        const activeSeconds = Math.floor((Date.now() - dashboardSessionStartAt) / 1000);
+        try {
+          await fetch('/api/debug/dashboard-usage/heartbeat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              session_key: dashboardSessionKey,
+              active_seconds: activeSeconds,
+              language: navigator.language || '',
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+              screen: `${window.screen?.width || 0}x${window.screen?.height || 0}`,
+              path: window.location.pathname || '/dashboard.html',
+            }),
+            keepalive: true,
+          });
+        } catch (_) {
+          // ignore usage analytics failures
+        }
+      }
+
       searchInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
           applySearch();
@@ -538,10 +573,15 @@
       updateResetButtonState();
       loadMessages();
       loadSystemStatus();
+      sendDashboardHeartbeat();
       setInterval(loadMessages, 10000);
       setInterval(loadSystemStatus, 10000);
+      setInterval(sendDashboardHeartbeat, 30000);
       setInterval(updatePollCountdown, 1000);
       setInterval(updateCurrentTime, 1000);
+      window.addEventListener('beforeunload', () => {
+        sendDashboardHeartbeat();
+      });
     </script>
   </body>
 </html>
