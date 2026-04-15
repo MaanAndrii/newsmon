@@ -194,6 +194,17 @@ async def _fetch_one_source(
                     continue
                 if msg_date_utc < window_start:
                     continue
+                # Skip extra media-group items (album photos/videos without caption).
+                # In Telegram albums the first item carries the text; the rest share
+                # grouped_id but have no text — useless for the dashboard.
+                msg_text = (
+                    getattr(message, "message", None)
+                    or getattr(message, "raw_text", None)
+                    or getattr(message, "text", None)
+                    or ""
+                )
+                if getattr(message, "grouped_id", None) is not None and not msg_text.strip():
+                    continue
                 candidates.append(message)
             _record_telegram_call()
 
