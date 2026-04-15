@@ -813,7 +813,10 @@
         document.getElementById('monitorIntervalSeconds').value = Number(data.interval_seconds || 600);
         document.getElementById('monitorFetchDepth').value = Number(data.fetch_depth || 3);
         document.getElementById('monitorMaxMessages').value = Number(data.max_messages || 5000);
-        document.getElementById('monitorAiPrompt').value = data.ai_prompt || '';
+        const promptEl = document.getElementById('monitorAiPrompt');
+        if (document.activeElement !== promptEl) {
+          promptEl.value = data.ai_prompt || '';
+        }
         updateMonitorFormState();
         document.getElementById('monitorConfigMessage').textContent = 'Налаштування моніторингу завантажено.';
       }
