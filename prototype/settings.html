@@ -267,8 +267,13 @@
         </div>
 
         <div id="debugTab" class="tab-panel hidden space-y-4">
-          <h2 class="text-lg font-semibold">Debug</h2>
-          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold">Debug</h2>
+            <button onclick="loadDebugAll()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">↻ Оновити</button>
+          </div>
+
+          <!-- API counters -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
             <div class="rounded-lg border border-slate-800 p-3">
               <p class="font-medium">Claude API (24h)</p>
               <p id="dbgClaudeReq" class="text-slate-300 mt-1">Запитів: —</p>
@@ -283,8 +288,59 @@
               <p id="dbgTg60m" class="text-slate-300 mt-1">Запитів: —</p>
             </div>
             <div class="rounded-lg border border-slate-800 p-3">
-              <p class="font-medium">Повідомлень у БД (всього)</p>
+              <p class="font-medium">Повідомлень у БД</p>
               <p id="dbgTotalMessages" class="text-slate-300 mt-1">Кількість: —</p>
+            </div>
+          </div>
+
+          <!-- AI queue status -->
+          <div class="rounded-lg border border-slate-800 p-3 text-sm">
+            <p class="font-medium mb-2">AI черга</p>
+            <div class="flex flex-wrap gap-5 text-xs">
+              <span class="text-slate-400">Очікує: <span id="dbgAiPending" class="text-slate-200 font-mono font-bold">—</span></span>
+              <span class="text-slate-400">Обробляється: <span id="dbgAiProcessing" class="text-amber-300 font-mono font-bold">—</span></span>
+              <span class="text-slate-400">Готово: <span id="dbgAiDone" class="text-emerald-400 font-mono font-bold">—</span></span>
+              <span class="text-slate-400">Помилки: <span id="dbgAiError" class="text-rose-400 font-mono font-bold">—</span></span>
+            </div>
+          </div>
+
+          <!-- Last 10 collect cycles -->
+          <div>
+            <h3 class="text-sm font-medium mb-2">Останні 10 циклів збору</h3>
+            <div class="overflow-x-auto rounded-lg border border-slate-800">
+              <table class="min-w-full text-xs">
+                <thead class="bg-slate-800 text-slate-300">
+                  <tr>
+                    <th class="text-left p-2 whitespace-nowrap">Час (UTC)</th>
+                    <th class="text-left p-2">Джерел</th>
+                    <th class="text-left p-2">Отримано</th>
+                    <th class="text-left p-2">AI оброблено</th>
+                    <th class="text-left p-2">Стан</th>
+                  </tr>
+                </thead>
+                <tbody id="runHistoryBody">
+                  <tr><td colspan="5" class="p-2 text-slate-500">Завантаження...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Event log -->
+          <div>
+            <h3 class="text-sm font-medium mb-2">Журнал подій (50 останніх)</h3>
+            <div class="rounded-lg border border-slate-800 overflow-auto" style="max-height:20rem">
+              <table class="min-w-full text-xs">
+                <thead class="bg-slate-800 text-slate-300 sticky top-0">
+                  <tr>
+                    <th class="text-left p-2 whitespace-nowrap">Час (UTC)</th>
+                    <th class="text-left p-2 whitespace-nowrap w-36">Тип</th>
+                    <th class="text-left p-2">Деталі</th>
+                  </tr>
+                </thead>
+                <tbody id="eventLogBody">
+                  <tr><td colspan="3" class="p-2 text-slate-500">Журнал порожній</td></tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -483,11 +539,13 @@
         loadAlerts();
         loadMonitorStatus();
         loadTelethonAuthStatus();
-        loadDebugStats();
+        loadDebugAll();
         setInterval(loadMonitorStatus, 10000);
         setInterval(loadMonitorConfig, 15000);
         setInterval(loadTelethonAuthStatus, 30000);
-        setInterval(loadDebugStats, 60000);
+        setInterval(() => {
+          if (!document.getElementById('debugTab').classList.contains('hidden')) loadDebugAll();
+        }, 30000);
       }
 
       async function initSettingsPage() {
@@ -537,7 +595,7 @@
           loadMonitorStatus();
         }
         if (tabId === 'alertsTab') loadAlerts();
-        if (tabId === 'debugTab') loadDebugStats();
+        if (tabId === 'debugTab') loadDebugAll();
       }
 
       function integrationPayload() {
@@ -653,6 +711,71 @@
         document.getElementById('dbgTg24h').textContent = `Запитів: ${data.telegram_requests_24h ?? 0}`;
         document.getElementById('dbgTg60m').textContent = `Запитів: ${data.telegram_requests_60m ?? 0}`;
         document.getElementById('dbgTotalMessages').textContent = `Кількість: ${data.total_messages ?? 0}`;
+        document.getElementById('dbgAiPending').textContent = data.ai_queue_pending ?? 0;
+        document.getElementById('dbgAiProcessing').textContent = data.ai_queue_processing ?? 0;
+        document.getElementById('dbgAiDone').textContent = data.ai_queue_done ?? 0;
+        document.getElementById('dbgAiError').textContent = data.ai_queue_error ?? 0;
+      }
+
+      async function loadRunHistory() {
+        const res = await authFetch(`${apiBase}/api/debug/run-history`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const tbody = document.getElementById('runHistoryBody');
+        if (!data.runs || !data.runs.length) {
+          tbody.innerHTML = '<tr><td colspan="5" class="p-2 text-slate-500">Немає даних (моніторинг ще не запускався)</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data.runs.map(r => {
+          const stateClass = r.state === 'ok' ? 'text-emerald-400' : r.state === 'warning' ? 'text-amber-400' : 'text-rose-400';
+          const stateText = r.error ? `${escapeHtml(r.state)}: ${escapeHtml(r.error)}` : escapeHtml(r.state);
+          return `<tr class="border-t border-slate-800">
+            <td class="p-2 text-slate-400 whitespace-nowrap">${escapeHtml(r.at)}</td>
+            <td class="p-2">${r.updated ?? 0}/${r.total ?? 0}</td>
+            <td class="p-2 font-mono">${r.ingested ?? 0}</td>
+            <td class="p-2 font-mono">${r.ai_processed ?? 0}</td>
+            <td class="p-2 ${stateClass}">${stateText}</td>
+          </tr>`;
+        }).join('');
+      }
+
+      const _eventTypeStyle = {
+        collect_start:   'text-slate-400',
+        collect_done:    'text-emerald-400',
+        collect_warning: 'text-amber-400',
+        collect_error:   'text-rose-400',
+        source_ok:       'text-emerald-300',
+        source_error:    'text-rose-300',
+        ai_scored:       'text-sky-300',
+        ai_error:        'text-rose-300',
+        ai_cycle_done:   'text-sky-400',
+        ai_cycle_error:  'text-rose-400',
+        ai_flush:        'text-amber-300',
+        ai_reset_stale:  'text-amber-200',
+        ai_reset_retry:  'text-amber-200',
+      };
+
+      async function loadEventLog() {
+        const res = await authFetch(`${apiBase}/api/debug/log`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const tbody = document.getElementById('eventLogBody');
+        if (!data.events || !data.events.length) {
+          tbody.innerHTML = '<tr><td colspan="3" class="p-2 text-slate-500">Журнал порожній — зачекайте наступного циклу</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data.events.map(e => {
+          const cls = _eventTypeStyle[e.type] || 'text-slate-400';
+          return `<tr class="border-t border-slate-800/50">
+            <td class="p-2 text-slate-500 whitespace-nowrap">${escapeHtml(e.at)}</td>
+            <td class="p-2 ${cls} whitespace-nowrap">${escapeHtml(e.type)}</td>
+            <td class="p-2 text-slate-300">${escapeHtml(e.detail)}</td>
+          </tr>`;
+        }).join('');
+      }
+
+      async function loadDebugAll() {
+        await Promise.all([loadDebugStats(), loadRunHistory(), loadEventLog()]);
       }
 
       async function loadMonitorConfig() {

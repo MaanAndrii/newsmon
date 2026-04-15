@@ -16,7 +16,10 @@ from config import (
     MIN_MONITOR_DEPTH,
     MIN_MONITOR_INTERVAL_SECONDS,
     MONITOR_INTERVAL_SECONDS,
+    _ai_counters,
     ai_processing_lock,
+    event_log,
+    monitor_run_history,
     monitor_status,
     repo,
     telethon_client_lock,
@@ -39,6 +42,26 @@ _AI_CONCURRENCY = 4
 # How often the dedicated AI loop wakes up (seconds)
 _AI_LOOP_INTERVAL = 30
 
+
+# ---------------------------------------------------------------------------
+# Logging helper
+# ---------------------------------------------------------------------------
+
+def _log_event(event_type: str, detail: str, **extra: object) -> None:
+    """Append an entry to the in-memory event log (last 50 entries)."""
+    event_log.append(
+        {
+            "at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+            "type": event_type,
+            "detail": detail,
+            **extra,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Config helpers
+# ---------------------------------------------------------------------------
 
 def _get_default_category_name() -> str:
     categories = repo.list_categories()
@@ -117,8 +140,8 @@ async def _fetch_one_source(
 ) -> tuple[int, int]:
     """Fetch new messages for a single source.
 
-    Returns (updated, ingested) counts.  Never raises — errors are silently
-    swallowed so one bad channel doesn't block the others.
+    Returns (updated, ingested) counts.  Errors are logged and silenced so
+    one bad channel doesn't block the others.
     """
     username = _extract_telegram_username(source["url"] or "")
     if not username:
@@ -214,8 +237,21 @@ async def _fetch_one_source(
                 src_ingested += 1
                 await _process_alerts_for_message(new_message_id, "new_message")
 
+            if src_ingested > 0:
+                _log_event(
+                    "source_ok",
+                    f"@{username}: +{src_ingested} повідомлень",
+                    username=username,
+                    ingested=src_ingested,
+                )
             return src_updated, src_ingested
-        except Exception:
+
+        except Exception as exc:
+            _log_event(
+                "source_error",
+                f"@{username}: {type(exc).__name__}: {str(exc)[:200]}",
+                username=username,
+            )
             return 0, 0
 
 
@@ -306,7 +342,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
 
 
 # ---------------------------------------------------------------------------
-# AI queue processing helpers
+# AI queue processing
 # ---------------------------------------------------------------------------
 
 async def _process_one_ai_item(
@@ -322,6 +358,7 @@ async def _process_one_ai_item(
         text = (item.get("text") or "").strip()
         if message_id <= 0 or not text:
             repo.mark_ai_error(message_id, "empty message text")
+            _log_event("ai_error", f"msg#{message_id}: порожній текст")
             return
         try:
             loop = asyncio.get_running_loop()
@@ -337,21 +374,59 @@ async def _process_one_ai_item(
             if category is None:
                 category = _get_default_category_name()
             repo.mark_ai_result(message_id, score, category)
+            _log_event(
+                "ai_scored",
+                f"msg#{message_id}: score={score}, cat={category}",
+                message_id=message_id,
+                score=score,
+                category=category,
+            )
             await _process_alerts_for_message(message_id, "ai_scored", score=score)
         except Exception as exc:
             repo.mark_ai_error(message_id, str(exc))
+            _log_event(
+                "ai_error",
+                f"msg#{message_id}: {type(exc).__name__}: {str(exc)[:200]}",
+                message_id=message_id,
+            )
 
 
-async def _process_ai_queue(limit: int = 50) -> None:
+async def _process_ai_queue(limit: int = 50) -> int:
+    """Process up to *limit* pending AI queue items.
+
+    Returns the number of items that were claimed for processing.
+
+    When AI is disabled or no API key is set, flushes pending items as
+    no-AI-done so they immediately appear on the dashboard.
+    """
     if ai_processing_lock.locked():
-        return
+        return 0
+
     monitor_cfg = _get_monitor_config()
+
     if not monitor_cfg["ai_enabled"]:
-        return
+        flushed = repo.flush_ai_queue_no_ai(_get_default_category_name())
+        if flushed:
+            _log_event(
+                "ai_flush",
+                f"AI вимкнено: {flushed} повідомлень позначено без оцінки",
+                flushed=flushed,
+            )
+        return 0
+
     integrations = repo.get_integrations()
     api_key = (integrations.get("claude_api_key") or "").strip()
+
     if not api_key:
-        return
+        flushed = repo.flush_ai_queue_no_ai(_get_default_category_name())
+        if flushed:
+            _log_event(
+                "ai_flush",
+                f"Немає Claude API ключа: {flushed} повідомлень позначено без оцінки",
+                flushed=flushed,
+            )
+        return 0
+
     model = _resolve_claude_model(integrations.get("claude_model"))
     categories = [
         c.get("name", "").strip() for c in repo.list_categories() if c.get("name")
@@ -361,7 +436,8 @@ async def _process_ai_queue(limit: int = 50) -> None:
     async with ai_processing_lock:
         pending = repo.claim_ai_queue_pending(limit=limit)
         if not pending:
-            return
+            return 0
+        count = len(pending)
         semaphore = asyncio.Semaphore(_AI_CONCURRENCY)
         await asyncio.gather(
             *[
@@ -372,6 +448,9 @@ async def _process_ai_queue(limit: int = 50) -> None:
             ],
             return_exceptions=True,
         )
+        # Update shared counter so _monitor_loop can read it for run history
+        _ai_counters["processed_since_last_collect"] += count
+    return count
 
 
 # ---------------------------------------------------------------------------
@@ -384,25 +463,66 @@ async def _monitor_loop() -> None:
             monitor_cfg = _get_monitor_config()
             monitor_status["interval_seconds"] = int(monitor_cfg["interval_seconds"])
             monitor_status["state"] = "running"
-            monitor_status["last_run_at"] = datetime.now(timezone.utc).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+            monitor_status["last_run_at"] = now_str
+            _log_event("collect_start", "Запуск циклу збору")
+
             updated, total, ingested, err = await _sync_sources_last_messages()
             monitor_status["updated_sources"] = updated
             monitor_status["total_sources"] = total
             monitor_status["ingested_messages"] = ingested
+
+            # Snapshot and reset the AI counter that accumulated since last cycle
+            ai_since_last = _ai_counters["processed_since_last_collect"]
+            _ai_counters["processed_since_last_collect"] = 0
+
             if err:
                 monitor_status["state"] = "warning"
                 monitor_status["last_error"] = err
+                _log_event(
+                    "collect_warning", err,
+                    updated=updated, total=total, ingested=ingested,
+                )
+                monitor_run_history.append(
+                    {
+                        "at": now_str,
+                        "updated": updated,
+                        "total": total,
+                        "ingested": ingested,
+                        "ai_processed": ai_since_last,
+                        "state": "warning",
+                        "error": err,
+                    }
+                )
             else:
                 monitor_status["state"] = "ok"
                 monitor_status["last_error"] = None
                 monitor_status["last_success_at"] = datetime.now(timezone.utc).strftime(
                     "%Y-%m-%d %H:%M:%S"
                 )
-        except Exception:
+                _log_event(
+                    "collect_done",
+                    f"Оновлено: {updated}/{total} джерел, нових: {ingested}",
+                    updated=updated, total=total, ingested=ingested,
+                )
+                monitor_run_history.append(
+                    {
+                        "at": now_str,
+                        "updated": updated,
+                        "total": total,
+                        "ingested": ingested,
+                        "ai_processed": ai_since_last,
+                        "state": "ok",
+                        "error": None,
+                    }
+                )
+        except Exception as exc:
             monitor_status["state"] = "error"
             monitor_status["last_error"] = "Непередбачена помилка моніторингу"
+            _log_event(
+                "collect_error",
+                f"Непередбачена помилка: {type(exc).__name__}: {str(exc)[:200]}",
+            )
         await asyncio.sleep(int(_get_monitor_config()["interval_seconds"]))
 
 
@@ -415,7 +535,24 @@ async def _ai_loop() -> None:
     await asyncio.sleep(_AI_LOOP_INTERVAL)
     while True:
         try:
-            await _process_ai_queue()
-        except Exception:
-            pass
+            # Recover stuck/failed items before each flush attempt
+            stale = repo.reset_stale_ai_processing(minutes=5)
+            retried = repo.reset_error_items_for_retry(max_retries=3)
+            if stale:
+                _log_event("ai_reset_stale", f"Скинуто {stale} завислих задач AI")
+            if retried:
+                _log_event("ai_reset_retry", f"Відновлено {retried} помилкових задач для повтору")
+
+            processed = await _process_ai_queue()
+            if processed:
+                _log_event(
+                    "ai_cycle_done",
+                    f"AI цикл: оброблено {processed} повідомлень",
+                    processed=processed,
+                )
+        except Exception as exc:
+            _log_event(
+                "ai_cycle_error",
+                f"Помилка AI циклу: {type(exc).__name__}: {str(exc)[:200]}",
+            )
         await asyncio.sleep(_AI_LOOP_INTERVAL)

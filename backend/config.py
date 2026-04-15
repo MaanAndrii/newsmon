@@ -71,6 +71,14 @@ ai_processing_lock = asyncio.Lock()
 claude_call_events: deque[dict[str, int | datetime]] = deque(maxlen=5000)
 telegram_call_events: deque[datetime] = deque(maxlen=10000)
 
+# In-memory event log (last 50 entries) and collect-cycle history (last 10)
+event_log: deque[dict] = deque(maxlen=50)
+monitor_run_history: deque[dict] = deque(maxlen=10)
+
+# Shared counter: AI items processed since the last collect cycle snapshot.
+# Using a dict so it's mutated in-place (importable as a reference).
+_ai_counters: dict[str, int] = {"processed_since_last_collect": 0}
+
 _telethon_status_cache: dict[str, float | dict | None] = {"at": 0.0, "value": None}
 _telethon_health_cache: dict[str, float | dict | None] = {"at": 0.0, "value": None}
 
