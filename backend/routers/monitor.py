@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 
-from config import claude_call_events, monitor_status, repo, telegram_call_events
+from config import claude_call_events, event_log, monitor_run_history, monitor_status, repo, telegram_call_events
 from models import MonitorConfigPayload
 from security import require_admin
 from services.monitor import _get_monitor_config, _process_ai_queue, _sync_sources_last_messages
@@ -73,6 +73,7 @@ def get_debug_stats() -> dict:
     ]
     telegram_24h = [t for t in telegram_call_events if t >= day_ago]
     telegram_60m = [t for t in telegram_call_events if t >= hour_ago]
+    ai_queue = repo.get_ai_queue_stats()
     return {
         "claude_requests_24h": len(claude_24h),
         "claude_input_tokens_24h": sum(
@@ -84,4 +85,20 @@ def get_debug_stats() -> dict:
         "telegram_requests_24h": len(telegram_24h),
         "telegram_requests_60m": len(telegram_60m),
         "total_messages": repo.count_messages(),
+        "ai_queue_pending": ai_queue.get("pending", 0),
+        "ai_queue_processing": ai_queue.get("processing", 0),
+        "ai_queue_done": ai_queue.get("done", 0),
+        "ai_queue_error": ai_queue.get("error", 0),
     }
+
+
+@router.get("/api/debug/run-history", dependencies=[Depends(require_admin)])
+def get_run_history() -> dict:
+    """Return the last 10 collect-cycle snapshots, newest first."""
+    return {"runs": list(reversed(list(monitor_run_history)))}
+
+
+@router.get("/api/debug/log", dependencies=[Depends(require_admin)])
+def get_debug_log() -> dict:
+    """Return the last 50 event-log entries, newest first."""
+    return {"events": list(reversed(list(event_log)))}

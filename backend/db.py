@@ -777,3 +777,93 @@ class Repository:
                 """,
                 (alert_id, message_id, matched_keyword),
             )
+
+    # ------------------------------------------------------------------
+    # AI queue helpers
+    # ------------------------------------------------------------------
+
+    def flush_ai_queue_no_ai(self, default_category: str | None) -> int:
+        """Mark all pending/error queue items as done without AI scoring.
+
+        Called when AI is globally disabled or the API key is missing so
+        messages become visible on the dashboard immediately.
+        """
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT message_id FROM ai_queue WHERE status IN ('pending', 'error')"
+            ).fetchall()
+            ids = [int(r["message_id"]) for r in rows]
+            if not ids:
+                return 0
+            placeholders = ",".join("?" for _ in ids)
+            conn.execute(
+                f"""
+                UPDATE messages
+                SET ai_score = NULL, ai_category = ?, ai_status = 'done',
+                    updated_at = datetime('now')
+                WHERE id IN ({placeholders})
+                """,
+                [default_category, *ids],
+            )
+            conn.execute(
+                f"""
+                UPDATE ai_queue
+                SET status = 'done', updated_at = datetime('now')
+                WHERE message_id IN ({placeholders})
+                """,
+                ids,
+            )
+        return len(ids)
+
+    def get_ai_queue_stats(self) -> dict[str, int]:
+        """Return counts per status for the AI queue."""
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT status, COUNT(*) AS cnt FROM ai_queue GROUP BY status"
+            ).fetchall()
+        result: dict[str, int] = {"pending": 0, "processing": 0, "done": 0, "error": 0}
+        for r in rows:
+            result[str(r["status"])] = int(r["cnt"])
+        return result
+
+    def reset_stale_ai_processing(self, minutes: int = 5) -> int:
+        """Reset 'processing' items stuck longer than *minutes* back to 'pending'."""
+        with get_connection() as conn:
+            cur = conn.execute(
+                """
+                UPDATE ai_queue
+                SET status = 'pending', updated_at = datetime('now')
+                WHERE status = 'processing'
+                  AND updated_at < datetime('now', ? || ' minutes')
+                """,
+                (f"-{minutes}",),
+            )
+            if cur.rowcount:
+                conn.execute(
+                    """
+                    UPDATE messages SET ai_status = 'pending', updated_at = datetime('now')
+                    WHERE id IN (SELECT message_id FROM ai_queue WHERE status = 'pending')
+                    """
+                )
+        return cur.rowcount
+
+    def reset_error_items_for_retry(self, max_retries: int = 3) -> int:
+        """Reset failed items that haven't exceeded *max_retries* back to pending."""
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT message_id FROM ai_queue WHERE status = 'error' AND retries < ?",
+                (max_retries,),
+            ).fetchall()
+            ids = [int(r["message_id"]) for r in rows]
+            if not ids:
+                return 0
+            placeholders = ",".join("?" for _ in ids)
+            conn.execute(
+                f"UPDATE ai_queue SET status = 'pending', updated_at = datetime('now') WHERE message_id IN ({placeholders})",
+                ids,
+            )
+            conn.execute(
+                f"UPDATE messages SET ai_status = 'pending', updated_at = datetime('now') WHERE id IN ({placeholders})",
+                ids,
+            )
+        return len(ids)
