@@ -311,7 +311,7 @@
               <table class="min-w-full text-xs">
                 <thead class="bg-slate-800 text-slate-300">
                   <tr>
-                    <th class="text-left p-2 whitespace-nowrap">Час (UTC)</th>
+                    <th class="text-left p-2 whitespace-nowrap">Час (локальний)</th>
                     <th class="text-left p-2">Джерел</th>
                     <th class="text-left p-2">Отримано</th>
                     <th class="text-left p-2">AI оброблено</th>
@@ -332,7 +332,7 @@
               <table class="min-w-full text-xs">
                 <thead class="bg-slate-800 text-slate-300 sticky top-0">
                   <tr>
-                    <th class="text-left p-2 whitespace-nowrap">Час (UTC)</th>
+                    <th class="text-left p-2 whitespace-nowrap">Час (локальний)</th>
                     <th class="text-left p-2 whitespace-nowrap w-36">Тип</th>
                     <th class="text-left p-2">Деталі</th>
                   </tr>
@@ -342,10 +342,36 @@
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
-      </section>
-    </main>
+	          </div>
+
+	          <!-- Dashboard users -->
+	          <div>
+	            <h3 class="text-sm font-medium mb-2">Користувачі Dashboard (останні підключення)</h3>
+	            <div class="overflow-x-auto rounded-lg border border-slate-800">
+	              <table class="min-w-full text-xs">
+	                <thead class="bg-slate-800 text-slate-300">
+	                  <tr>
+	                    <th class="text-left p-2 whitespace-nowrap">IP</th>
+	                    <th class="text-left p-2 whitespace-nowrap">Час приєднання</th>
+	                    <th class="text-left p-2 whitespace-nowrap">Остання активність</th>
+	                    <th class="text-left p-2 whitespace-nowrap">Час використання</th>
+	                    <th class="text-left p-2 whitespace-nowrap">Сесія</th>
+	                    <th class="text-left p-2 whitespace-nowrap">Heartbeat</th>
+	                    <th class="text-left p-2 whitespace-nowrap">TZ / Мова</th>
+	                    <th class="text-left p-2 whitespace-nowrap">Екран</th>
+	                    <th class="text-left p-2 whitespace-nowrap">Останній шлях</th>
+	                    <th class="text-left p-2">User-Agent</th>
+	                  </tr>
+	                </thead>
+	                <tbody id="dashboardUsersBody">
+	                  <tr><td colspan="10" class="p-2 text-slate-500">Завантаження...</td></tr>
+	                </tbody>
+	              </table>
+	            </div>
+	          </div>
+	        </div>
+	      </section>
+	    </main>
 
     <footer class="border-t border-slate-800 bg-slate-900">
       <div class="max-w-7xl mx-auto px-4 py-3 text-xs text-slate-400 flex justify-between">
@@ -730,7 +756,7 @@
           const stateClass = r.state === 'ok' ? 'text-emerald-400' : r.state === 'warning' ? 'text-amber-400' : 'text-rose-400';
           const stateText = r.error ? `${escapeHtml(r.state)}: ${escapeHtml(r.error)}` : escapeHtml(r.state);
           return `<tr class="border-t border-slate-800">
-            <td class="p-2 text-slate-400 whitespace-nowrap">${escapeHtml(r.at)}</td>
+            <td class="p-2 text-slate-400 whitespace-nowrap">${escapeHtml(formatLocalDateTime(r.at))}</td>
             <td class="p-2">${r.updated ?? 0}/${r.total ?? 0}</td>
             <td class="p-2 font-mono">${r.ingested ?? 0}</td>
             <td class="p-2 font-mono">${r.ai_processed ?? 0}</td>
@@ -767,7 +793,7 @@
         tbody.innerHTML = data.events.map(e => {
           const cls = _eventTypeStyle[e.type] || 'text-slate-400';
           return `<tr class="border-t border-slate-800/50">
-            <td class="p-2 text-slate-500 whitespace-nowrap">${escapeHtml(e.at)}</td>
+            <td class="p-2 text-slate-500 whitespace-nowrap">${escapeHtml(formatLocalDateTime(e.at))}</td>
             <td class="p-2 ${cls} whitespace-nowrap">${escapeHtml(e.type)}</td>
             <td class="p-2 text-slate-300">${escapeHtml(e.detail)}</td>
           </tr>`;
@@ -775,7 +801,7 @@
       }
 
       async function loadDebugAll() {
-        await Promise.all([loadDebugStats(), loadRunHistory(), loadEventLog()]);
+        await Promise.all([loadDebugStats(), loadRunHistory(), loadEventLog(), loadDashboardUsers()]);
       }
 
       async function loadMonitorConfig() {
@@ -935,6 +961,43 @@
         if (!value) return 'Немає даних';
         const d = new Date(value.replace(' ', 'T') + 'Z');
         return Number.isNaN(d.getTime()) ? value : d.toLocaleString('uk-UA');
+      }
+
+      function formatDuration(totalSeconds) {
+        const safe = Math.max(0, Number(totalSeconds || 0));
+        const h = Math.floor(safe / 3600);
+        const m = Math.floor((safe % 3600) / 60);
+        const s = Math.floor(safe % 60);
+        if (h > 0) return `${h}г ${String(m).padStart(2, '0')}хв`;
+        if (m > 0) return `${m}хв ${String(s).padStart(2, '0')}с`;
+        return `${s}с`;
+      }
+
+      async function loadDashboardUsers() {
+        const res = await authFetch(`${apiBase}/api/debug/dashboard-users?limit=300`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const tbody = document.getElementById('dashboardUsersBody');
+        if (!data.users || !data.users.length) {
+          tbody.innerHTML = '<tr><td colspan="10" class="p-2 text-slate-500">Поки що немає підключень до dashboard</td></tr>';
+          return;
+        }
+        tbody.innerHTML = data.users.map((u) => {
+          const tzAndLang = [u.timezone || '—', u.language || '—'].join(' / ');
+          const sessionTail = String(u.session_key || '').slice(-10);
+          return `<tr class="border-t border-slate-800/50">
+            <td class="p-2 whitespace-nowrap text-slate-300 font-mono">${escapeHtml(u.ip || '—')}</td>
+            <td class="p-2 whitespace-nowrap text-slate-400">${escapeHtml(formatLocalDateTime(u.first_seen_at))}</td>
+            <td class="p-2 whitespace-nowrap text-slate-400">${escapeHtml(formatLocalDateTime(u.last_seen_at))}</td>
+            <td class="p-2 whitespace-nowrap text-slate-300">${escapeHtml(formatDuration(u.active_seconds))}</td>
+            <td class="p-2 whitespace-nowrap text-slate-500 font-mono">…${escapeHtml(sessionTail)}</td>
+            <td class="p-2 whitespace-nowrap font-mono">${Number(u.heartbeat_count || 0)}</td>
+            <td class="p-2 whitespace-nowrap text-slate-400">${escapeHtml(tzAndLang)}</td>
+            <td class="p-2 whitespace-nowrap text-slate-400">${escapeHtml(u.screen || '—')}</td>
+            <td class="p-2 whitespace-nowrap text-slate-400">${escapeHtml(u.last_path || '—')}</td>
+            <td class="p-2 text-slate-500">${escapeHtml(u.user_agent || '—')}</td>
+          </tr>`;
+        }).join('');
       }
 
       function sourceRow(item) {

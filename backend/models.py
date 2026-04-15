@@ -82,6 +82,15 @@ class ClearMessagesPayload(BaseModel):
     confirm: bool = False
 
 
+class DashboardHeartbeatPayload(BaseModel):
+    session_key: str = Field(min_length=8, max_length=120)
+    active_seconds: int = Field(default=0, ge=0, le=86400)
+    language: str | None = Field(default=None, max_length=32)
+    timezone: str | None = Field(default=None, max_length=64)
+    screen: str | None = Field(default=None, max_length=32)
+    path: str | None = Field(default=None, max_length=120)
+
+
 class AlertCreate(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     alert_type: str = Field(pattern=r"^(new_message|min_score|keyword_ai)$")

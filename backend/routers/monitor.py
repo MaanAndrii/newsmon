@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from config import claude_call_events, event_log, monitor_run_history, monitor_status, repo, telegram_call_events
-from models import MonitorConfigPayload
+from models import DashboardHeartbeatPayload, MonitorConfigPayload
 from security import require_admin
 from services.monitor import _get_monitor_config, _process_ai_queue, _sync_sources_last_messages
 
@@ -102,3 +102,34 @@ def get_run_history() -> dict:
 def get_debug_log() -> dict:
     """Return the last 50 event-log entries, newest first."""
     return {"events": list(reversed(list(event_log)))}
+
+
+def _resolve_client_ip(request_obj: Request) -> str:
+    cf = (request_obj.headers.get("CF-Connecting-IP") or "").strip()
+    if cf:
+        return cf
+    xff = (request_obj.headers.get("X-Forwarded-For") or "").strip()
+    if xff:
+        return xff.split(",")[0].strip()
+    return request_obj.client.host if request_obj.client else "unknown"
+
+
+@router.post("/api/debug/dashboard-usage/heartbeat")
+def dashboard_usage_heartbeat(payload: DashboardHeartbeatPayload, request: Request) -> dict:
+    user_agent = (request.headers.get("User-Agent") or "").strip()
+    repo.record_dashboard_session(
+        session_key=payload.session_key,
+        ip=_resolve_client_ip(request),
+        active_seconds=payload.active_seconds,
+        user_agent=user_agent,
+        language=payload.language,
+        timezone=payload.timezone,
+        screen=payload.screen,
+        path=payload.path,
+    )
+    return {"ok": True}
+
+
+@router.get("/api/debug/dashboard-users", dependencies=[Depends(require_admin)])
+def get_dashboard_users(limit: int = 200) -> dict:
+    return {"users": repo.list_dashboard_sessions(limit=limit)}
