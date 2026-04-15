@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime, timezone
 from urllib import parse, request
 
 from config import telegram_call_events
+
+# Delays (seconds) between retry attempts: 3 s, 6 s
+_BOT_RETRY_DELAYS = (3.0, 6.0)
 
 
 def _record_telegram_call() -> None:
@@ -64,11 +68,20 @@ def _send_telegram_bot_message(bot_token: str, chat_id: str, text: str) -> None:
             "disable_web_page_preview": True,
         }
     ).encode("utf-8")
-    req = request.Request(
-        url,
-        data=body,
-        headers={"content-type": "application/json"},
-        method="POST",
-    )
-    with request.urlopen(req, timeout=12):
-        _record_telegram_call()
+
+    for attempt, delay in enumerate([0.0] + list(_BOT_RETRY_DELAYS)):
+        if delay:
+            time.sleep(delay)
+        try:
+            req = request.Request(
+                url,
+                data=body,
+                headers={"content-type": "application/json"},
+                method="POST",
+            )
+            with request.urlopen(req, timeout=12):
+                _record_telegram_call()
+            return
+        except Exception:
+            if attempt == len(_BOT_RETRY_DELAYS):
+                return  # all attempts exhausted — alerts are best-effort

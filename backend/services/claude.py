@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime, timezone
 
 from config import (
@@ -9,6 +10,9 @@ from config import (
     DEFAULT_CLAUDE_MODEL,
     claude_call_events,
 )
+
+# Delays (seconds) between successive retry attempts: 2 s, 4 s, 8 s
+_RETRY_DELAYS = (2.0, 4.0, 8.0)
 
 
 def _resolve_claude_model(value: str | None) -> str:
@@ -66,30 +70,49 @@ def _call_claude_score_sync(
     )
 
     client = anthropic.Anthropic(api_key=api_key, timeout=25.0)
-    response = client.messages.create(
-        model=model,
-        max_tokens=120,
-        system=[
-            {
-                "type": "text",
-                "text": system_prompt,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[
-            {
-                "role": "user",
-                "content": [
+    last_exc: Exception | None = None
+    response = None
+    for attempt, delay in enumerate([0.0] + list(_RETRY_DELAYS)):
+        if delay:
+            time.sleep(delay)
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=120,
+                system=[
                     {
                         "type": "text",
-                        "text": text,
+                        "text": system_prompt,
                         "cache_control": {"type": "ephemeral"},
                     }
                 ],
-            }
-        ],
-        extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
-    )
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": text,
+                                "cache_control": {"type": "ephemeral"},
+                            }
+                        ],
+                    }
+                ],
+                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+            )
+            break
+        except anthropic.RateLimitError as exc:
+            last_exc = exc
+        except anthropic.APIStatusError as exc:
+            if exc.status_code not in (500, 529):
+                raise
+            last_exc = exc
+        except anthropic.APIConnectionError as exc:
+            last_exc = exc
+    else:
+        raise RuntimeError(
+            f"Claude API не відповідає після {len(_RETRY_DELAYS) + 1} спроб"
+        ) from last_exc
 
     _record_claude_call(
         int(getattr(response.usage, "input_tokens", 0) or 0),
@@ -144,12 +167,31 @@ def _call_claude_keyword_match_sync(
     )
 
     client = anthropic.Anthropic(api_key=api_key, timeout=25.0)
-    response = client.messages.create(
-        model=model,
-        max_tokens=80,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_content}],
-    )
+    last_exc: Exception | None = None
+    response = None
+    for attempt, delay in enumerate([0.0] + list(_RETRY_DELAYS)):
+        if delay:
+            time.sleep(delay)
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=80,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_content}],
+            )
+            break
+        except anthropic.RateLimitError as exc:
+            last_exc = exc
+        except anthropic.APIStatusError as exc:
+            if exc.status_code not in (500, 529):
+                raise
+            last_exc = exc
+        except anthropic.APIConnectionError as exc:
+            last_exc = exc
+    else:
+        raise RuntimeError(
+            f"Claude API не відповідає після {len(_RETRY_DELAYS) + 1} спроб"
+        ) from last_exc
 
     _record_claude_call(
         int(getattr(response.usage, "input_tokens", 0) or 0),
