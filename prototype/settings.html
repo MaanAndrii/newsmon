@@ -130,10 +130,18 @@
             </div>
             <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
               <div>
-                <p class="font-medium">Інтервал авто-отримання (сек)</p>
-                <p class="text-xs text-slate-400">Від 300 до 1800 секунд.</p>
+                <p class="font-medium">Інтервал авто-отримання</p>
+                <p class="text-xs text-slate-400">Збір запускається на початку кожного інтервалу.</p>
               </div>
-              <input id="monitorIntervalSeconds" type="number" min="300" max="1800" step="60" class="w-28 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="600" />
+              <select id="monitorIntervalSeconds" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right">
+                <option value="300">5 хв</option>
+                <option value="600" selected>10 хв</option>
+                <option value="900">15 хв</option>
+                <option value="1200">20 хв</option>
+                <option value="1800">30 хв</option>
+                <option value="3600">60 хв</option>
+                <option value="7200">120 хв</option>
+              </select>
             </div>
             <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
               <div>

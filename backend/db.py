@@ -224,6 +224,7 @@ class Repository:
         category: str | None = None,
         source_id: int | None = None,
         keyword: str | None = None,
+        min_score: int | None = None,
     ) -> list[dict[str, Any]]:
         where_parts = ["m.ai_status = 'done'"]
         params: list[Any] = []
@@ -244,6 +245,9 @@ class Repository:
         if keyword_raw:
             where_parts.append("LOWER(COALESCE(m.text, '')) LIKE LOWER(?)")
             params.append(f"%{keyword_raw}%")
+        if min_score is not None and int(min_score) > 0:
+            where_parts.append("m.ai_score >= ?")
+            params.append(int(min_score))
         params.append(limit)
         query = f"""
             SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
@@ -274,6 +278,9 @@ class Repository:
                     if keyword_raw:
                         fallback_where.append("LOWER(COALESCE(m.text, '')) LIKE LOWER(?)")
                         fallback_params.append(f"%{keyword_raw}%")
+                    if min_score is not None and int(min_score) > 0:
+                        fallback_where.append("m.ai_score >= ?")
+                        fallback_params.append(int(min_score))
                     fallback_params.append(limit)
                     fallback_query = f"""
                         SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,

@@ -368,6 +368,7 @@ async def _process_one_ai_item(
     model: str,
     categories: list[str],
     ai_prompt: str,
+    keyword_patterns: list[str],
 ) -> None:
     async with semaphore:
         message_id = int(item.get("message_id") or 0)
@@ -380,7 +381,8 @@ async def _process_one_ai_item(
             return
         try:
             loop = asyncio.get_running_loop()
-            score, category = await loop.run_in_executor(
+            # Pass keyword_patterns so scoring and keyword matching happen in one API call.
+            score, category, matched_keyword = await loop.run_in_executor(
                 None,
                 _call_claude_score_sync,
                 api_key,
@@ -388,6 +390,7 @@ async def _process_one_ai_item(
                 _prepare_ai_text(text),
                 categories,
                 ai_prompt,
+                keyword_patterns or None,
             )
             if category is None:
                 category = _get_default_category_name()
@@ -399,7 +402,9 @@ async def _process_one_ai_item(
                 score=score,
                 category=category,
             )
-            await _process_alerts_for_message(message_id, "ai_scored", score=score)
+            await _process_alerts_for_message(
+                message_id, "ai_scored", score=score, matched_keyword=matched_keyword
+            )
         except Exception as exc:
             repo.mark_ai_error(message_id, str(exc))
             _log_event(
@@ -450,6 +455,15 @@ async def _process_ai_queue(limit: int = 50) -> int:
         c.get("name", "").strip() for c in repo.list_categories() if c.get("name")
     ]
     ai_prompt = str(monitor_cfg.get("ai_prompt") or "").strip()
+    # Collect all active keyword_ai patterns once per queue flush to avoid
+    # per-message DB queries and to pass them into the combined scoring call.
+    keyword_patterns: list[str] = list({
+        str(a.get("pattern") or "").strip()
+        for a in repo.list_alerts()
+        if int(a.get("is_enabled") or 0) == 1
+        and str(a.get("alert_type") or "") == "keyword_ai"
+        and str(a.get("pattern") or "").strip()
+    })
 
     async with ai_processing_lock:
         pending = repo.claim_ai_queue_pending(limit=limit)
@@ -460,7 +474,7 @@ async def _process_ai_queue(limit: int = 50) -> int:
         await asyncio.gather(
             *[
                 _process_one_ai_item(
-                    item, semaphore, api_key, model, categories, ai_prompt
+                    item, semaphore, api_key, model, categories, ai_prompt, keyword_patterns
                 )
                 for item in pending
             ],

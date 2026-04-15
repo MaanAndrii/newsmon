@@ -50,7 +50,13 @@ def _call_claude_score_sync(
     text: str,
     categories: list[str],
     custom_prompt: str,
-) -> tuple[int, str | None]:
+    keywords: list[str] | None = None,
+) -> tuple[int, str | None, str | None]:
+    """Score a message and optionally match keywords in a single API call.
+
+    Returns (score, category, matched_keyword).
+    matched_keyword is None when no keywords were provided or none matched.
+    """
     try:
         import anthropic
     except ImportError as exc:
@@ -63,10 +69,21 @@ def _call_claude_score_sync(
         custom_prompt
         or "Оціни медіа-важливість повідомлення від 1 до 10 і обери найкращу категорію."
     )
+    if keywords:
+        keywords_text = ", ".join(f'"{k}"' for k in keywords)
+        json_format = '{"score": 7, "category": "Економіка", "matched_keyword": "Харків"}'
+        keyword_instruction = (
+            f'Ключові слова для пошуку (з урахуванням відмінків/словоформ): {keywords_text}. '
+            f'Якщо жодне не знайдено — matched_keyword: null. '
+        )
+    else:
+        json_format = '{"score": 7, "category": "Економіка"}'
+        keyword_instruction = ""
     system_prompt = (
         f"{base_prompt}\n"
         f"Категорії: {categories_text}.\n"
-        "Поверни ТІЛЬКИ JSON без пояснень, формат: {\"score\": 7, \"category\": \"Економіка\"}."
+        f"{keyword_instruction}"
+        f"Поверни ТІЛЬКИ JSON без пояснень, формат: {json_format}."
     )
 
     client = anthropic.Anthropic(api_key=api_key, timeout=25.0)
@@ -78,7 +95,7 @@ def _call_claude_score_sync(
         try:
             response = client.messages.create(
                 model=model,
-                max_tokens=120,
+                max_tokens=200 if keywords else 120,
                 system=[
                     {
                         "type": "text",
@@ -134,7 +151,15 @@ def _call_claude_score_sync(
     category = str(parsed.get("category") or "").strip() or None
     if categories and category not in categories:
         category = None
-    return score, category
+    matched_keyword: str | None = None
+    if keywords:
+        raw_match = str(parsed.get("matched_keyword") or "").strip()
+        if raw_match:
+            for kw in keywords:
+                if kw.lower() == raw_match.lower():
+                    matched_keyword = kw
+                    break
+    return score, category, matched_keyword
 
 
 def _call_claude_keyword_match_sync(
