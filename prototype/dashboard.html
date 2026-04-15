@@ -7,18 +7,28 @@
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
   <body class="min-h-screen bg-slate-950 text-slate-100 flex flex-col" id="appRoot">
-    <header class="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-10">
-      <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 class="text-xl font-bold">NewsMon — Моніторинг Telegram-каналів</h1>
-          <p class="text-xs text-slate-400">Прототип Dashboard (mock дані)</p>
+    <header class="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-20">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+        <div class="flex items-end justify-between gap-3">
+          <h1 class="text-2xl md:text-3xl font-bold leading-none">TG-монітор</h1>
+          <button id="mobileMenuBtn" class="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-lg bg-slate-800 hover:bg-slate-700" aria-label="Відкрити меню" aria-expanded="false">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+          </button>
         </div>
-        <nav class="flex flex-wrap gap-2 text-sm items-center">
-          <a class="px-3 py-2 rounded-lg bg-emerald-600 text-white" href="dashboard.html">Dashboard</a>
-          <a class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700" href="settings.html">Налаштування</a>
-          <input id="searchInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 placeholder:text-slate-400 min-w-56" placeholder="Пошук по всіх повідомленнях..." />
+        <nav id="headerMenu" class="hidden flex flex-col sm:flex-row sm:flex-wrap gap-2 text-sm items-stretch sm:items-end md:flex md:items-end">
+          <div class="flex min-w-0">
+            <input id="searchInput" class="w-48 px-3 py-2 rounded-l-lg bg-slate-800 border border-slate-700 text-slate-100 placeholder:text-slate-400" placeholder="Пошук по всіх повідомленнях..." />
+            <button id="searchBtn" class="px-3 py-2 rounded-r-lg border border-l-0 border-slate-700 bg-slate-800 hover:bg-slate-700" title="Пошук" aria-label="Пошук">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path stroke-linecap="round" d="m20 20-3.5-3.5"></path>
+              </svg>
+            </button>
+          </div>
           <button id="filterBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">Фільтр</button>
-          <button id="resetFiltersBtn" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600">Скинути</button>
+          <button id="resetFiltersBtn" class="px-3 py-2 rounded-lg bg-slate-700 text-slate-300 cursor-not-allowed" disabled>Скинути</button>
         </nav>
       </div>
     </header>
@@ -27,27 +37,17 @@
       <section class="mb-5 p-4 rounded-xl bg-slate-900 border border-slate-800">
         <div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
           <h2 class="font-semibold text-lg">Статус системи</h2>
-          <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs w-full md:w-auto">
-            <button id="statusTelegramCard" class="px-3 py-2 rounded bg-emerald-700/60 text-left hover:bg-emerald-600/70 transition" onclick="openSystemStatusModal('telegram')">
-              <div class="font-semibold">Telegram</div>
-              <div id="statusTelegram">активний</div>
-            </button>
-            <button id="statusAiCard" class="px-3 py-2 rounded bg-amber-700/60 text-left hover:bg-amber-600/70 transition" onclick="openSystemStatusModal('ai')">
-              <div class="font-semibold">Claude</div>
-              <div id="statusAi">pending 0</div>
-            </button>
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs w-full md:w-auto">
             <button id="statusChannelsCard" class="px-3 py-2 rounded bg-sky-700/60 text-left hover:bg-sky-600/70 transition" onclick="openSystemStatusModal('channels')">
               <div class="font-semibold">Канали</div>
               <div id="statusChannels">0/0</div>
             </button>
-            <div class="flex flex-col gap-2">
-              <button id="statusClockCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="openSystemStatusModal('now')">
-                <div class="font-semibold">Актуальний час</div>
-                <div id="statusCurrentTime">--:--:--</div>
-              </button>
-            </div>
+            <button id="statusClockCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="openSystemStatusModal('now')">
+              <div class="font-semibold">Актуальний час</div>
+              <div id="statusCurrentTime">--:--:--</div>
+            </button>
             <button id="statusNowTimeCard" class="px-3 py-2 rounded bg-indigo-700/60 text-left hover:bg-indigo-600/70 transition" onclick="openSystemStatusModal('clock')">
-              <div class="font-semibold">Опитування</div>
+              <div class="font-semibold">До оновлення</div>
               <div id="statusPollTimer">--:--</div>
             </button>
           </div>
@@ -56,6 +56,9 @@
 
       <section id="queryState" class="mb-4 text-xs text-slate-400"></section>
       <section id="messagesGrid" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></section>
+      <div class="mt-6 flex justify-center">
+        <button id="showMoreBtn" class="hidden px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">Показати більше</button>
+      </div>
     </main>
 
     <div id="messageModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
@@ -127,11 +130,19 @@
     </div>
 
     <footer class="border-t border-slate-800 bg-slate-900">
-      <div class="max-w-7xl mx-auto px-4 py-3 text-xs text-slate-400 flex justify-between">
+      <div class="max-w-7xl mx-auto px-4 py-3 text-xs text-slate-400 flex justify-between items-center gap-3">
         <span>© 2026 NewsMon Prototype</span>
-        <span>Автор: Andrii Maryniuk</span>
+        <div class="flex items-center gap-3">
+          <a href="settings.html" class="text-slate-300 hover:text-white underline underline-offset-2">Налаштування</a>
+          <span>Автор: Andrii Maryniuk</span>
+        </div>
       </div>
     </footer>
+    <button id="scrollTopBtn" class="fixed bottom-5 right-5 z-20 hidden w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-500 shadow-lg items-center justify-center" title="Вгору" aria-label="Прокрутити вгору">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m18 15-6-6-6 6"/>
+      </svg>
+    </button>
     <script>
       const modal = document.getElementById('messageModal');
       const systemStatusModal = document.getElementById('systemStatusModal');
@@ -145,11 +156,18 @@
       const filtersModal = document.getElementById('filtersModal');
       const queryState = document.getElementById('queryState');
       const searchInput = document.getElementById('searchInput');
+      const searchBtn = document.getElementById('searchBtn');
+      const showMoreBtn = document.getElementById('showMoreBtn');
+      const resetFiltersBtn = document.getElementById('resetFiltersBtn');
+      const scrollTopBtn = document.getElementById('scrollTopBtn');
       const filterCategoryInput = document.getElementById('filterCategoryInput');
       const filterSourceInput = document.getElementById('filterSourceInput');
       const filterKeywordInput = document.getElementById('filterKeywordInput');
       const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
       const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '' };
+      const PAGE_SIZE = 60;
+      let visibleCount = PAGE_SIZE;
+      let latestItems = [];
 
       function escapeHtml(value) {
         return String(value || '')
@@ -215,10 +233,45 @@
           : 'Показано всі новини за датою (новіші зверху).';
       }
 
+      function hasActiveFilters() {
+        return Boolean(
+          queryStateCache.search ||
+          queryStateCache.category ||
+          queryStateCache.sourceId ||
+          queryStateCache.keyword
+        );
+      }
+
+      function updateResetButtonState() {
+        const active = hasActiveFilters();
+        resetFiltersBtn.disabled = !active;
+        if (active) {
+          resetFiltersBtn.classList.remove('bg-slate-700', 'text-slate-300', 'cursor-not-allowed');
+          resetFiltersBtn.classList.add('bg-rose-700', 'hover:bg-rose-600', 'text-white');
+        } else {
+          resetFiltersBtn.classList.remove('bg-rose-700', 'hover:bg-rose-600', 'text-white');
+          resetFiltersBtn.classList.add('bg-slate-700', 'text-slate-300', 'cursor-not-allowed');
+        }
+      }
+
+      function renderVisibleMessages() {
+        const sliced = latestItems.slice(0, visibleCount);
+        messagesGrid.innerHTML = sliced.length
+          ? sliced.map(renderMessageCard).join('')
+          : `<article class="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-300">Поки що немає зібраних повідомлень.</article>`;
+        if (latestItems.length > visibleCount) {
+          showMoreBtn.classList.remove('hidden');
+        } else {
+          showMoreBtn.classList.add('hidden');
+        }
+      }
+
       function applyCategoryFilter(categoryName) {
         const normalized = String(categoryName || '').trim();
         queryStateCache.category = normalized;
         filterCategoryInput.value = normalized;
+        visibleCount = PAGE_SIZE;
+        updateResetButtonState();
         loadMessages();
       }
 
@@ -247,7 +300,7 @@
 
       async function loadMessages() {
         try {
-          const params = new URLSearchParams({ limit: '200' });
+          const params = new URLSearchParams({ limit: '500' });
           if (queryStateCache.search) params.set('q', queryStateCache.search);
           if (queryStateCache.category) params.set('category', queryStateCache.category);
           if (queryStateCache.sourceId) params.set('source_id', queryStateCache.sourceId);
@@ -262,11 +315,13 @@
             seen.add(key);
             unique.push(item);
           }
-          messagesGrid.innerHTML = unique.length
-            ? unique.map(renderMessageCard).join('')
-            : `<article class="rounded-xl border border-slate-800 bg-slate-900 p-6 text-sm text-slate-300">Поки що немає зібраних повідомлень.</article>`;
+          latestItems = unique;
+          renderVisibleMessages();
           updateQueryStateLabel();
+          updateResetButtonState();
         } catch (error) {
+          latestItems = [];
+          showMoreBtn.classList.add('hidden');
           messagesGrid.innerHTML = `<article class="rounded-xl border border-rose-700/40 bg-rose-950/20 p-6 text-sm text-rose-200">Не вдалося завантажити стрічку: ${error}</article>`;
         }
       }
@@ -341,6 +396,8 @@
         queryStateCache.keyword = filterKeywordInput.value.trim();
         const sourceOption = filterSourceInput.options[filterSourceInput.selectedIndex];
         queryStateCache.sourceName = queryStateCache.sourceId ? String(sourceOption?.textContent || '') : '';
+        visibleCount = PAGE_SIZE;
+        updateResetButtonState();
         closeFiltersModal();
         loadMessages();
       }
@@ -392,19 +449,15 @@
           statusCache.clock = `Інтервал: ${statusCache.intervalSeconds} сек. Збір: ${collectEnabled ? 'увімкнено' : 'вимкнено'}`;
           updateCurrentTime();
           statusCache.updatedAt = `Оновлено: ${new Date().toLocaleString('uk-UA')}`;
-          document.getElementById('statusTelegram').textContent = monitorState === 'ok' ? 'активний' : monitorState;
-          document.getElementById('statusAi').textContent = aiEnabled ? 'увімкнено' : 'вимкнено';
           document.getElementById('statusChannels').textContent = `${activeSources}/${totalSources}`;
           document.getElementById('statusPollTimer').textContent = collectEnabled ? document.getElementById('statusPollTimer').textContent : '--:--';
-          paintStatusCard('statusTelegramCard', monitorState === 'ok');
-          paintStatusCard('statusAiCard', aiEnabled ? true : null);
           paintStatusCard('statusChannelsCard', activeSources > 0 ? true : null);
           paintStatusCard('statusClockCard', collectEnabled ? true : null);
           paintStatusCard('statusNowTimeCard', true);
           updatePollCountdown();
         } catch (error) {
-          document.getElementById('statusTelegram').textContent = 'помилка';
-          paintStatusCard('statusTelegramCard', false);
+          document.getElementById('statusChannels').textContent = 'помилка';
+          paintStatusCard('statusChannelsCard', false);
         }
       }
 
@@ -416,7 +469,7 @@
       }
 
       function openSystemStatusModal(type) {
-        const titles = { telegram: 'Telegram моніторинг', ai: 'Черга AI', channels: 'Стан каналів', clock: 'Таймер опитування', now: 'Актуальний час' };
+        const titles = { channels: 'Стан каналів', clock: 'Таймер опитування', now: 'Актуальний час' };
         document.getElementById('systemStatusTitle').textContent = titles[type] || 'Статус';
         document.getElementById('systemStatusDetail').textContent = statusCache[type] || 'Немає даних';
         document.getElementById('systemStatusUpdated').textContent = statusCache.updatedAt || '';
@@ -429,16 +482,30 @@
         systemStatusModal.classList.remove('flex');
       }
 
+      function applySearch() {
+        queryStateCache.search = searchInput.value.trim();
+        visibleCount = PAGE_SIZE;
+        updateResetButtonState();
+        loadMessages();
+      }
+
       searchInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
-          queryStateCache.search = searchInput.value.trim();
-          loadMessages();
+          applySearch();
         }
       });
+      searchBtn.addEventListener('click', applySearch);
       document.getElementById('filterBtn').addEventListener('click', () => {
         openFiltersModal();
       });
-      document.getElementById('resetFiltersBtn').addEventListener('click', () => {
+      document.getElementById('mobileMenuBtn').addEventListener('click', (event) => {
+        const menu = document.getElementById('headerMenu');
+        const expanded = event.currentTarget.getAttribute('aria-expanded') === 'true';
+        event.currentTarget.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+        menu.classList.toggle('hidden');
+      });
+      resetFiltersBtn.addEventListener('click', () => {
+        if (!hasActiveFilters()) return;
         queryStateCache.search = '';
         queryStateCache.category = '';
         queryStateCache.sourceId = '';
@@ -446,10 +513,29 @@
         queryStateCache.keyword = '';
         searchInput.value = '';
         clearModalFilters();
+        visibleCount = PAGE_SIZE;
+        updateResetButtonState();
         loadMessages();
+      });
+      showMoreBtn.addEventListener('click', () => {
+        visibleCount += PAGE_SIZE;
+        renderVisibleMessages();
+      });
+      scrollTopBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      window.addEventListener('scroll', () => {
+        if (window.scrollY > 400) {
+          scrollTopBtn.classList.remove('hidden');
+          scrollTopBtn.classList.add('flex');
+        } else {
+          scrollTopBtn.classList.add('hidden');
+          scrollTopBtn.classList.remove('flex');
+        }
       });
 
       loadFilterOptions();
+      updateResetButtonState();
       loadMessages();
       loadSystemStatus();
       setInterval(loadMessages, 10000);
