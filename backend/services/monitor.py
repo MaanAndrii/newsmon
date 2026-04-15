@@ -218,6 +218,11 @@ async def _fetch_one_source(
                     or getattr(message, "text", None)
                     or ""
                 )
+                # Only send to AI queue when source has AI enabled AND the
+                # message actually contains text — media-only posts are
+                # marked done immediately to avoid an infinite error loop.
+                has_text = bool(text.strip())
+                should_ai = ai_enabled and bool(source.get("ai_enabled")) and has_text
                 new_message_id = repo.upsert_message(
                     source_id=int(source["id"]),
                     tg_message_id=message_id,
@@ -230,9 +235,9 @@ async def _fetch_one_source(
                         ensure_ascii=False,
                         default=str,
                     ),
-                    enqueue_ai=ai_enabled and bool(source.get("ai_enabled")),
+                    enqueue_ai=should_ai,
                 )
-                if not (ai_enabled and bool(source.get("ai_enabled"))):
+                if not should_ai:
                     repo.mark_message_no_ai(new_message_id, _get_default_category_name())
                 src_ingested += 1
                 await _process_alerts_for_message(new_message_id, "new_message")
@@ -357,8 +362,10 @@ async def _process_one_ai_item(
         message_id = int(item.get("message_id") or 0)
         text = (item.get("text") or "").strip()
         if message_id <= 0 or not text:
-            repo.mark_ai_error(message_id, "empty message text")
-            _log_event("ai_error", f"msg#{message_id}: порожній текст")
+            # Mark as done without a score so it appears on the dashboard
+            # and is never retried.
+            repo.mark_message_no_ai(message_id, _get_default_category_name())
+            _log_event("ai_flush", f"msg#{message_id}: порожній текст → позначено без оцінки")
             return
         try:
             loop = asyncio.get_running_loop()
