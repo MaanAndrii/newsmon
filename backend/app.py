@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 import config
 from config import PROTOTYPE_DIR
 from db import init_db
-from services.monitor import _monitor_loop
+from services.monitor import _ai_loop, _monitor_loop
 
 from routers import alerts as alerts_router
 from routers import categories as categories_router
@@ -36,6 +36,8 @@ async def startup() -> None:
     init_db()
     if config.monitor_task is None:
         config.monitor_task = asyncio.create_task(_monitor_loop())
+    if config.ai_task is None:
+        config.ai_task = asyncio.create_task(_ai_loop())
 
 
 @app.get("/")

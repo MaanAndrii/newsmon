@@ -55,9 +55,10 @@ TELETHON_HEALTH_CACHE_TTL = 30.0
 repo = Repository()
 
 # ---------------------------------------------------------------------------
-# Background task handle
+# Background task handles
 # ---------------------------------------------------------------------------
 monitor_task: asyncio.Task | None = None
+ai_task: asyncio.Task | None = None
 
 # ---------------------------------------------------------------------------
 # Shared mutable state

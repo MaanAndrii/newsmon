@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime, timezone
-
-import anthropic
 
 from config import (
     CLAUDE_MODELS,
     DEFAULT_CLAUDE_MODEL,
     claude_call_events,
 )
+
+# Delays (seconds) between successive retry attempts: 2 s, 4 s, 8 s
+_RETRY_DELAYS = (2.0, 4.0, 8.0)
 
 
 def _resolve_claude_model(value: str | None) -> str:
@@ -42,10 +44,6 @@ def _prepare_ai_text(text: str) -> str:
     return reduced[:1600]
 
 
-def _make_client(api_key: str) -> anthropic.Anthropic:
-    return anthropic.Anthropic(api_key=api_key, timeout=25.0)
-
-
 def _call_claude_score_sync(
     api_key: str,
     model: str,
@@ -53,6 +51,13 @@ def _call_claude_score_sync(
     categories: list[str],
     custom_prompt: str,
 ) -> tuple[int, str | None]:
+    try:
+        import anthropic
+    except ImportError as exc:
+        raise RuntimeError(
+            "Пакет anthropic не встановлено. Виконайте: pip install -r backend/requirements.txt"
+        ) from exc
+
     categories_text = ", ".join(categories) if categories else "Без категорії"
     base_prompt = (
         custom_prompt
@@ -64,31 +69,50 @@ def _call_claude_score_sync(
         "Поверни ТІЛЬКИ JSON без пояснень, формат: {\"score\": 7, \"category\": \"Економіка\"}."
     )
 
-    client = _make_client(api_key)
-    response = client.messages.create(
-        model=model,
-        max_tokens=120,
-        system=[
-            {
-                "type": "text",
-                "text": system_prompt,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[
-            {
-                "role": "user",
-                "content": [
+    client = anthropic.Anthropic(api_key=api_key, timeout=25.0)
+    last_exc: Exception | None = None
+    response = None
+    for attempt, delay in enumerate([0.0] + list(_RETRY_DELAYS)):
+        if delay:
+            time.sleep(delay)
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=120,
+                system=[
                     {
                         "type": "text",
-                        "text": text,
+                        "text": system_prompt,
                         "cache_control": {"type": "ephemeral"},
                     }
                 ],
-            }
-        ],
-        extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
-    )
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": text,
+                                "cache_control": {"type": "ephemeral"},
+                            }
+                        ],
+                    }
+                ],
+                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+            )
+            break
+        except anthropic.RateLimitError as exc:
+            last_exc = exc
+        except anthropic.APIStatusError as exc:
+            if exc.status_code not in (500, 529):
+                raise
+            last_exc = exc
+        except anthropic.APIConnectionError as exc:
+            last_exc = exc
+    else:
+        raise RuntimeError(
+            f"Claude API не відповідає після {len(_RETRY_DELAYS) + 1} спроб"
+        ) from last_exc
 
     _record_claude_call(
         int(getattr(response.usage, "input_tokens", 0) or 0),
@@ -125,6 +149,13 @@ def _call_claude_keyword_match_sync(
     if not normalized_keywords:
         return None
 
+    try:
+        import anthropic
+    except ImportError as exc:
+        raise RuntimeError(
+            "Пакет anthropic не встановлено. Виконайте: pip install -r backend/requirements.txt"
+        ) from exc
+
     system_prompt = (
         "Отримай текст новини та список ключових слів. "
         "Визнач, чи є в тексті одне з ключових слів з урахуванням відмінків/словоформ. "
@@ -135,13 +166,32 @@ def _call_claude_keyword_match_sync(
         ensure_ascii=False,
     )
 
-    client = _make_client(api_key)
-    response = client.messages.create(
-        model=model,
-        max_tokens=80,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_content}],
-    )
+    client = anthropic.Anthropic(api_key=api_key, timeout=25.0)
+    last_exc: Exception | None = None
+    response = None
+    for attempt, delay in enumerate([0.0] + list(_RETRY_DELAYS)):
+        if delay:
+            time.sleep(delay)
+        try:
+            response = client.messages.create(
+                model=model,
+                max_tokens=80,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_content}],
+            )
+            break
+        except anthropic.RateLimitError as exc:
+            last_exc = exc
+        except anthropic.APIStatusError as exc:
+            if exc.status_code not in (500, 529):
+                raise
+            last_exc = exc
+        except anthropic.APIConnectionError as exc:
+            last_exc = exc
+    else:
+        raise RuntimeError(
+            f"Claude API не відповідає після {len(_RETRY_DELAYS) + 1} спроб"
+        ) from last_exc
 
     _record_claude_call(
         int(getattr(response.usage, "input_tokens", 0) or 0),
