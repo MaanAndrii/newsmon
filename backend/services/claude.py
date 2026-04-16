@@ -98,26 +98,8 @@ def _call_claude_score_sync(
             response = client.messages.create(
                 model=model,
                 max_tokens=200 if keywords else 120,
-                system=[
-                    {
-                        "type": "text",
-                        "text": system_prompt,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": text,
-                                "cache_control": {"type": "ephemeral"},
-                            }
-                        ],
-                    }
-                ],
-                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+                system=system_prompt,
+                messages=[{"role": "user", "content": text}],
             )
             break
         except anthropic.RateLimitError as exc:
