@@ -2,19 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from config import claude_call_events, event_log, monitor_run_history, monitor_status, repo, telegram_call_events
 from models import DashboardHeartbeatPayload, MonitorConfigPayload
-from security import require_admin
+from security import _rate_limit_hit, require_admin
 from services.monitor import _get_monitor_config, _process_ai_queue, _sync_sources_last_messages
+from utils import _resolve_client_ip
 
 router = APIRouter()
 
 
 @router.get("/api/monitor/status")
 def get_monitor_status() -> dict:
-    return {**monitor_status, **_get_monitor_config()}
+    public = {k: v for k, v in monitor_status.items() if k != "last_error"}
+    return {**public, **_get_monitor_config()}
 
 
 @router.get("/api/monitor/config", dependencies=[Depends(require_admin)])
@@ -107,22 +109,15 @@ def get_debug_log() -> dict:
     return {"events": list(reversed(list(event_log)))}
 
 
-def _resolve_client_ip(request_obj: Request) -> str:
-    cf = (request_obj.headers.get("CF-Connecting-IP") or "").strip()
-    if cf:
-        return cf
-    xff = (request_obj.headers.get("X-Forwarded-For") or "").strip()
-    if xff:
-        return xff.split(",")[0].strip()
-    return request_obj.client.host if request_obj.client else "unknown"
-
-
 @router.post("/api/debug/dashboard-usage/heartbeat")
 def dashboard_usage_heartbeat(payload: DashboardHeartbeatPayload, request: Request) -> dict:
+    ip = _resolve_client_ip(request)
+    if not _rate_limit_hit(f"heartbeat:{ip}", 10, 60.0):
+        raise HTTPException(status_code=429, detail="Занадто багато запитів")
     user_agent = (request.headers.get("User-Agent") or "").strip()
     repo.record_dashboard_session(
         session_key=payload.session_key,
-        ip=_resolve_client_ip(request),
+        ip=ip,
         active_seconds=payload.active_seconds,
         user_agent=user_agent,
         language=payload.language,
