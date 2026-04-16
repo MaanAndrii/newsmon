@@ -273,7 +273,7 @@ class Repository:
             where_parts.append("LOWER(COALESCE(m.text, '')) LIKE LOWER(?)")
             params.append(f"%{keyword_raw}%")
         if min_score is not None and int(min_score) > 0:
-            where_parts.append("m.ai_score >= ?")
+            where_parts.append("m.ai_score = ?")
             params.append(int(min_score))
         params.append(limit)
         query = f"""
@@ -306,7 +306,7 @@ class Repository:
                         fallback_where.append("LOWER(COALESCE(m.text, '')) LIKE LOWER(?)")
                         fallback_params.append(f"%{keyword_raw}%")
                     if min_score is not None and int(min_score) > 0:
-                        fallback_where.append("m.ai_score >= ?")
+                        fallback_where.append("m.ai_score = ?")
                         fallback_params.append(int(min_score))
                     fallback_params.append(limit)
                     fallback_query = f"""

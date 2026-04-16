@@ -137,14 +137,14 @@
             <span class="text-slate-300">Мінімальна оцінка AI</span>
             <select id="filterMinScoreInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700">
               <option value="">Будь-яка оцінка</option>
-              <option value="3">≥ 3</option>
-              <option value="4">≥ 4</option>
-              <option value="5">≥ 5</option>
-              <option value="6">≥ 6</option>
-              <option value="7">≥ 7</option>
-              <option value="8">≥ 8</option>
-              <option value="9">≥ 9</option>
-              <option value="10">= 10</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+              <option value="6">6</option>
+              <option value="7">7</option>
+              <option value="8">8</option>
+              <option value="9">9</option>
+              <option value="10">10</option>
             </select>
           </label>
         </div>
@@ -301,7 +301,7 @@
         if (queryStateCache.category) parts.push(queryStateCache.category);
         if (queryStateCache.sourceName) parts.push(queryStateCache.sourceName);
         if (queryStateCache.keyword) parts.push(`"${queryStateCache.keyword}"`);
-        if (queryStateCache.minScore) parts.push(`Оцінка ≥ ${queryStateCache.minScore}`);
+        if (queryStateCache.minScore) parts.push(`Оцінка = ${queryStateCache.minScore}`);
         filterLabel.textContent = parts.join(' • ');
         filterCount.textContent = `Показано: ${latestItems.length}`;
         channelsCard.classList.add('hidden');
