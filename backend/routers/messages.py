@@ -49,3 +49,11 @@ def clear_all_messages(payload: ClearMessagesPayload) -> dict:
         )
     deleted = repo.clear_all_messages()
     return {"ok": True, "deleted_messages": deleted}
+
+
+@router.post(
+    "/api/messages/clear-empty", dependencies=[Depends(require_admin)]
+)
+def clear_empty_messages() -> dict:
+    deleted = repo.delete_empty_messages()
+    return {"ok": True, "deleted_messages": deleted}

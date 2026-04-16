@@ -165,7 +165,7 @@
           <div class="flex gap-2">
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveMonitorConfig()">Зберегти налаштування моніторингу</button>
             <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" onclick="runMonitorOnce()">Отримати повідомлення зараз</button>
-            <button class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-sm" onclick="clearAllMessages()">Очистити ВСІ отримані повідомлення</button>
+            <button class="px-3 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-sm" onclick="clearEmptyMessages()">Видалити пусті повідомлення</button>
           </div>
           <p id="monitorConfigMessage" class="text-xs text-slate-400"></p>
         </div>
@@ -886,6 +886,19 @@
           : (data.detail || 'Не вдалося очистити повідомлення.');
       }
 
+      async function clearEmptyMessages() {
+        const ok = window.confirm('Видалити всі повідомлення без тексту (медіа без підпису)?');
+        if (!ok) return;
+        const res = await authFetch(`${apiBase}/api/messages/clear-empty`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        const data = await parseApiBody(res);
+        document.getElementById('monitorConfigMessage').textContent = res.ok
+          ? `Видалено пустих повідомлень: ${data.deleted_messages}.`
+          : (data.detail || 'Не вдалося видалити пусті повідомлення.');
+      }
+
       async function loadTelethonAuthStatus() {
         try {
           const [res, healthRes] = await Promise.all([
@@ -1143,6 +1156,10 @@
       }
 
       function alertRow(item) {
+        const enabled = Boolean(item.is_enabled);
+        const toggleBg = enabled ? 'bg-emerald-600' : 'bg-slate-600';
+        const togglePos = enabled ? 'translate-x-5' : 'translate-x-1';
+        const toggleTitle = enabled ? 'Вимкнути' : 'Увімкнути';
         return `<tr class="border-t border-slate-800">
           <td class="p-3">${escapeHtml(item.name)}</td>
           <td class="p-3">${escapeHtml(alertTypeLabel(item.alert_type))}</td>
@@ -1150,7 +1167,11 @@
           <td class="p-3">${escapeHtml(item.pattern || '—')}</td>
           <td class="p-3">${item.min_score == null ? '—' : Number(item.min_score)}</td>
           <td class="p-3">${escapeHtml(item.target_chat_id || '—')}</td>
-          <td class="p-3">${item.is_enabled ? '<span class="px-2 py-1 rounded bg-emerald-700 text-xs">Увімкнено</span>' : '<span class="px-2 py-1 rounded bg-slate-600 text-xs">Вимкнено</span>'}</td>
+          <td class="p-3">
+            <button class="relative inline-flex w-10 h-6 rounded-full transition-colors duration-200 focus:outline-none ${toggleBg}" onclick="toggleAlert(${Number(item.id)}, ${enabled})" title="${toggleTitle}">
+              <span class="inline-block w-4 h-4 mt-1 rounded-full bg-white shadow transition-transform duration-200 ${togglePos}"></span>
+            </button>
+          </td>
           <td class="p-3 flex gap-2">
             <button class="px-2 py-1 rounded bg-sky-700 hover:bg-sky-600 text-xs" onclick="startEditAlert(${Number(item.id)})">Редагувати</button>
             <button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteAlert(${Number(item.id)})">Видалити</button>
@@ -1158,105 +1179,17 @@
         </tr>`;
       }
 
-      async function loadAlerts() {
-        const [alertsRes, sourcesRes] = await Promise.all([
-          authFetch(`${apiBase}/api/alerts`),
-          fetch(`${apiBase}/api/sources?sort=alpha`),
-        ]);
-        if (!alertsRes.ok) return;
-        const rows = await alertsRes.json();
-        alertsBody.innerHTML = rows.map(alertRow).join('');
-        if (sourcesRes.ok) {
-          const sources = await sourcesRes.json();
-          const select = document.getElementById('alertSourceInput');
-          const selected = select.value;
-          select.innerHTML = '<option value="">Усі канали</option>' + sources.map((s) => `<option value="${Number(s.id)}">${escapeHtml(s.name)}</option>`).join('');
-          if (selected) select.value = selected;
-        }
-      }
-
-      async function saveAlert() {
-        const payload = {
-          name: document.getElementById('alertNameInput').value.trim(),
-          alert_type: document.getElementById('alertTypeInput').value,
-          source_id: document.getElementById('alertSourceInput').value ? Number(document.getElementById('alertSourceInput').value) : null,
-          pattern: document.getElementById('alertPatternInput').value.trim(),
-          min_score: document.getElementById('alertMinScoreInput').value ? Number(document.getElementById('alertMinScoreInput').value) : null,
-          target_chat_id: document.getElementById('alertTargetChatInput').value.trim(),
-          is_enabled: true,
-          is_ai_keyword: true,
-        };
-        if (!payload.name || !payload.target_chat_id) {
-          document.getElementById('alertMessage').textContent = 'Вкажіть назву правила і target chat id.';
-          return;
-        }
-        const method = editingAlertId ? 'PATCH' : 'POST';
-        const url = editingAlertId ? `${apiBase}/api/alerts/${editingAlertId}` : `${apiBase}/api/alerts`;
-        const res = await authFetch(url, {
-          method,
+      async function toggleAlert(alertId, currentEnabled) {
+        const res = await authFetch(`${apiBase}/api/alerts/${alertId}`, {
+          method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ is_enabled: !currentEnabled }),
         });
-        const data = await parseApiBody(res);
-        document.getElementById('alertMessage').textContent = res.ok
-          ? (editingAlertId ? 'Правило оновлено.' : 'Правило створено.')
-          : (data.detail || 'Не вдалося зберегти правило.');
         if (res.ok) {
-          editingAlertId = null;
-          document.getElementById('alertNameInput').value = '';
-          document.getElementById('alertPatternInput').value = '';
-          document.getElementById('alertTargetChatInput').value = '';
-          document.getElementById('alertMinScoreInput').value = '7';
-          document.getElementById('alertSourceInput').value = '';
           await loadAlerts();
+        } else {
+          document.getElementById('alertMessage').textContent = 'Не вдалося змінити стан правила.';
         }
-      }
-
-      async function startEditAlert(alertId) {
-        const res = await authFetch(`${apiBase}/api/alerts`);
-        if (!res.ok) return;
-        const rows = await res.json();
-        const item = rows.find((r) => Number(r.id) === Number(alertId));
-        if (!item) return;
-        editingAlertId = Number(item.id);
-        document.getElementById('alertNameInput').value = item.name || '';
-        document.getElementById('alertTypeInput').value = item.alert_type || 'new_message';
-        document.getElementById('alertSourceInput').value = item.source_id ? String(Number(item.source_id)) : '';
-        document.getElementById('alertPatternInput').value = item.pattern || '';
-        document.getElementById('alertMinScoreInput').value = item.min_score == null ? '7' : String(Number(item.min_score));
-        document.getElementById('alertTargetChatInput').value = item.target_chat_id || '';
-        document.getElementById('alertMessage').textContent = `Редагування правила #${item.id}`;
-      }
-
-      async function deleteAlert(alertId) {
-        const ok = window.confirm('Видалити правило сповіщення?');
-        if (!ok) return;
-        const res = await authFetch(`${apiBase}/api/alerts/${alertId}`, { method: 'DELETE' });
-        document.getElementById('alertMessage').textContent = res.ok ? 'Правило видалено.' : 'Не вдалося видалити правило.';
-        if (res.ok) await loadAlerts();
-      }
-
-      function alertTypeLabel(value) {
-        if (value === 'new_message') return 'Нове повідомлення';
-        if (value === 'min_score') return 'Оцінка >= min';
-        if (value === 'keyword_ai') return 'Ключове слово (AI)';
-        return value || '—';
-      }
-
-      function alertRow(item) {
-        return `<tr class="border-t border-slate-800">
-          <td class="p-3">${escapeHtml(item.name)}</td>
-          <td class="p-3">${escapeHtml(alertTypeLabel(item.alert_type))}</td>
-          <td class="p-3">${escapeHtml(item.source_name || 'Усі')}</td>
-          <td class="p-3">${escapeHtml(item.pattern || '—')}</td>
-          <td class="p-3">${item.min_score == null ? '—' : Number(item.min_score)}</td>
-          <td class="p-3">${escapeHtml(item.target_chat_id || '—')}</td>
-          <td class="p-3">${item.is_enabled ? '<span class="px-2 py-1 rounded bg-emerald-700 text-xs">Увімкнено</span>' : '<span class="px-2 py-1 rounded bg-slate-600 text-xs">Вимкнено</span>'}</td>
-          <td class="p-3 flex gap-2">
-            <button class="px-2 py-1 rounded bg-sky-700 hover:bg-sky-600 text-xs" onclick="startEditAlert(${Number(item.id)})">Редагувати</button>
-            <button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteAlert(${Number(item.id)})">Видалити</button>
-          </td>
-        </tr>`;
       }
 
       async function loadAlerts() {
