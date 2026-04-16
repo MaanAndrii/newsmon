@@ -10,6 +10,7 @@ DB_PATH = Path(__file__).resolve().parent / "newsmon.db"
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
@@ -87,6 +88,7 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(published_at DESC);
             CREATE INDEX IF NOT EXISTS idx_messages_ai_score ON messages(ai_score);
             CREATE INDEX IF NOT EXISTS idx_messages_workflow ON messages(workflow_status);
+            CREATE INDEX IF NOT EXISTS idx_messages_ai_status_date ON messages(ai_status, published_at DESC);
 
             CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
                 text,
@@ -115,16 +117,7 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
-            CREATE TABLE IF NOT EXISTS media (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-                media_type TEXT NOT NULL,
-                file_name TEXT NULL,
-                mime_type TEXT NULL,
-                size_bytes INTEGER NULL,
-                local_path TEXT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
+            CREATE INDEX IF NOT EXISTS idx_ai_queue_status ON ai_queue(status);
 
             CREATE TABLE IF NOT EXISTS alerts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -137,29 +130,6 @@ def init_db() -> None:
                 is_ai_keyword INTEGER NOT NULL DEFAULT 0,
                 is_enabled INTEGER NOT NULL DEFAULT 1,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS alert_matches (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                alert_id INTEGER NOT NULL REFERENCES alerts(id) ON DELETE CASCADE,
-                message_id INTEGER NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-                matched_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS bookmarks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                message_id INTEGER NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
-                note TEXT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                login TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'reader',
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                last_login TEXT NULL
             );
 
             CREATE TABLE IF NOT EXISTS settings (
@@ -284,7 +254,7 @@ class Repository:
             FROM messages m
             JOIN sources s ON s.id = m.source_id
             WHERE {" AND ".join(where_parts)}
-            ORDER BY datetime(m.published_at) DESC, m.id DESC
+            ORDER BY m.published_at DESC, m.id DESC
             LIMIT ?
         """
         with get_connection() as conn:
@@ -317,7 +287,7 @@ class Repository:
                         FROM messages m
                         JOIN sources s ON s.id = m.source_id
                         WHERE {" AND ".join(fallback_where)}
-                        ORDER BY datetime(m.published_at) DESC, m.id DESC
+                        ORDER BY m.published_at DESC, m.id DESC
                         LIMIT ?
                     """
                     rows = conn.execute(fallback_query, fallback_params).fetchall()
@@ -350,7 +320,7 @@ class Repository:
                 """
                 SELECT id
                 FROM messages
-                ORDER BY datetime(published_at) ASC, id ASC
+                ORDER BY published_at ASC, id ASC
                 LIMIT ?
                 """,
                 (excess,),
@@ -644,6 +614,9 @@ class Repository:
             return
 
         with get_connection() as conn:
+            conn.execute(
+                "DELETE FROM dashboard_sessions WHERE last_seen_at < datetime('now', '-7 days')"
+            )
             conn.execute(
                 """
                 INSERT INTO dashboard_sessions(
@@ -1073,7 +1046,7 @@ class Repository:
                        timezone, screen, last_path
                 FROM dashboard_sessions
                 {where}
-                ORDER BY datetime(first_seen_at) DESC, id DESC
+                ORDER BY first_seen_at DESC, id DESC
                 LIMIT ?
                 """,
                 params,

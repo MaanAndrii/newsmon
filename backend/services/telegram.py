@@ -61,9 +61,9 @@ def _fetch_telegram_channel_title(username: str) -> str | None:
     return None
 
 
-def _send_telegram_bot_message(bot_token: str, chat_id: str, text: str) -> None:
+def _send_telegram_bot_message(bot_token: str, chat_id: str, text: str) -> bool:
     if not bot_token or not chat_id:
-        return
+        return False
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     body = json.dumps(
         {
@@ -85,7 +85,8 @@ def _send_telegram_bot_message(bot_token: str, chat_id: str, text: str) -> None:
             )
             with request.urlopen(req, timeout=12):
                 _record_telegram_call()
-            return
+            return True
         except Exception:
             if attempt == len(_BOT_RETRY_DELAYS):
-                return  # all attempts exhausted — alerts are best-effort
+                return False  # all attempts exhausted — alerts are best-effort
+    return False

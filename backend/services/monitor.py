@@ -196,8 +196,6 @@ async def _fetch_one_source(
                     latest_dt_utc = msg_date_utc
                 if message_id <= last_known_id:
                     continue
-                if msg_date_utc < window_start:
-                    continue
                 # Skip extra media-group items (album photos/videos without caption).
                 # In Telegram albums the first item carries the text; the rest share
                 # grouped_id but have no text — useless for the dashboard.
@@ -567,7 +565,10 @@ async def _monitor_loop() -> None:
                 "collect_error",
                 f"Непередбачена помилка: {type(exc).__name__}: {str(exc)[:200]}",
             )
-        interval = int(_get_monitor_config()["interval_seconds"])
+        try:
+            interval = int(_get_monitor_config()["interval_seconds"])
+        except Exception:
+            interval = MONITOR_INTERVAL_SECONDS
         await asyncio.sleep(_seconds_until_next_tick(interval))
 
 

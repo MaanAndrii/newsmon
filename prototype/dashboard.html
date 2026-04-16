@@ -396,7 +396,7 @@
         } catch (error) {
           latestItems = [];
           showMoreBtn.classList.add('hidden');
-          messagesGrid.innerHTML = `<article class="rounded-xl border border-rose-700/40 bg-rose-950/20 p-6 text-sm text-rose-200">Не вдалося завантажити стрічку: ${error}</article>`;
+          messagesGrid.innerHTML = `<article class="rounded-xl border border-rose-700/40 bg-rose-950/20 p-6 text-sm text-rose-200">Не вдалося завантажити стрічку: ${escapeHtml(String(error))}</article>`;
         }
       }
 

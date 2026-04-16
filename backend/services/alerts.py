@@ -105,7 +105,8 @@ async def _process_alerts_for_message(
             f"{telegram_url}"
         )
         try:
-            _send_telegram_bot_message(bot_token, target_chat_id, msg)
-            repo.mark_alert_delivered(alert_id, message_id, keyword_for_delivery)
+            sent = _send_telegram_bot_message(bot_token, target_chat_id, msg)
         except Exception:
             continue
+        if sent:
+            repo.mark_alert_delivered(alert_id, message_id, keyword_for_delivery)

@@ -14,6 +14,7 @@ from config import (
     TELETHON_AUTH_RATE_WINDOW_SECONDS,
     _rate_limit_buckets,
 )
+from utils import _resolve_client_ip
 
 
 def _get_admin_token() -> str:
@@ -37,16 +38,6 @@ def require_admin(authorization: str | None = Header(None)) -> None:
         raise HTTPException(status_code=401, detail="Невірний токен")
 
 
-def _client_ip(request_obj: Request) -> str:
-    cf = request_obj.headers.get("CF-Connecting-IP")
-    if cf:
-        return cf.strip()
-    xff = request_obj.headers.get("X-Forwarded-For")
-    if xff:
-        return xff.split(",")[0].strip()
-    return request_obj.client.host if request_obj.client else "unknown"
-
-
 def _rate_limit_hit(bucket_key: str, max_hits: int, window_seconds: float) -> bool:
     now_mono = time.monotonic()
     bucket = _rate_limit_buckets.setdefault(bucket_key, deque())
@@ -55,11 +46,16 @@ def _rate_limit_hit(bucket_key: str, max_hits: int, window_seconds: float) -> bo
     if len(bucket) >= max_hits:
         return False
     bucket.append(now_mono)
+    # Prune empty deques to prevent unbounded dict growth
+    if len(_rate_limit_buckets) > 10_000:
+        stale = [k for k, v in _rate_limit_buckets.items() if not v]
+        for k in stale:
+            _rate_limit_buckets.pop(k, None)
     return True
 
 
 def _enforce_telethon_auth_rate_limit(request_obj: Request, phone: str) -> None:
-    ip = _client_ip(request_obj)
+    ip = _resolve_client_ip(request_obj)
     if not _rate_limit_hit(
         f"tg_auth_ip:{ip}", TELETHON_AUTH_RATE_MAX, TELETHON_AUTH_RATE_WINDOW_SECONDS
     ):

@@ -1329,14 +1329,6 @@
         document.getElementById('alertMessage').textContent = `Редагування правила #${item.id}`;
       }
 
-      async function deleteAlert(alertId) {
-        const ok = window.confirm('Видалити правило сповіщення?');
-        if (!ok) return;
-        const res = await authFetch(`${apiBase}/api/alerts/${alertId}`, { method: 'DELETE' });
-        document.getElementById('alertMessage').textContent = res.ok ? 'Правило видалено.' : 'Не вдалося видалити правило.';
-        if (res.ok) await loadAlerts();
-      }
-
       initSettingsPage();
     </script>
   </body>
