@@ -555,7 +555,25 @@ async def _monitor_loop() -> None:
                 "collect_error",
                 f"Непередбачена помилка: {type(exc).__name__}: {str(exc)[:200]}",
             )
-        await asyncio.sleep(int(_get_monitor_config()["interval_seconds"]))
+        interval = int(_get_monitor_config()["interval_seconds"])
+        await asyncio.sleep(_seconds_until_next_tick(interval))
+
+
+def _seconds_until_next_tick(interval: int) -> float:
+    """Return seconds to sleep until the next grid-aligned tick.
+
+    Ticks are anchored to 00:00:00 UTC and repeat every *interval* seconds.
+    Example: interval=1200 (20 min) → ticks at 00:00, 00:20, 00:40, 01:00 …
+    The first tick after startup may be less than a full interval away.
+    Minimum sleep is 1 second to avoid busy-looping on clock edge.
+    """
+    now = datetime.now(timezone.utc)
+    seconds_since_midnight = (
+        now.hour * 3600 + now.minute * 60 + now.second + now.microsecond / 1_000_000
+    )
+    remainder = seconds_since_midnight % interval
+    wait = interval - remainder if remainder > 0 else interval
+    return max(1.0, wait)
 
 
 async def _ai_loop() -> None:
