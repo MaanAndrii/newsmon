@@ -281,11 +281,15 @@
           </div>
 
           <!-- API counters -->
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
             <div class="rounded-lg border border-slate-800 p-3">
               <p class="font-medium">Claude API (24h)</p>
               <p id="dbgClaudeReq" class="text-slate-300 mt-1">Запитів: —</p>
               <p id="dbgClaudeTok" class="text-slate-400 text-xs mt-1">in/out токени: —</p>
+            </div>
+            <div class="rounded-lg border border-slate-800 p-3">
+              <p class="font-medium">Telegram API (48h)</p>
+              <p id="dbgTg48h" class="text-slate-300 mt-1">Запитів: —</p>
             </div>
             <div class="rounded-lg border border-slate-800 p-3">
               <p class="font-medium">Telegram API (24h)</p>
@@ -354,7 +358,7 @@
 
 	          <!-- Dashboard users -->
 	          <div>
-	            <h3 class="text-sm font-medium mb-2">Користувачі Dashboard (останні підключення)</h3>
+	            <h3 class="text-sm font-medium mb-2">Користувачі Dashboard (підключення за останню добу)</h3>
 	            <div class="overflow-x-auto rounded-lg border border-slate-800">
 	              <table class="min-w-full text-xs">
 	                <thead class="bg-slate-800 text-slate-300">
@@ -742,6 +746,7 @@
         const data = await res.json();
         document.getElementById('dbgClaudeReq').textContent = `Запитів: ${data.claude_requests_24h ?? 0}`;
         document.getElementById('dbgClaudeTok').textContent = `in/out токени: ${data.claude_input_tokens_24h ?? 0} / ${data.claude_output_tokens_24h ?? 0}`;
+        document.getElementById('dbgTg48h').textContent = `Запитів: ${data.telegram_requests_48h ?? 0}`;
         document.getElementById('dbgTg24h').textContent = `Запитів: ${data.telegram_requests_24h ?? 0}`;
         document.getElementById('dbgTg60m').textContent = `Запитів: ${data.telegram_requests_60m ?? 0}`;
         document.getElementById('dbgTotalMessages').textContent = `Кількість: ${data.total_messages ?? 0}`;

@@ -42,6 +42,10 @@
               <div class="font-semibold">Канали</div>
               <div id="statusChannels">0/0</div>
             </button>
+            <button id="statusFilterCard" class="hidden px-3 py-2 rounded bg-rose-700/80 text-left transition">
+              <div class="font-semibold" id="statusFilterLabel">Фільтр</div>
+              <div id="statusFilterCount"></div>
+            </button>
             <button id="statusClockCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="openSystemStatusModal('now')">
               <div class="font-semibold">Актуальний час</div>
               <div id="statusCurrentTime">--:--:--</div>
@@ -54,7 +58,6 @@
         </div>
       </section>
 
-      <section id="queryState" class="mb-4 text-xs text-slate-400"></section>
       <section id="messagesGrid" class="grid grid-cols-1 lg:grid-cols-3 gap-4"></section>
       <div class="mt-6 flex justify-center">
         <button id="showMoreBtn" class="hidden px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm">Показати більше</button>
@@ -134,14 +137,14 @@
             <span class="text-slate-300">Мінімальна оцінка AI</span>
             <select id="filterMinScoreInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700">
               <option value="">Будь-яка оцінка</option>
-              <option value="3">3+</option>
-              <option value="4">4+</option>
-              <option value="5">5+</option>
-              <option value="6">6+</option>
-              <option value="7">7+</option>
-              <option value="8">8+</option>
-              <option value="9">9+</option>
-              <option value="10">10</option>
+              <option value="3">≥ 3</option>
+              <option value="4">≥ 4</option>
+              <option value="5">≥ 5</option>
+              <option value="6">≥ 6</option>
+              <option value="7">≥ 7</option>
+              <option value="8">≥ 8</option>
+              <option value="9">≥ 9</option>
+              <option value="10">= 10</option>
             </select>
           </label>
         </div>
@@ -177,7 +180,6 @@
       const modalTelegramLink = document.getElementById('modalTelegramLink');
       const messagesGrid = document.getElementById('messagesGrid');
       const filtersModal = document.getElementById('filtersModal');
-      const queryState = document.getElementById('queryState');
       const searchInput = document.getElementById('searchInput');
       const searchBtn = document.getElementById('searchBtn');
       const showMoreBtn = document.getElementById('showMoreBtn');
@@ -284,16 +286,26 @@
         return `<span class="px-2 py-1 rounded text-sm bg-slate-600">${score}</span>`;
       }
 
-      function updateQueryStateLabel() {
+      function updateFilterCard() {
+        const channelsCard = document.getElementById('statusChannelsCard');
+        const filterCard = document.getElementById('statusFilterCard');
+        const filterLabel = document.getElementById('statusFilterLabel');
+        const filterCount = document.getElementById('statusFilterCount');
+        if (!hasActiveFilters()) {
+          channelsCard.classList.remove('hidden');
+          filterCard.classList.add('hidden');
+          return;
+        }
         const parts = [];
         if (queryStateCache.search) parts.push(`Пошук: "${queryStateCache.search}"`);
-        if (queryStateCache.category) parts.push(`Категорія: ${queryStateCache.category}`);
-        if (queryStateCache.sourceName) parts.push(`Канал: ${queryStateCache.sourceName}`);
-        if (queryStateCache.keyword) parts.push(`Ключове слово: ${queryStateCache.keyword}`);
-        if (queryStateCache.minScore) parts.push(`Оцінка: ${queryStateCache.minScore}+`);
-        queryState.textContent = parts.length
-          ? `${parts.join(' • ')}. Показано результати за датою (новіші зверху).`
-          : 'Показано всі новини за датою (новіші зверху).';
+        if (queryStateCache.category) parts.push(queryStateCache.category);
+        if (queryStateCache.sourceName) parts.push(queryStateCache.sourceName);
+        if (queryStateCache.keyword) parts.push(`"${queryStateCache.keyword}"`);
+        if (queryStateCache.minScore) parts.push(`Оцінка ≥ ${queryStateCache.minScore}`);
+        filterLabel.textContent = parts.join(' • ');
+        filterCount.textContent = `Показано: ${latestItems.length}`;
+        channelsCard.classList.add('hidden');
+        filterCard.classList.remove('hidden');
       }
 
       function hasActiveFilters() {
@@ -379,7 +391,7 @@
           }
           latestItems = unique;
           renderVisibleMessages();
-          updateQueryStateLabel();
+          updateFilterCard();
           updateResetButtonState();
         } catch (error) {
           latestItems = [];

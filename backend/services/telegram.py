@@ -6,7 +6,7 @@ import time
 from datetime import datetime, timezone
 from urllib import parse, request
 
-from config import telegram_call_events
+from config import repo, telegram_call_events
 
 # Delays (seconds) between retry attempts: 3 s, 6 s
 _BOT_RETRY_DELAYS = (3.0, 6.0)
@@ -14,6 +14,10 @@ _BOT_RETRY_DELAYS = (3.0, 6.0)
 
 def _record_telegram_call() -> None:
     telegram_call_events.append(datetime.now(timezone.utc))
+    try:
+        repo.log_api_call("telegram")
+    except Exception:
+        pass
 
 
 def _extract_telegram_username(raw: str) -> str | None:
