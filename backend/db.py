@@ -384,6 +384,18 @@ class Repository:
             conn.execute("DELETE FROM messages")
         return deleted
 
+    def delete_empty_messages(self) -> int:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM messages WHERE text IS NULL OR TRIM(text) = ''"
+            ).fetchone()
+            deleted = int(row["cnt"] or 0)
+            if deleted:
+                conn.execute(
+                    "DELETE FROM messages WHERE text IS NULL OR TRIM(text) = ''"
+                )
+        return deleted
+
     def list_sources(self, sort_by: str = "created_desc") -> list[dict[str, Any]]:
         order_by = {
             "alpha": "LOWER(name) ASC",
