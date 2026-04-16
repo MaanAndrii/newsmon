@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 
 import config
 from config import PROTOTYPE_DIR
@@ -53,3 +53,8 @@ def dashboard_page() -> FileResponse:
 @app.get("/settings.html")
 def settings_page() -> FileResponse:
     return FileResponse(PROTOTYPE_DIR / "settings.html")
+
+
+@app.get("/robots.txt")
+def robots_txt() -> PlainTextResponse:
+    return PlainTextResponse("User-agent: *\nDisallow: /\n", media_type="text/plain")
