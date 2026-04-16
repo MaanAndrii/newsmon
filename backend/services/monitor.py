@@ -57,6 +57,10 @@ def _log_event(event_type: str, detail: str, **extra: object) -> None:
             **extra,
         }
     )
+    try:
+        repo.log_event(event_type, detail)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -526,6 +530,10 @@ async def _monitor_loop() -> None:
                         "error": err,
                     }
                 )
+                try:
+                    repo.log_run(now_str, updated, total, ingested, ai_since_last, "warning", err)
+                except Exception:
+                    pass
             else:
                 monitor_status["state"] = "ok"
                 monitor_status["last_error"] = None
@@ -548,6 +556,10 @@ async def _monitor_loop() -> None:
                         "error": None,
                     }
                 )
+                try:
+                    repo.log_run(now_str, updated, total, ingested, ai_since_last, "ok", None)
+                except Exception:
+                    pass
         except Exception as exc:
             monitor_status["state"] = "error"
             monitor_status["last_error"] = "Непередбачена помилка моніторингу"

@@ -65,6 +65,7 @@ async def run_monitor_once() -> dict:
 def get_debug_stats() -> dict:
     now = datetime.now(timezone.utc)
     day_ago = now - timedelta(hours=24)
+    two_days_ago = now - timedelta(hours=48)
     hour_ago = now - timedelta(hours=1)
     claude_24h = [
         e
@@ -72,6 +73,7 @@ def get_debug_stats() -> dict:
         if isinstance(e.get("at"), datetime) and e["at"] >= day_ago
     ]
     telegram_24h = [t for t in telegram_call_events if t >= day_ago]
+    telegram_48h = [t for t in telegram_call_events if t >= two_days_ago]
     telegram_60m = [t for t in telegram_call_events if t >= hour_ago]
     ai_queue = repo.get_ai_queue_stats()
     return {
@@ -83,6 +85,7 @@ def get_debug_stats() -> dict:
             int(e.get("output_tokens") or 0) for e in claude_24h
         ),
         "telegram_requests_24h": len(telegram_24h),
+        "telegram_requests_48h": len(telegram_48h),
         "telegram_requests_60m": len(telegram_60m),
         "total_messages": repo.count_messages(),
         "ai_queue_pending": ai_queue.get("pending", 0),
@@ -132,4 +135,4 @@ def dashboard_usage_heartbeat(payload: DashboardHeartbeatPayload, request: Reque
 
 @router.get("/api/debug/dashboard-users", dependencies=[Depends(require_admin)])
 def get_dashboard_users(limit: int = 200) -> dict:
-    return {"users": repo.list_dashboard_sessions(limit=limit)}
+    return {"users": repo.list_dashboard_sessions(limit=limit, since_hours=24)}

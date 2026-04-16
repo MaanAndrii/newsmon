@@ -75,6 +75,38 @@ telegram_call_events: deque[datetime] = deque(maxlen=10000)
 event_log: deque[dict] = deque(maxlen=50)
 monitor_run_history: deque[dict] = deque(maxlen=10)
 
+# ---------------------------------------------------------------------------
+# Restore debug state from DB so restarts don't lose history
+# ---------------------------------------------------------------------------
+try:
+    for _row in repo.load_api_calls("telegram", hours=168):  # 7 days
+        try:
+            telegram_call_events.append(
+                datetime.fromisoformat(_row["called_at"].replace(" ", "T")).replace(
+                    tzinfo=__import__("datetime").timezone.utc
+                )
+            )
+        except Exception:
+            pass
+    for _row in repo.load_api_calls("claude", hours=168):
+        try:
+            _at = datetime.fromisoformat(_row["called_at"].replace(" ", "T")).replace(
+                tzinfo=__import__("datetime").timezone.utc
+            )
+            claude_call_events.append({
+                "at": _at,
+                "input_tokens": int(_row.get("input_tokens") or 0),
+                "output_tokens": int(_row.get("output_tokens") or 0),
+            })
+        except Exception:
+            pass
+    for _row in repo.load_event_log(limit=50):
+        event_log.append(_row)
+    for _row in repo.load_run_history(limit=10):
+        monitor_run_history.append(_row)
+except Exception:
+    pass
+
 # Shared counter: AI items processed since the last collect cycle snapshot.
 # Using a dict so it's mutated in-place (importable as a reference).
 _ai_counters: dict[str, int] = {"processed_since_last_collect": 0}

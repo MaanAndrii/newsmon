@@ -192,6 +192,33 @@ def init_db() -> None:
                 delivered_at TEXT NOT NULL DEFAULT (datetime('now')),
                 UNIQUE(alert_id, message_id)
             );
+
+            CREATE TABLE IF NOT EXISTS debug_api_calls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                call_type TEXT NOT NULL,
+                called_at TEXT NOT NULL DEFAULT (datetime('now')),
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_debug_api_calls_at ON debug_api_calls(called_at DESC);
+
+            CREATE TABLE IF NOT EXISTS debug_event_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                logged_at TEXT NOT NULL DEFAULT (datetime('now')),
+                event_type TEXT NOT NULL,
+                detail TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE TABLE IF NOT EXISTS debug_run_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ran_at TEXT NOT NULL,
+                updated INTEGER NOT NULL DEFAULT 0,
+                total INTEGER NOT NULL DEFAULT 0,
+                ingested INTEGER NOT NULL DEFAULT 0,
+                ai_processed INTEGER NOT NULL DEFAULT 0,
+                state TEXT NOT NULL DEFAULT 'ok',
+                error TEXT NULL
+            );
             """
         )
         _ensure_column(conn, "sources", "ai_enabled", "INTEGER NOT NULL DEFAULT 1")
@@ -662,21 +689,6 @@ class Repository:
                 ),
             )
 
-    def list_dashboard_sessions(self, limit: int = 200) -> list[dict[str, Any]]:
-        safe_limit = max(1, min(int(limit), 1000))
-        with get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT id, session_key, ip, first_seen_at, last_seen_at,
-                       active_seconds, heartbeat_count, user_agent, language,
-                       timezone, screen, last_path
-                FROM dashboard_sessions
-                ORDER BY datetime(last_seen_at) DESC, id DESC
-                LIMIT ?
-                """,
-                (safe_limit,),
-            ).fetchall()
-        return [dict(r) for r in rows]
 
     def claim_ai_queue_pending(self, limit: int = 20) -> list[dict[str, Any]]:
         with get_connection() as conn:
@@ -975,3 +987,95 @@ class Repository:
                 ids,
             )
         return len(ids)
+
+    # ------------------------------------------------------------------
+    # Debug persistence
+    # ------------------------------------------------------------------
+
+    def log_api_call(self, call_type: str, input_tokens: int = 0, output_tokens: int = 0) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT INTO debug_api_calls(call_type, input_tokens, output_tokens) VALUES (?, ?, ?)",
+                (call_type, input_tokens, output_tokens),
+            )
+            # Prune records older than 7 days
+            conn.execute(
+                "DELETE FROM debug_api_calls WHERE called_at < datetime('now', '-7 days')"
+            )
+
+    def load_api_calls(self, call_type: str, hours: int = 48) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT called_at, input_tokens, output_tokens FROM debug_api_calls "
+                "WHERE call_type = ? AND called_at >= datetime('now', ? || ' hours') "
+                "ORDER BY called_at ASC",
+                (call_type, f"-{hours}"),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def log_event(self, event_type: str, detail: str) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT INTO debug_event_log(event_type, detail) VALUES (?, ?)",
+                (event_type, detail),
+            )
+            # Keep only last 200 rows
+            conn.execute(
+                "DELETE FROM debug_event_log WHERE id NOT IN "
+                "(SELECT id FROM debug_event_log ORDER BY id DESC LIMIT 200)"
+            )
+
+    def load_event_log(self, limit: int = 50) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT logged_at AS at, event_type AS type, detail FROM debug_event_log "
+                "ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def log_run(self, at: str, updated: int, total: int, ingested: int,
+                ai_processed: int, state: str, error: str | None) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                "INSERT INTO debug_run_history(ran_at, updated, total, ingested, ai_processed, state, error) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (at, updated, total, ingested, ai_processed, state, error),
+            )
+            # Keep only last 50 rows
+            conn.execute(
+                "DELETE FROM debug_run_history WHERE id NOT IN "
+                "(SELECT id FROM debug_run_history ORDER BY id DESC LIMIT 50)"
+            )
+
+    def load_run_history(self, limit: int = 10) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT ran_at AS at, updated, total, ingested, ai_processed, state, error "
+                "FROM debug_run_history ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def list_dashboard_sessions(self, limit: int = 200, since_hours: int | None = None) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 1000))
+        where = ""
+        params: list[Any] = []
+        if since_hours is not None:
+            where = "WHERE first_seen_at >= datetime('now', ? || ' hours')"
+            params.append(f"-{since_hours}")
+        params.append(safe_limit)
+        with get_connection() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT id, session_key, ip, first_seen_at, last_seen_at,
+                       active_seconds, heartbeat_count, user_agent, language,
+                       timezone, screen, last_path
+                FROM dashboard_sessions
+                {where}
+                ORDER BY datetime(first_seen_at) DESC, id DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        return [dict(r) for r in rows]

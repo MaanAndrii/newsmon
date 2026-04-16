@@ -9,6 +9,7 @@ from config import (
     CLAUDE_MODELS,
     DEFAULT_CLAUDE_MODEL,
     claude_call_events,
+    repo,
 )
 
 # Delays (seconds) between successive retry attempts: 2 s, 4 s, 8 s
@@ -30,6 +31,10 @@ def _record_claude_call(input_tokens: int, output_tokens: int) -> None:
             "output_tokens": int(output_tokens),
         }
     )
+    try:
+        repo.log_api_call("claude", int(input_tokens), int(output_tokens))
+    except Exception:
+        pass
 
 
 def _prepare_ai_text(text: str) -> str:
