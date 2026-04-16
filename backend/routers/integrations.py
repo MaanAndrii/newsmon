@@ -4,7 +4,7 @@ import re
 
 from fastapi import APIRouter, Depends
 
-from config import CLAUDE_MODELS, repo
+from config import repo
 from models import IntegrationsPayload
 from security import _mask_secret, require_admin
 from services.claude import _resolve_claude_model
@@ -88,10 +88,13 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
     telegram_bot_format = bool(
         re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,}", telegram_bot_token)
     )
-    claude_model_ok = claude_model in CLAUDE_MODELS
+    claude_model_ok = bool(
+        re.fullmatch(r"claude-[a-z0-9]+(?:-[a-z0-9]+)+", claude_model or "")
+    )
     claude_ok = claude_format and claude_model_ok
     claude_reason = (
-        None if claude_ok else "Очікується ключ формату sk-ant-... і валідна Claude model"
+        None if claude_ok
+        else "Очікується ключ формату sk-ant-... і Model ID формату claude-*"
     )
     telegram_user_reason = (
         "API ID/Hash коректні. Фактична перевірка виконується через Telethon авторизацію."

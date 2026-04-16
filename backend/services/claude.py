@@ -6,7 +6,6 @@ import time
 from datetime import datetime, timezone
 
 from config import (
-    CLAUDE_MODELS,
     DEFAULT_CLAUDE_MODEL,
     claude_call_events,
     repo,
@@ -18,9 +17,7 @@ _RETRY_DELAYS = (2.0, 4.0, 8.0)
 
 def _resolve_claude_model(value: str | None) -> str:
     model = (value or "").strip()
-    if model in CLAUDE_MODELS:
-        return model
-    return DEFAULT_CLAUDE_MODEL
+    return model if model else DEFAULT_CLAUDE_MODEL
 
 
 def _record_claude_call(input_tokens: int, output_tokens: int) -> None:
