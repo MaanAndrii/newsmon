@@ -222,6 +222,7 @@ class Repository:
         source_id: int | None = None,
         keyword: str | None = None,
         min_score: int | None = None,
+        max_score: int | None = None,
     ) -> list[dict[str, Any]]:
         where_parts = ["m.ai_status = 'done'"]
         params: list[Any] = []
@@ -242,9 +243,12 @@ class Repository:
         if keyword_raw:
             where_parts.append("LOWER(COALESCE(m.text, '')) LIKE LOWER(?)")
             params.append(f"%{keyword_raw}%")
-        if min_score is not None and int(min_score) > 0:
-            where_parts.append("m.ai_score = ?")
+        if min_score is not None:
+            where_parts.append("m.ai_score >= ?")
             params.append(int(min_score))
+        if max_score is not None:
+            where_parts.append("m.ai_score <= ?")
+            params.append(int(max_score))
         params.append(limit)
         query = f"""
             SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
@@ -275,9 +279,12 @@ class Repository:
                     if keyword_raw:
                         fallback_where.append("LOWER(COALESCE(m.text, '')) LIKE LOWER(?)")
                         fallback_params.append(f"%{keyword_raw}%")
-                    if min_score is not None and int(min_score) > 0:
-                        fallback_where.append("m.ai_score = ?")
+                    if min_score is not None:
+                        fallback_where.append("m.ai_score >= ?")
                         fallback_params.append(int(min_score))
+                    if max_score is not None:
+                        fallback_where.append("m.ai_score <= ?")
+                        fallback_params.append(int(max_score))
                     fallback_params.append(limit)
                     fallback_query = f"""
                         SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
@@ -458,9 +465,48 @@ class Repository:
     def list_categories(self) -> list[dict[str, Any]]:
         with get_connection() as conn:
             rows = conn.execute(
-                "SELECT id, name, color, is_default, created_at FROM categories ORDER BY id DESC"
+                """
+                SELECT c.id, c.name, c.color, c.is_default, c.created_at,
+                       COUNT(m.id) AS message_count
+                FROM categories c
+                LEFT JOIN messages m ON m.ai_category = c.name AND m.ai_status = 'done'
+                GROUP BY c.id
+                ORDER BY c.id DESC
+                """
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def update_category(
+        self,
+        category_id: int,
+        name: str | None,
+        color: str | None,
+        is_default: bool | None,
+    ) -> dict[str, Any] | None:
+        with get_connection() as conn:
+            row = conn.execute("SELECT id FROM categories WHERE id = ?", (category_id,)).fetchone()
+            if not row:
+                return None
+            if is_default:
+                conn.execute("UPDATE categories SET is_default = 0 WHERE id != ?", (category_id,))
+            if name is not None:
+                conn.execute("UPDATE categories SET name = ? WHERE id = ?", (name, category_id))
+            if color is not None:
+                conn.execute("UPDATE categories SET color = ? WHERE id = ?", (color, category_id))
+            if is_default is not None:
+                conn.execute("UPDATE categories SET is_default = ? WHERE id = ?", (int(is_default), category_id))
+            updated = conn.execute(
+                """
+                SELECT c.id, c.name, c.color, c.is_default, c.created_at,
+                       COUNT(m.id) AS message_count
+                FROM categories c
+                LEFT JOIN messages m ON m.ai_category = c.name AND m.ai_status = 'done'
+                WHERE c.id = ?
+                GROUP BY c.id
+                """,
+                (category_id,),
+            ).fetchone()
+        return dict(updated) if updated else None
 
     def create_category(self, name: str, color: str, is_default: bool) -> dict[str, Any]:
         with get_connection() as conn:

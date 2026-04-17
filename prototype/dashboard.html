@@ -98,7 +98,7 @@
     </main>
 
     <div id="messageModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
-      <div class="w-full max-w-2xl max-h-[50vh] flex flex-col rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+      <div class="w-full max-w-2xl h-[60vh] flex flex-col rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
         <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-shrink-0">
           <div>
             <h3 id="modalChannel" class="font-semibold text-lg">Канал</h3>
@@ -117,7 +117,7 @@
           <p id="modalText" class="text-sm leading-relaxed text-slate-200 whitespace-pre-wrap"></p>
         </div>
         <div class="flex justify-between gap-2 px-4 py-3 border-t border-slate-800 flex-shrink-0">
-          <div class="flex gap-2">
+          <div class="hidden sm:flex gap-2">
             <button id="modalPrevBtn" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="navigateModal(-1)" title="Попередня новина">←</button>
             <button id="modalNextBtn" class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="navigateModal(1)" title="Наступна новина">→</button>
           </div>
@@ -147,44 +147,49 @@
           <h3 class="font-semibold text-lg">Фільтри стрічки</h3>
           <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeFiltersModal()">Закрити</button>
         </div>
-        <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-          <label class="flex flex-col gap-1">
-            <span class="text-slate-300">Категорія</span>
-            <select id="filterCategoryInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700">
-              <option value="">Всі категорії</option>
-            </select>
-          </label>
-          <label class="flex flex-col gap-1">
-            <span class="text-slate-300">Канал</span>
-            <select id="filterSourceInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700">
-              <option value="">Всі канали</option>
-            </select>
-          </label>
-          <label class="flex flex-col gap-1">
-            <span class="text-slate-300">Ключове слово</span>
-            <select id="filterKeywordInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700">
-              <option value="">Всі ключові слова</option>
-            </select>
-          </label>
-          <label class="flex flex-col gap-1">
-            <span class="text-slate-300">Мінімальна оцінка AI</span>
-            <select id="filterMinScoreInput" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700">
-              <option value="">Будь-яка оцінка</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-              <option value="5">5</option>
-              <option value="6">6</option>
-              <option value="7">7</option>
-              <option value="8">8</option>
-              <option value="9">9</option>
-              <option value="10">10</option>
-            </select>
-          </label>
+        <div class="p-4 space-y-4 text-sm">
+          <div class="flex flex-col gap-1">
+            <span class="text-slate-400 text-xs font-medium uppercase tracking-wide">Категорія</span>
+            <button id="filterCategoryBtn" onclick="openFilterPicker('category')" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-left hover:bg-slate-700 text-slate-200 truncate">Всі категорії</button>
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-slate-400 text-xs font-medium uppercase tracking-wide">Канал</span>
+            <button id="filterSourceBtn" onclick="openFilterPicker('source')" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-left hover:bg-slate-700 text-slate-200 truncate">Всі канали</button>
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-slate-400 text-xs font-medium uppercase tracking-wide">Ключове слово</span>
+            <button id="filterKeywordBtn" onclick="openFilterPicker('keyword')" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-left hover:bg-slate-700 text-slate-200 truncate">Всі ключові слова</button>
+          </div>
+          <div class="flex flex-col gap-2">
+            <div class="flex justify-between items-center">
+              <span class="text-slate-400 text-xs font-medium uppercase tracking-wide">Оцінка AI</span>
+              <span id="scoreRangeLabel" class="text-slate-200 text-sm font-mono font-semibold">Будь-яка</span>
+            </div>
+            <div class="relative flex items-center" style="height:28px">
+              <div class="absolute inset-x-0 h-1.5 rounded bg-slate-700" style="top:50%;transform:translateY(-50%)"></div>
+              <div id="scoreTrack" class="absolute h-1.5 rounded pointer-events-none" style="top:50%;transform:translateY(-50%);left:0%;right:0%;background:linear-gradient(to right,#7c3aed,#0ea5e9)"></div>
+              <input type="range" id="filterMinScore" min="1" max="10" value="1" step="1" class="score-slider" />
+              <input type="range" id="filterMaxScore" min="1" max="10" value="10" step="1" class="score-slider" />
+            </div>
+            <div class="flex justify-between text-xs text-slate-500 select-none">
+              <span>1</span><span>5</span><span>10</span>
+            </div>
+          </div>
         </div>
         <div class="px-4 pb-4 flex gap-2 justify-end">
           <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="clearModalFilters()">Очистити</button>
           <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="applyModalFilters()">Застосувати</button>
         </div>
+      </div>
+    </div>
+
+    <div id="filterPickerModal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black/60 p-4">
+      <div class="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+          <h3 id="filterPickerTitle" class="font-semibold text-sm">Оберіть опцію</h3>
+          <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeFilterPicker()">Закрити</button>
+        </div>
+        <div id="filterPickerList" class="p-4 max-h-72 overflow-y-auto flex flex-wrap gap-2"></div>
       </div>
     </div>
 
@@ -202,6 +207,17 @@
         <path stroke-linecap="round" stroke-linejoin="round" d="m18 15-6-6-6 6"/>
       </svg>
     </button>
+    <style>
+      .score-slider{-webkit-appearance:none;appearance:none;background:transparent;pointer-events:none;position:absolute;width:100%;height:28px;margin:0}
+      .score-slider::-webkit-slider-thumb{-webkit-appearance:none;pointer-events:all;width:20px;height:20px;border-radius:50%;cursor:pointer;border:2px solid #0f172a;margin-top:-4px}
+      #filterMinScore::-webkit-slider-thumb{background:#7c3aed}
+      #filterMaxScore::-webkit-slider-thumb{background:#0ea5e9}
+      .score-slider::-webkit-slider-runnable-track{height:0}
+      .score-slider::-moz-range-thumb{pointer-events:all;width:18px;height:18px;border-radius:50%;cursor:pointer;border:2px solid #0f172a}
+      #filterMinScore::-moz-range-thumb{background:#7c3aed}
+      #filterMaxScore::-moz-range-thumb{background:#0ea5e9}
+      .score-slider::-moz-range-track{background:transparent;height:0}
+    </style>
     <script>
       const modal = document.getElementById('messageModal');
       const systemStatusModal = document.getElementById('systemStatusModal');
@@ -218,12 +234,11 @@
       const showMoreBtn = document.getElementById('showMoreBtn');
       const resetFiltersBtn = document.getElementById('resetFiltersBtn');
       const scrollTopBtn = document.getElementById('scrollTopBtn');
-      const filterCategoryInput = document.getElementById('filterCategoryInput');
-      const filterSourceInput = document.getElementById('filterSourceInput');
-      const filterKeywordInput = document.getElementById('filterKeywordInput');
-      const filterMinScoreInput = document.getElementById('filterMinScoreInput');
       const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
-      const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '' };
+      const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '', maxScore: '' };
+      const filterOptions = { categories: [], sources: [], keywords: [] };
+      let pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
+      let filterPickerType = null;
       const PAGE_SIZE = 60;
       let visibleCount = PAGE_SIZE;
       let latestItems = [];
@@ -252,6 +267,7 @@
       }
 
       let currentModalIndex = -1;
+      let _touchStartX = 0;
 
       function fillModal(item) {
         modalChannel.textContent = item.source_name || 'Канал';
@@ -334,7 +350,11 @@
         if (queryStateCache.category) parts.push(queryStateCache.category);
         if (queryStateCache.sourceName) parts.push(queryStateCache.sourceName);
         if (queryStateCache.keyword) parts.push(`"${queryStateCache.keyword}"`);
-        if (queryStateCache.minScore) parts.push(`Оцінка = ${queryStateCache.minScore}`);
+        if (queryStateCache.minScore || queryStateCache.maxScore) {
+          const min = queryStateCache.minScore || '1';
+          const max = queryStateCache.maxScore || '10';
+          parts.push(min === max ? `Оцінка = ${min}` : `Оцінка ${min}–${max}`);
+        }
         filterLabel.textContent = parts.join(' • ');
         filterCount.textContent = `Показано: ${latestItems.length}`;
         channelsCard.classList.add('hidden');
@@ -347,7 +367,8 @@
           queryStateCache.category ||
           queryStateCache.sourceId ||
           queryStateCache.keyword ||
-          queryStateCache.minScore
+          queryStateCache.minScore ||
+          queryStateCache.maxScore
         );
       }
 
@@ -378,7 +399,9 @@
       function applyCategoryFilter(categoryName) {
         const normalized = String(categoryName || '').trim();
         queryStateCache.category = normalized;
-        filterCategoryInput.value = normalized;
+        pendingFilters.category = normalized;
+        const catBtn = document.getElementById('filterCategoryBtn');
+        if (catBtn) catBtn.textContent = normalized || 'Всі категорії';
         visibleCount = PAGE_SIZE;
         updateResetButtonState();
         loadMessages();
@@ -412,6 +435,7 @@
           if (queryStateCache.sourceId) params.set('source_id', queryStateCache.sourceId);
           if (queryStateCache.keyword) params.set('keyword', queryStateCache.keyword);
           if (queryStateCache.minScore) params.set('min_score', queryStateCache.minScore);
+          if (queryStateCache.maxScore) params.set('max_score', queryStateCache.maxScore);
           const res = await fetch(`/api/messages?${params.toString()}`);
           const items = res.ok ? await res.json() : [];
           const unique = [];
@@ -440,49 +464,109 @@
             fetch('/api/sources?sort=alpha'),
             fetch('/api/filters/keywords'),
           ]);
-          if (catRes.ok) {
-            const categories = await catRes.json();
-            filterCategoryInput.innerHTML = '<option value="">Всі категорії</option>';
-            for (const category of categories) {
-              const opt = document.createElement('option');
-              opt.value = category.name || '';
-              opt.textContent = category.name || '—';
-              filterCategoryInput.appendChild(opt);
-            }
-            filterCategoryInput.value = queryStateCache.category || '';
-          }
-          if (sourceRes.ok) {
-            const sources = await sourceRes.json();
-            filterSourceInput.innerHTML = '<option value="">Всі канали</option>';
-            for (const source of sources) {
-              const opt = document.createElement('option');
-              opt.value = String(Number(source.id || 0));
-              opt.textContent = source.name || '—';
-              filterSourceInput.appendChild(opt);
-            }
-            filterSourceInput.value = queryStateCache.sourceId || '';
-          }
-          if (keywordsRes.ok) {
-            const keywords = await keywordsRes.json();
-            filterKeywordInput.innerHTML = '<option value="">Всі ключові слова</option>';
-            for (const keyword of keywords || []) {
-              const opt = document.createElement('option');
-              opt.value = keyword || '';
-              opt.textContent = keyword || '—';
-              filterKeywordInput.appendChild(opt);
-            }
-            filterKeywordInput.value = queryStateCache.keyword || '';
-          }
+          if (catRes.ok) filterOptions.categories = await catRes.json();
+          if (sourceRes.ok) filterOptions.sources = await sourceRes.json();
+          if (keywordsRes.ok) filterOptions.keywords = (await keywordsRes.json()) || [];
         } catch (e) {
-          // ignore filters loading errors for dashboard fallback
+          // ignore filter options loading errors
         }
       }
 
+      function syncFilterBtns() {
+        const catBtn = document.getElementById('filterCategoryBtn');
+        const srcBtn = document.getElementById('filterSourceBtn');
+        const kwBtn = document.getElementById('filterKeywordBtn');
+        const minEl = document.getElementById('filterMinScore');
+        const maxEl = document.getElementById('filterMaxScore');
+        if (catBtn) catBtn.textContent = pendingFilters.category || 'Всі категорії';
+        if (srcBtn) srcBtn.textContent = pendingFilters.sourceName || 'Всі канали';
+        if (kwBtn) kwBtn.textContent = pendingFilters.keyword || 'Всі ключові слова';
+        if (minEl) minEl.value = pendingFilters.minScore || '1';
+        if (maxEl) maxEl.value = pendingFilters.maxScore || '10';
+        updateScoreSlider();
+      }
+
+      function updateScoreSlider() {
+        const minEl = document.getElementById('filterMinScore');
+        const maxEl = document.getElementById('filterMaxScore');
+        const label = document.getElementById('scoreRangeLabel');
+        const track = document.getElementById('scoreTrack');
+        if (!minEl || !maxEl || !label || !track) return;
+        const min = parseInt(minEl.value);
+        const max = parseInt(maxEl.value);
+        label.textContent = (min === 1 && max === 10) ? 'Будь-яка' : min === max ? `= ${min}` : `${min}–${max}`;
+        const pMin = (min - 1) / 9 * 100;
+        const pMax = (max - 1) / 9 * 100;
+        track.style.left = `${pMin}%`;
+        track.style.right = `${100 - pMax}%`;
+      }
+
+      function openFilterPicker(type) {
+        filterPickerType = type;
+        const titles = { category: 'Оберіть категорію', source: 'Оберіть канал', keyword: 'Оберіть ключове слово' };
+        const emptyLabels = { category: 'Всі категорії', source: 'Всі канали', keyword: 'Всі ключові слова' };
+        document.getElementById('filterPickerTitle').textContent = titles[type];
+        const currentVal = type === 'source' ? pendingFilters.sourceId : type === 'category' ? pendingFilters.category : pendingFilters.keyword;
+        function chip(value, label, extra) {
+          const sel = (type === 'source' ? pendingFilters.sourceId : type === 'category' ? pendingFilters.category : pendingFilters.keyword) === value;
+          const cls = sel
+            ? 'px-3 py-1.5 rounded-full text-sm bg-emerald-600 border border-emerald-500 text-white'
+            : 'px-3 py-1.5 rounded-full text-sm bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200';
+          return `<button class="${cls}" onclick="${extra || `selectFilterOption('${escapeHtml(value)}')`}">${escapeHtml(label)}</button>`;
+        }
+        const emptyOnclick = type === 'source' ? "selectFilterOption('','')" : "selectFilterOption('')";
+        const emptyChipCls = !currentVal
+          ? 'px-3 py-1.5 rounded-full text-sm bg-emerald-600 border border-emerald-500 text-white'
+          : 'px-3 py-1.5 rounded-full text-sm bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-200';
+        let html = `<button class="${emptyChipCls}" onclick="${emptyOnclick}">${escapeHtml(emptyLabels[type])}</button>`;
+        if (type === 'category') {
+          for (const c of filterOptions.categories) html += chip(c.name || '', c.name || '');
+        } else if (type === 'source') {
+          for (const s of filterOptions.sources) {
+            const id = String(s.id || '');
+            const name = s.name || '';
+            html += chip(id, name, `selectFilterOption('${escapeHtml(id)}','${escapeHtml(name)}')`);
+          }
+        } else {
+          for (const kw of filterOptions.keywords) html += chip(kw, kw);
+        }
+        document.getElementById('filterPickerList').innerHTML = html;
+        const m = document.getElementById('filterPickerModal');
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+      }
+
+      function closeFilterPicker() {
+        const m = document.getElementById('filterPickerModal');
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+      }
+
+      function selectFilterOption(value, sourceName) {
+        if (filterPickerType === 'category') {
+          pendingFilters.category = value || '';
+          document.getElementById('filterCategoryBtn').textContent = value || 'Всі категорії';
+        } else if (filterPickerType === 'source') {
+          pendingFilters.sourceId = value || '';
+          pendingFilters.sourceName = value ? (sourceName || value) : '';
+          document.getElementById('filterSourceBtn').textContent = pendingFilters.sourceName || 'Всі канали';
+        } else if (filterPickerType === 'keyword') {
+          pendingFilters.keyword = value || '';
+          document.getElementById('filterKeywordBtn').textContent = value || 'Всі ключові слова';
+        }
+        closeFilterPicker();
+      }
+
       function openFiltersModal() {
-        filterCategoryInput.value = queryStateCache.category || '';
-        filterSourceInput.value = queryStateCache.sourceId || '';
-        filterKeywordInput.value = queryStateCache.keyword || '';
-        filterMinScoreInput.value = queryStateCache.minScore || '';
+        pendingFilters = {
+          category: queryStateCache.category || '',
+          sourceId: queryStateCache.sourceId || '',
+          sourceName: queryStateCache.sourceName || '',
+          keyword: queryStateCache.keyword || '',
+          minScore: queryStateCache.minScore || '1',
+          maxScore: queryStateCache.maxScore || '10',
+        };
+        syncFilterBtns();
         filtersModal.classList.remove('hidden');
         filtersModal.classList.add('flex');
       }
@@ -493,19 +577,20 @@
       }
 
       function clearModalFilters() {
-        filterCategoryInput.value = '';
-        filterSourceInput.value = '';
-        filterKeywordInput.value = '';
-        filterMinScoreInput.value = '';
+        pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
+        syncFilterBtns();
       }
 
       function applyModalFilters() {
-        queryStateCache.category = filterCategoryInput.value.trim();
-        queryStateCache.sourceId = filterSourceInput.value.trim();
-        queryStateCache.keyword = filterKeywordInput.value.trim();
-        queryStateCache.minScore = filterMinScoreInput.value.trim();
-        const sourceOption = filterSourceInput.options[filterSourceInput.selectedIndex];
-        queryStateCache.sourceName = queryStateCache.sourceId ? String(sourceOption?.textContent || '') : '';
+        const minScore = parseInt(document.getElementById('filterMinScore').value) || 1;
+        const maxScore = parseInt(document.getElementById('filterMaxScore').value) || 10;
+        const isDefault = minScore === 1 && maxScore === 10;
+        queryStateCache.category = pendingFilters.category;
+        queryStateCache.sourceId = pendingFilters.sourceId;
+        queryStateCache.sourceName = pendingFilters.sourceName;
+        queryStateCache.keyword = pendingFilters.keyword;
+        queryStateCache.minScore = isDefault ? '' : String(minScore);
+        queryStateCache.maxScore = isDefault ? '' : String(maxScore);
         visibleCount = PAGE_SIZE;
         updateResetButtonState();
         closeFiltersModal();
@@ -620,6 +705,23 @@
         }
       }
 
+      modal.addEventListener('touchstart', (e) => { _touchStartX = e.changedTouches[0].clientX; }, { passive: true });
+      modal.addEventListener('touchend', (e) => {
+        const dx = e.changedTouches[0].clientX - _touchStartX;
+        if (Math.abs(dx) > 50) navigateModal(dx < 0 ? 1 : -1);
+      }, { passive: true });
+
+      document.getElementById('filterMinScore').addEventListener('input', function () {
+        const maxEl = document.getElementById('filterMaxScore');
+        if (parseInt(this.value) > parseInt(maxEl.value)) maxEl.value = this.value;
+        updateScoreSlider();
+      });
+      document.getElementById('filterMaxScore').addEventListener('input', function () {
+        const minEl = document.getElementById('filterMinScore');
+        if (parseInt(this.value) < parseInt(minEl.value)) minEl.value = this.value;
+        updateScoreSlider();
+      });
+
       searchInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
           applySearch();
@@ -643,8 +745,15 @@
         queryStateCache.sourceName = '';
         queryStateCache.keyword = '';
         queryStateCache.minScore = '';
+        queryStateCache.maxScore = '';
         searchInput.value = '';
-        clearModalFilters();
+        pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
+        const catBtn = document.getElementById('filterCategoryBtn');
+        const srcBtn = document.getElementById('filterSourceBtn');
+        const kwBtn = document.getElementById('filterKeywordBtn');
+        if (catBtn) catBtn.textContent = 'Всі категорії';
+        if (srcBtn) srcBtn.textContent = 'Всі канали';
+        if (kwBtn) kwBtn.textContent = 'Всі ключові слова';
         visibleCount = PAGE_SIZE;
         updateResetButtonState();
         loadMessages();

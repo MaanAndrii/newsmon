@@ -32,6 +32,12 @@ class CategoryCreate(BaseModel):
     is_default: bool = False
 
 
+class CategoryUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=80)
+    color: str | None = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$")
+    is_default: bool | None = None
+
+
 class KeywordCreate(BaseModel):
     phrase: str = Field(min_length=2, max_length=120)
     category_id: int | None = None
