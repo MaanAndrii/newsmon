@@ -88,6 +88,10 @@ class ClearMessagesPayload(BaseModel):
     confirm: bool = False
 
 
+class PromptTokensPayload(BaseModel):
+    ai_prompt: str | None = None
+
+
 class DashboardHeartbeatPayload(BaseModel):
     session_key: str = Field(min_length=8, max_length=120)
     active_seconds: int = Field(default=0, ge=0, le=86400)
