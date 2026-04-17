@@ -157,8 +157,15 @@
               <input id="monitorMaxMessages" type="number" min="500" max="10000" step="100" class="w-28 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="5000" />
             </div>
             <div class="rounded-lg border border-slate-800 p-3 md:col-span-2">
-              <p class="font-medium mb-1">Промт для оцінки важливості</p>
+              <div class="flex items-center justify-between mb-1 gap-2">
+                <p class="font-medium">Промт для оцінки важливості</p>
+                <div class="flex items-center gap-2 shrink-0">
+                  <span id="promptTokenBadge" class="text-xs text-slate-400 font-mono"></span>
+                  <button onclick="countPromptTokens()" class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 whitespace-nowrap" title="Підрахувати кількість токенів промту через Anthropic API">λ токени</button>
+                </div>
+              </div>
               <textarea id="monitorAiPrompt" rows="3" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="Оціни важливість новини від 1 до 10 та обери категорію."></textarea>
+              <p id="promptTokenDetail" class="text-[10px] text-slate-500 mt-1 hidden"></p>
             </div>
           </div>
           <div class="flex gap-2">
@@ -916,6 +923,45 @@
           ? `Видалено повідомлень: ${data.deleted_messages}.`
           : (data.detail || 'Не вдалося очистити повідомлення.');
       }
+
+      let _promptTokenDebounce = null;
+
+      async function countPromptTokens() {
+        const badge = document.getElementById('promptTokenBadge');
+        const detail = document.getElementById('promptTokenDetail');
+        badge.textContent = '...';
+        const promptText = document.getElementById('monitorAiPrompt').value;
+        const res = await authFetch(`${apiBase}/api/monitor/count-prompt-tokens`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ai_prompt: promptText }),
+        });
+        if (!res.ok) {
+          const data = await parseApiBody(res);
+          badge.textContent = '⚠ ' + (data.detail || 'помилка');
+          badge.className = 'text-xs text-rose-400 font-mono';
+          detail.classList.add('hidden');
+          return;
+        }
+        const data = await res.json();
+        badge.textContent = `~${data.system_tokens} токенів`;
+        badge.className = 'text-xs text-sky-400 font-mono font-semibold';
+        const parts = [`модель: ${data.model}`];
+        if (data.category_count) parts.push(`${data.category_count} кат.`);
+        if (data.has_keywords) parts.push(`${data.keyword_count} ключ. слів`);
+        parts.push(`~${data.total_with_content} токенів з контентом`);
+        detail.textContent = parts.join(' • ');
+        detail.classList.remove('hidden');
+      }
+
+      document.getElementById('monitorAiPrompt').addEventListener('input', () => {
+        const badge = document.getElementById('promptTokenBadge');
+        badge.textContent = '';
+        badge.className = 'text-xs text-slate-400 font-mono';
+        document.getElementById('promptTokenDetail').classList.add('hidden');
+        clearTimeout(_promptTokenDebounce);
+        _promptTokenDebounce = setTimeout(countPromptTokens, 1800);
+      });
 
       async function clearEmptyMessages() {
         const ok = window.confirm('Видалити всі повідомлення без тексту (медіа без підпису)?');
