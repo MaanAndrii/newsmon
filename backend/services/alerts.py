@@ -16,6 +16,7 @@ async def _process_alerts_for_message(
     event_type: str,
     score: int | None = None,
     matched_keyword: str | None = None,
+    keyword_checked: bool = False,
 ) -> None:
     integrations = repo.get_integrations()
     bot_token = (integrations.get("telegram_bot_token") or "").strip()
@@ -35,11 +36,11 @@ async def _process_alerts_for_message(
     published_at = str(message.get("published_at") or "")
     source_name = str(message.get("source_name") or "Канал")
 
-    # matched_keyword is pre-resolved by the combined scoring call in monitor.py.
-    # Only fall back to a separate Claude call when it wasn't provided (e.g.
-    # direct calls from new_message events or legacy code paths).
+    # matched_keyword is pre-resolved by the combined scoring call in monitor.py
+    # when keyword_checked=True.  Only fall back to a separate Claude call when
+    # keyword matching was NOT already performed (keyword_checked=False).
     keyword_alerts = [a for a in alerts if a.get("alert_type") == "keyword_ai"]
-    if matched_keyword is None and event_type == "ai_scored" and keyword_alerts:
+    if not keyword_checked and matched_keyword is None and event_type == "ai_scored" and keyword_alerts:
         keyword_candidates = list(
             {
                 str(a.get("pattern") or "").strip()

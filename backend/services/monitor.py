@@ -405,7 +405,9 @@ async def _process_one_ai_item(
                 category=category,
             )
             await _process_alerts_for_message(
-                message_id, "ai_scored", score=score, matched_keyword=matched_keyword
+                message_id, "ai_scored", score=score,
+                matched_keyword=matched_keyword,
+                keyword_checked=bool(keyword_patterns),
             )
         except Exception as exc:
             repo.mark_ai_error(message_id, str(exc))
