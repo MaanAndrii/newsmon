@@ -179,7 +179,8 @@
                     <th class="text-left p-3">Назва</th>
                     <th class="text-left p-3">Колір</th>
                     <th class="text-left p-3">За замовчуванням</th>
-                    <th class="text-left p-3">Дія</th>
+                    <th class="text-left p-3">Новин</th>
+                    <th class="text-left p-3">Дії</th>
                   </tr>
                 </thead>
                 <tbody id="categoriesBody"></tbody>
@@ -390,6 +391,37 @@
         <span>Автор: Andrii Maryniuk</span>
       </div>
     </footer>
+
+    <div id="editCategoryModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+      <div class="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+          <h3 class="font-semibold text-sm">Редагувати категорію</h3>
+          <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeEditCategory()">Закрити</button>
+        </div>
+        <div class="p-4 space-y-3 text-sm">
+          <input type="hidden" id="editCategoryId" />
+          <label class="flex flex-col gap-1">
+            <span class="text-slate-300">Назва</span>
+            <input id="editCategoryName" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" />
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-slate-300">Колір</span>
+            <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1">
+              <input id="editCategoryColor" type="color" class="w-10 h-8 bg-transparent border-0 p-0 cursor-pointer" />
+              <span id="editCategoryColorValue" class="text-xs text-slate-300">#64748B</span>
+            </div>
+          </label>
+          <label class="inline-flex items-center gap-2">
+            <input id="editCategoryDefault" type="checkbox" class="rounded border-slate-700 bg-slate-800" />
+            <span class="text-slate-300">За замовчуванням</span>
+          </label>
+        </div>
+        <div class="px-4 pb-4 flex gap-2 justify-end">
+          <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeEditCategory()">Скасувати</button>
+          <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="submitEditCategory()">Зберегти</button>
+        </div>
+      </div>
+    </div>
 
     <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden">
       <div class="w-full max-w-sm mx-4 rounded-xl border border-slate-700 bg-slate-900 shadow-2xl p-6">
@@ -1028,6 +1060,22 @@
         }).join('');
       }
 
+      function makeTelegramSourceLink(name, url) {
+        const u = (url || '').trim();
+        let tgUrl = null;
+        if (u.startsWith('https://t.me/') || u.startsWith('http://t.me/')) {
+          tgUrl = u;
+        } else if (u.startsWith('t.me/')) {
+          tgUrl = 'https://' + u;
+        } else if (u.startsWith('@')) {
+          tgUrl = 'https://t.me/' + u.slice(1);
+        }
+        if (tgUrl) {
+          return `<a href="${escapeHtml(tgUrl)}" target="_blank" rel="noopener" class="text-sky-400 hover:text-sky-300 underline underline-offset-2">${escapeHtml(name)}</a>`;
+        }
+        return escapeHtml(name);
+      }
+
       function sourceRow(item) {
         const dot = item.last_message_signal === 'green'
           ? 'bg-emerald-500'
@@ -1036,7 +1084,7 @@
           : 'bg-rose-500';
         const dateText = formatLocalDateTime(item.last_message_at);
         return `<tr class="border-t border-slate-800">
-            <td class="p-3">${escapeHtml(item.name)}</td>
+            <td class="p-3">${makeTelegramSourceLink(item.name, item.url)}</td>
             <td class="p-3">${escapeHtml(dateText)}</td>
             <td class="p-3"><span class="inline-block w-3 h-3 rounded-full ${dot}"></span></td>
             <td class="p-3">
@@ -1102,11 +1150,21 @@
       function categoryRow(item) {
         const rawColor = (item.color || '#64748b').toUpperCase();
         const safeColor = /^#[0-9A-F]{6}$/i.test(rawColor) ? rawColor : '#64748B';
+        const count = Number(item.message_count || 0);
+        const nameJson = JSON.stringify(item.name || '');
+        const colorEsc = escapeHtml(safeColor);
+        const isDefault = Boolean(item.is_default);
         return `<tr class="border-t border-slate-800">
           <td class="p-3">${escapeHtml(item.name)}</td>
           <td class="p-3"><span class="inline-flex items-center gap-2"><span class="w-4 h-4 rounded-full" style="background:${safeColor}"></span>${escapeHtml(safeColor)}</span></td>
-          <td class="p-3">${item.is_default ? 'Так' : 'Ні'}</td>
-          <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteCategory(${Number(item.id)})">Видалити</button></td>
+          <td class="p-3">${isDefault ? 'Так' : 'Ні'}</td>
+          <td class="p-3 font-mono text-slate-300">${count}</td>
+          <td class="p-3">
+            <div class="flex gap-2">
+              <button class="px-2 py-1 rounded bg-sky-700 hover:bg-sky-600 text-xs" onclick="openEditCategory(${Number(item.id)}, ${nameJson}, '${colorEsc}', ${isDefault})">Редагувати</button>
+              <button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteCategory(${Number(item.id)})">Видалити</button>
+            </div>
+          </td>
         </tr>`;
       }
 
@@ -1146,6 +1204,52 @@
           await loadCategories();
         }
       }
+
+      function openEditCategory(id, name, color, isDefault) {
+        document.getElementById('editCategoryId').value = id;
+        document.getElementById('editCategoryName').value = name;
+        document.getElementById('editCategoryColor').value = color;
+        document.getElementById('editCategoryColorValue').textContent = color.toUpperCase();
+        document.getElementById('editCategoryDefault').checked = isDefault;
+        const modal = document.getElementById('editCategoryModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        setTimeout(() => document.getElementById('editCategoryName').focus(), 0);
+      }
+
+      function closeEditCategory() {
+        const modal = document.getElementById('editCategoryModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+
+      async function submitEditCategory() {
+        const id = parseInt(document.getElementById('editCategoryId').value);
+        const name = document.getElementById('editCategoryName').value.trim();
+        const color = document.getElementById('editCategoryColor').value;
+        const isDefault = document.getElementById('editCategoryDefault').checked;
+        if (!name) {
+          document.getElementById('categoryMessage').textContent = 'Вкажи назву категорії.';
+          return;
+        }
+        const res = await authFetch(`${apiBase}/api/categories/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, color, is_default: isDefault }),
+        });
+        const data = await parseApiBody(res);
+        document.getElementById('categoryMessage').textContent = res.ok
+          ? 'Категорію оновлено.'
+          : (data.detail || 'Не вдалося оновити категорію.');
+        if (res.ok) {
+          closeEditCategory();
+          await loadCategories();
+        }
+      }
+
+      document.getElementById('editCategoryColor').addEventListener('input', function () {
+        document.getElementById('editCategoryColorValue').textContent = this.value.toUpperCase();
+      });
 
       function alertTypeLabel(value) {
         if (value === 'new_message') return 'Нове повідомлення';

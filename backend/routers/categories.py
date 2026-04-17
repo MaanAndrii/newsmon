@@ -5,7 +5,7 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 
 from config import repo
-from models import CategoryCreate
+from models import CategoryCreate, CategoryUpdate
 from security import require_admin
 
 router = APIRouter()
@@ -30,6 +30,25 @@ def create_category(payload: CategoryCreate) -> dict:
         raise HTTPException(
             status_code=409, detail="Category name already exists"
         ) from exc
+
+
+@router.patch(
+    "/api/categories/{category_id}",
+    dependencies=[Depends(require_admin)],
+)
+def update_category(category_id: int, payload: CategoryUpdate) -> dict:
+    try:
+        updated = repo.update_category(
+            category_id=category_id,
+            name=payload.name.strip() if payload.name is not None else None,
+            color=payload.color.strip() if payload.color is not None else None,
+            is_default=payload.is_default,
+        )
+    except sqlite3.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="Category name already exists") from exc
+    if not updated:
+        raise HTTPException(status_code=404, detail="Category not found")
+    return updated
 
 
 @router.delete(
