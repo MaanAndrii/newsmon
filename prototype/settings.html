@@ -1151,8 +1151,6 @@
         const rawColor = (item.color || '#64748b').toUpperCase();
         const safeColor = /^#[0-9A-F]{6}$/i.test(rawColor) ? rawColor : '#64748B';
         const count = Number(item.message_count || 0);
-        const nameJson = JSON.stringify(item.name || '');
-        const colorEsc = escapeHtml(safeColor);
         const isDefault = Boolean(item.is_default);
         return `<tr class="border-t border-slate-800">
           <td class="p-3">${escapeHtml(item.name)}</td>
@@ -1161,7 +1159,12 @@
           <td class="p-3 font-mono text-slate-300">${count}</td>
           <td class="p-3">
             <div class="flex gap-2">
-              <button class="px-2 py-1 rounded bg-sky-700 hover:bg-sky-600 text-xs" onclick="openEditCategory(${Number(item.id)}, ${nameJson}, '${colorEsc}', ${isDefault})">Редагувати</button>
+              <button class="px-2 py-1 rounded bg-sky-700 hover:bg-sky-600 text-xs"
+                data-id="${Number(item.id)}"
+                data-name="${escapeHtml(item.name)}"
+                data-color="${escapeHtml(safeColor)}"
+                data-default="${isDefault}"
+                onclick="openEditCategory(this)">Редагувати</button>
               <button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteCategory(${Number(item.id)})">Видалити</button>
             </div>
           </td>
@@ -1205,7 +1208,11 @@
         }
       }
 
-      function openEditCategory(id, name, color, isDefault) {
+      function openEditCategory(btn) {
+        const id = parseInt(btn.dataset.id);
+        const name = btn.dataset.name || '';
+        const color = btn.dataset.color || '#64748b';
+        const isDefault = btn.dataset.default === 'true';
         document.getElementById('editCategoryId').value = id;
         document.getElementById('editCategoryName').value = name;
         document.getElementById('editCategoryColor').value = color;
