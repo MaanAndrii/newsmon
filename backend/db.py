@@ -1088,6 +1088,114 @@ class Repository:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    # ------------------------------------------------------------------
+    # Statistics
+    # ------------------------------------------------------------------
+
+    def get_stats_overview(self) -> dict[str, Any]:
+        with get_connection() as conn:
+            total = conn.execute("SELECT COUNT(*) AS cnt FROM messages").fetchone()["cnt"]
+            scored = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM messages WHERE ai_status = 'done' AND ai_score IS NOT NULL"
+            ).fetchone()["cnt"]
+            avg_row = conn.execute(
+                "SELECT ROUND(AVG(CAST(ai_score AS REAL)), 1) AS avg FROM messages WHERE ai_status = 'done' AND ai_score IS NOT NULL"
+            ).fetchone()
+            sources = conn.execute("SELECT COUNT(*) AS cnt FROM sources WHERE is_active = 1").fetchone()["cnt"]
+        return {
+            "total_messages": int(total or 0),
+            "scored_messages": int(scored or 0),
+            "avg_score": float(avg_row["avg"]) if avg_row["avg"] is not None else None,
+            "active_sources": int(sources or 0),
+        }
+
+    def get_stats_messages_over_time(self, days: int = 30) -> list[dict[str, Any]]:
+        safe_days = max(1, min(int(days), 365))
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT DATE(published_at) AS day, COUNT(*) AS count
+                FROM messages
+                WHERE published_at >= DATE('now', ? || ' days')
+                GROUP BY day
+                ORDER BY day ASC
+                """,
+                (f"-{safe_days}",),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_stats_score_distribution(self) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT ai_score AS score, COUNT(*) AS count
+                FROM messages
+                WHERE ai_status = 'done' AND ai_score IS NOT NULL
+                GROUP BY ai_score
+                ORDER BY ai_score ASC
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_stats_categories(self) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT ai_category AS category, COUNT(*) AS count
+                FROM messages
+                WHERE ai_status = 'done'
+                  AND ai_category IS NOT NULL
+                  AND TRIM(ai_category) != ''
+                GROUP BY ai_category
+                ORDER BY count DESC
+                LIMIT 15
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_stats_sources(self, limit: int = 10) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 50))
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT s.name, COUNT(m.id) AS count
+                FROM messages m
+                JOIN sources s ON s.id = m.source_id
+                WHERE m.ai_status = 'done'
+                GROUP BY m.source_id
+                ORDER BY count DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_stats_hours(self) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT CAST(strftime('%H', published_at) AS INTEGER) AS hour,
+                       COUNT(*) AS count
+                FROM messages
+                GROUP BY hour
+                ORDER BY hour ASC
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_stats_alerts(self) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT a.name, a.alert_type, COUNT(d.id) AS delivery_count
+                FROM alerts a
+                LEFT JOIN alert_deliveries d ON d.alert_id = a.id
+                GROUP BY a.id
+                ORDER BY delivery_count DESC
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def list_dashboard_sessions(self, limit: int = 200, since_hours: int | None = None) -> list[dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 1000))
         where = ""
