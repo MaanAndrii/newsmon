@@ -31,6 +31,7 @@
           </div>
           <button id="filterBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">Фільтр</button>
           <button id="resetFiltersBtn" class="px-3 py-2 rounded-lg bg-slate-700 text-slate-300 cursor-not-allowed" disabled>Скинути</button>
+          <button id="statsBtn" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-white whitespace-nowrap">Статистика</button>
         </nav>
       </div>
     </header>
@@ -190,6 +191,52 @@
           <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeFilterPicker()">Закрити</button>
         </div>
         <div id="filterPickerList" class="p-4 max-h-72 overflow-y-auto flex flex-wrap gap-2"></div>
+      </div>
+    </div>
+
+    <div id="statsModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+      <div class="w-full max-w-5xl h-[90vh] flex flex-col rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-shrink-0">
+          <div class="flex items-center gap-3">
+            <h3 class="font-semibold text-lg">Статистика</h3>
+            <div class="flex rounded-lg bg-slate-800 p-0.5 text-xs">
+              <button id="statsDays7Btn" onclick="setStatsDays(7)" class="px-2 py-1 rounded-md text-slate-400 hover:text-white">7 днів</button>
+              <button id="statsDays30Btn" onclick="setStatsDays(30)" class="px-2 py-1 rounded-md bg-violet-700 text-white">30 днів</button>
+            </div>
+          </div>
+          <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeStatsModal()">Закрити</button>
+        </div>
+        <div class="overflow-y-auto flex-1 p-4 space-y-4">
+          <div id="statsOverviewCards" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+          <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+            <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Повідомлень за день</p>
+            <canvas id="chartTimeline" height="70"></canvas>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+              <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Розподіл оцінок AI</p>
+              <canvas id="chartScores" height="160"></canvas>
+            </div>
+            <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+              <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Активність за годиною доби</p>
+              <canvas id="chartHours" height="160"></canvas>
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+              <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Топ категорій</p>
+              <canvas id="chartCategories" height="160"></canvas>
+            </div>
+            <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+              <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Топ каналів</p>
+              <canvas id="chartSources" height="160"></canvas>
+            </div>
+          </div>
+          <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+            <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Спрацювання алертів</p>
+            <div id="statsAlertsTable" class="text-sm"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -793,6 +840,163 @@
       setInterval(updateCurrentTime, 1000);
       window.addEventListener('beforeunload', () => {
         sendDashboardHeartbeat();
+      });
+
+      // ── Statistics ──────────────────────────────────────────────────
+      let _statsDays = 30;
+      const _statCharts = {};
+
+      function _destroyStatCharts() {
+        for (const key of Object.keys(_statCharts)) {
+          if (_statCharts[key]) { _statCharts[key].destroy(); _statCharts[key] = null; }
+        }
+      }
+
+      async function _ensureChartJs() {
+        if (window.Chart) return;
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js';
+          s.onload = resolve; s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+
+      async function openStatsModal() {
+        const m = document.getElementById('statsModal');
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+        await loadStats();
+      }
+
+      function closeStatsModal() {
+        const m = document.getElementById('statsModal');
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+        _destroyStatCharts();
+      }
+
+      async function setStatsDays(days) {
+        _statsDays = days;
+        document.getElementById('statsDays7Btn').className = days === 7
+          ? 'px-2 py-1 rounded-md bg-violet-700 text-white'
+          : 'px-2 py-1 rounded-md text-slate-400 hover:text-white';
+        document.getElementById('statsDays30Btn').className = days === 30
+          ? 'px-2 py-1 rounded-md bg-violet-700 text-white'
+          : 'px-2 py-1 rounded-md text-slate-400 hover:text-white';
+        await loadStats();
+      }
+
+      async function loadStats() {
+        await _ensureChartJs();
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.borderColor = '#1e293b';
+
+        let data;
+        try {
+          const res = await fetch(`/api/stats?days=${_statsDays}`);
+          if (!res.ok) return;
+          data = await res.json();
+        } catch (_) { return; }
+
+        const ov = data.overview || {};
+        document.getElementById('statsOverviewCards').innerHTML = [
+          ['Всього повідомлень', ov.total_messages ?? 0, 'border-slate-700'],
+          ['Оцінено AI', ov.scored_messages ?? 0, 'border-violet-700/60'],
+          ['Середня оцінка', ov.avg_score != null ? ov.avg_score.toFixed(1) : '—', 'border-sky-700/60'],
+          ['Активних каналів', ov.active_sources ?? 0, 'border-emerald-700/60'],
+        ].map(([label, val, border]) => `
+          <div class="rounded-xl border ${border} bg-slate-950/60 p-3">
+            <p class="text-xs text-slate-400">${label}</p>
+            <p class="text-2xl font-bold mt-1 text-slate-100">${val}</p>
+          </div>`).join('');
+
+        _destroyStatCharts();
+        const gridOpts = (axis) => ({
+          x: axis === 'x' ? { grid: { color: '#1e293b' } } : { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { precision: 0 } },
+          y: axis === 'x' ? { grid: { display: false } } : { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { precision: 0 } },
+        });
+
+        // Timeline
+        const td = data.messages_over_time || [];
+        _statCharts.timeline = new Chart(document.getElementById('chartTimeline'), {
+          type: 'line',
+          data: {
+            labels: td.map(d => d.day),
+            datasets: [{ data: td.map(d => d.count), borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,0.12)', fill: true, tension: 0.35, pointRadius: 2, pointHoverRadius: 4 }]
+          },
+          options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e293b' }, ticks: { maxTicksLimit: 8, maxRotation: 0 } }, y: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { precision: 0 } } } }
+        });
+
+        // Score distribution
+        const scores = [1,2,3,4,5,6,7,8,9,10];
+        const scoreMap = Object.fromEntries((data.score_distribution || []).map(d => [d.score, d.count]));
+        _statCharts.scores = new Chart(document.getElementById('chartScores'), {
+          type: 'bar',
+          data: {
+            labels: scores.map(String),
+            datasets: [{ data: scores.map(s => scoreMap[s] || 0), backgroundColor: scores.map(s => s >= 8 ? '#ef4444' : s >= 5 ? '#f59e0b' : '#475569'), borderRadius: 4 }]
+          },
+          options: { responsive: true, plugins: { legend: { display: false } }, scales: gridOpts('y') }
+        });
+
+        // Hourly
+        const hours = Array.from({length: 24}, (_, i) => i);
+        const hourMap = Object.fromEntries((data.hourly || []).map(d => [d.hour, d.count]));
+        _statCharts.hours = new Chart(document.getElementById('chartHours'), {
+          type: 'bar',
+          data: {
+            labels: hours.map(h => `${String(h).padStart(2,'0')}:00`),
+            datasets: [{ data: hours.map(h => hourMap[h] || 0), backgroundColor: '#6366f1', borderRadius: 3 }]
+          },
+          options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e293b' }, ticks: { maxTicksLimit: 8, maxRotation: 0 } }, y: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { precision: 0 } } } }
+        });
+
+        // Top categories
+        const cats = data.categories || [];
+        _statCharts.categories = new Chart(document.getElementById('chartCategories'), {
+          type: 'bar',
+          data: {
+            labels: cats.map(c => c.category),
+            datasets: [{ data: cats.map(c => c.count), backgroundColor: '#0ea5e9', borderRadius: 4 }]
+          },
+          options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { precision: 0 } }, y: { grid: { display: false } } } }
+        });
+
+        // Top sources
+        const srcs = data.top_sources || [];
+        _statCharts.sources = new Chart(document.getElementById('chartSources'), {
+          type: 'bar',
+          data: {
+            labels: srcs.map(s => s.name),
+            datasets: [{ data: srcs.map(s => s.count), backgroundColor: '#10b981', borderRadius: 4 }]
+          },
+          options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { precision: 0 } }, y: { grid: { display: false } } } }
+        });
+
+        // Alerts table
+        const alertTypeLabel = { new_message: 'Нове повідомлення', min_score: 'Мін. оцінка', keyword_ai: 'Ключове слово' };
+        const alertsHtml = (data.alerts || []).length
+          ? `<table class="w-full text-xs border-collapse">
+              <thead><tr class="text-slate-400 text-left border-b border-slate-800">
+                <th class="pb-2 font-medium">Назва</th>
+                <th class="pb-2 font-medium">Тип</th>
+                <th class="pb-2 font-medium text-right">Доставлено</th>
+              </tr></thead>
+              <tbody>${(data.alerts || []).map(a => `
+                <tr class="border-b border-slate-800/50">
+                  <td class="py-1.5 pr-3 text-slate-200">${escapeHtml(a.name)}</td>
+                  <td class="py-1.5 pr-3 text-slate-400">${alertTypeLabel[a.alert_type] || a.alert_type}</td>
+                  <td class="py-1.5 text-right font-mono text-violet-300">${a.delivery_count}</td>
+                </tr>`).join('')}
+              </tbody></table>`
+          : '<p class="text-slate-500 text-xs">Алертів ще немає.</p>';
+        document.getElementById('statsAlertsTable').innerHTML = alertsHtml;
+      }
+
+      document.getElementById('statsBtn').addEventListener('click', openStatsModal);
+      document.addEventListener('keydown', (e) => {
+        if (!document.getElementById('statsModal').classList.contains('hidden') && e.key === 'Escape') closeStatsModal();
       });
     </script>
   </body>
