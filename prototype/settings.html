@@ -129,6 +129,16 @@
             </div>
             <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
               <div>
+                <p class="font-medium">Дедублікація повідомлень</p>
+                <p class="text-xs text-slate-400">Якщо увімкнено, схожі повідомлення з різних каналів не відправляються на оцінку ШІ повторно — оцінка копіюється з вже обробленого.</p>
+              </div>
+              <label class="inline-flex items-center cursor-pointer">
+                <input id="monitorDedupEnabled" type="checkbox" class="sr-only peer" />
+                <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
+              </label>
+            </div>
+            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+              <div>
                 <p class="font-medium">Інтервал авто-отримання</p>
                 <p class="text-xs text-slate-400">Збір запускається на початку кожного інтервалу.</p>
               </div>
@@ -861,6 +871,7 @@
         const data = await res.json();
         document.getElementById('monitorAiEnabled').checked = !!data.ai_enabled;
         document.getElementById('monitorCollectEnabled').checked = !!data.collect_enabled;
+        document.getElementById('monitorDedupEnabled').checked = data.dedup_enabled !== false;
         document.getElementById('monitorIntervalSeconds').value = Number(data.interval_seconds || 600);
         document.getElementById('monitorFetchDepth').value = Number(data.fetch_depth || 3);
         document.getElementById('monitorMaxMessages').value = Number(data.max_messages || 5000);
@@ -883,6 +894,7 @@
         const payload = {
           ai_enabled: document.getElementById('monitorAiEnabled').checked,
           collect_enabled: document.getElementById('monitorCollectEnabled').checked,
+          dedup_enabled: document.getElementById('monitorDedupEnabled').checked,
           interval_seconds: Number(document.getElementById('monitorIntervalSeconds').value || 600),
           fetch_depth: Number(document.getElementById('monitorFetchDepth').value || 3),
           max_messages: Number(document.getElementById('monitorMaxMessages').value || 5000),
@@ -895,7 +907,7 @@
         });
         const data = await parseApiBody(res);
         document.getElementById('monitorConfigMessage').textContent = res.ok
-          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, інтервал: ${data.interval_seconds} сек, глибина: ${data.fetch_depth}, ліміт БД: ${data.max_messages}.`
+          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, дедуп: ${data.dedup_enabled ? 'увімкнено' : 'вимкнено'}, інтервал: ${data.interval_seconds} сек.`
           : (data.detail || 'Не вдалося зберегти налаштування моніторингу.');
       }
 

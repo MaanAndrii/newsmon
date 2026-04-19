@@ -89,6 +89,7 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_messages_ai_score ON messages(ai_score);
             CREATE INDEX IF NOT EXISTS idx_messages_workflow ON messages(workflow_status);
             CREATE INDEX IF NOT EXISTS idx_messages_ai_status_date ON messages(ai_status, published_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_messages_content_hash ON messages(content_hash);
 
             CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
                 text,
@@ -204,6 +205,8 @@ def init_db() -> None:
         _ensure_column(conn, "alerts", "min_score", "INTEGER NULL CHECK(min_score BETWEEN 0 AND 10)")
         _ensure_column(conn, "alerts", "target_chat_id", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "alerts", "is_ai_keyword", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "messages", "content_hash", "TEXT NULL")
+        _ensure_column(conn, "messages", "is_dedup", "INTEGER NOT NULL DEFAULT 0")
 
 
 def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, ddl: str) -> None:
@@ -349,23 +352,26 @@ class Repository:
         telegram_url: str | None,
         raw_json: str | None,
         enqueue_ai: bool = True,
+        content_hash: str | None = None,
     ) -> int:
         with get_connection() as conn:
             conn.execute(
                 """
                 INSERT INTO messages(
-                    source_id, tg_message_id, published_at, text, media_type, telegram_url, raw_json, updated_at
+                    source_id, tg_message_id, published_at, text, media_type, telegram_url, raw_json,
+                    content_hash, updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(source_id, tg_message_id) DO UPDATE SET
                     published_at=excluded.published_at,
                     text=excluded.text,
                     media_type=excluded.media_type,
                     telegram_url=excluded.telegram_url,
                     raw_json=excluded.raw_json,
+                    content_hash=COALESCE(excluded.content_hash, messages.content_hash),
                     updated_at=datetime('now')
                 """,
-                (source_id, tg_message_id, published_at, text, media_type, telegram_url, raw_json),
+                (source_id, tg_message_id, published_at, text, media_type, telegram_url, raw_json, content_hash),
             )
             row = conn.execute(
                 "SELECT id FROM messages WHERE source_id = ? AND tg_message_id = ?",
@@ -1092,6 +1098,40 @@ class Repository:
     # Statistics
     # ------------------------------------------------------------------
 
+    def find_scored_message_by_hash(
+        self, content_hash: str, hours: int = 6, exclude_id: int | None = None
+    ) -> dict[str, Any] | None:
+        """Return an already-scored message with the same content hash within *hours*."""
+        if not content_hash:
+            return None
+        q = (
+            "SELECT id, ai_score, ai_category FROM messages "
+            "WHERE content_hash = ? AND ai_status = 'done' AND ai_score IS NOT NULL "
+            "AND published_at >= datetime('now', ? || ' hours')"
+        )
+        params: list[Any] = [content_hash, f"-{hours}"]
+        if exclude_id is not None:
+            q += " AND id != ?"
+            params.append(exclude_id)
+        q += " ORDER BY published_at ASC LIMIT 1"
+        with get_connection() as conn:
+            row = conn.execute(q, params).fetchone()
+        return dict(row) if row else None
+
+    def mark_message_dedup(self, message_id: int, score: int, category: str | None) -> None:
+        """Copy score/category from an original and mark this message as a duplicate."""
+        with get_connection() as conn:
+            conn.execute(
+                """
+                UPDATE messages
+                SET ai_score = ?, ai_category = ?, ai_status = 'done', is_dedup = 1,
+                    updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (score, category, message_id),
+            )
+            conn.execute("DELETE FROM ai_queue WHERE message_id = ?", (message_id,))
+
     def get_stats_overview(self) -> dict[str, Any]:
         with get_connection() as conn:
             total = conn.execute("SELECT COUNT(*) AS cnt FROM messages").fetchone()["cnt"]
@@ -1102,11 +1142,13 @@ class Repository:
                 "SELECT ROUND(AVG(CAST(ai_score AS REAL)), 1) AS avg FROM messages WHERE ai_status = 'done' AND ai_score IS NOT NULL"
             ).fetchone()
             sources = conn.execute("SELECT COUNT(*) AS cnt FROM sources WHERE is_active = 1").fetchone()["cnt"]
+            dedup = conn.execute("SELECT COUNT(*) AS cnt FROM messages WHERE is_dedup = 1").fetchone()["cnt"]
         return {
             "total_messages": int(total or 0),
             "scored_messages": int(scored or 0),
             "avg_score": float(avg_row["avg"]) if avg_row["avg"] is not None else None,
             "active_sources": int(sources or 0),
+            "dedup_count": int(dedup or 0),
         }
 
     def get_stats_messages_over_time(self, days: int = 30) -> list[dict[str, Any]]:
