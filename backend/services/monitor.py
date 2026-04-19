@@ -535,17 +535,62 @@ async def _process_ai_queue(limit: int = 50) -> int:
         if not pending:
             return 0
         count = len(pending)
+
+        # Pre-dedup within this batch: if several messages share the same
+        # content_hash, only the first occurrence goes through Claude. The rest
+        # are held back, scored after the primaries finish, and marked as dedup.
+        dedup_batch_enabled = bool(monitor_cfg["dedup_enabled"])
+        primary_items = pending
+        dedup_items: list[dict] = []
+        if dedup_batch_enabled:
+            seen_hashes: dict[str, bool] = {}
+            primary_items = []
+            for item in pending:
+                text = (item.get("text") or "").strip()
+                h = _compute_content_hash(text) if text else None
+                if h and h in seen_hashes:
+                    dedup_items.append(item)
+                else:
+                    primary_items.append(item)
+                    if h:
+                        seen_hashes[h] = True
+
         semaphore = asyncio.Semaphore(_AI_CONCURRENCY)
         await asyncio.gather(
             *[
                 _process_one_ai_item(
                     item, semaphore, api_key, model, categories, ai_prompt, keyword_patterns,
-                    bool(monitor_cfg["dedup_enabled"]),
+                    dedup_batch_enabled,
                 )
-                for item in pending
+                for item in primary_items
             ],
             return_exceptions=True,
         )
+
+        # Resolve within-batch duplicates now that primaries are scored.
+        for item in dedup_items:
+            msg_id = int(item.get("message_id") or 0)
+            text = (item.get("text") or "").strip()
+            if not text or msg_id <= 0:
+                repo.mark_message_no_ai(msg_id, _get_default_category_name())
+                continue
+            h = _compute_content_hash(text)
+            original = repo.find_scored_message_by_hash(h, hours=6, exclude_id=msg_id) if h else None
+            if original:
+                repo.mark_message_dedup(msg_id, int(original["ai_score"]), original.get("ai_category"))
+                _log_event(
+                    "dedup_hit",
+                    f"msg#{msg_id}: дублікат (batch) msg#{original['id']}",
+                    message_id=msg_id,
+                    original_id=original["id"],
+                )
+            else:
+                # Fallback: original wasn't scored (e.g. AI error) — score normally.
+                await _process_one_ai_item(
+                    item, semaphore, api_key, model, categories, ai_prompt, keyword_patterns,
+                    dedup_batch_enabled,
+                )
+
         # Update shared counter so _monitor_loop can read it for run history
         _ai_counters["processed_since_last_collect"] += count
     return count
