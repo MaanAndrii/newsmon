@@ -31,6 +31,7 @@
           </div>
           <button id="filterBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">Фільтр</button>
           <button id="resetFiltersBtn" class="px-3 py-2 rounded-lg bg-slate-700 text-slate-300 cursor-not-allowed" disabled>Скинути</button>
+          <button id="digestBtn" class="px-3 py-2 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white whitespace-nowrap">Дайджест</button>
           <button id="statsBtn" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-white whitespace-nowrap">Статистика</button>
         </nav>
       </div>
@@ -191,6 +192,31 @@
           <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeFilterPicker()">Закрити</button>
         </div>
         <div id="filterPickerList" class="p-4 max-h-72 overflow-y-auto flex flex-wrap gap-2"></div>
+      </div>
+    </div>
+
+    <!-- Digest modal -->
+    <div id="digestModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+      <div class="w-full max-w-2xl h-[90vh] flex flex-col rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800 flex-shrink-0">
+          <div>
+            <h3 class="font-semibold text-lg">Щоденний дайджест</h3>
+            <p id="digestModalMeta" class="text-xs text-slate-400 mt-0.5"></p>
+          </div>
+          <div class="flex gap-2">
+            <select id="digestDateSelect" onchange="loadDigestForDate(this.value)"
+              class="px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-200">
+              <option value="">Оберіть дату...</option>
+            </select>
+            <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeDigestModal()">Закрити</button>
+          </div>
+        </div>
+        <div id="digestModalBody" class="flex-1 overflow-y-auto p-4">
+          <p class="text-slate-400 text-sm">Завантаження...</p>
+        </div>
+        <div class="px-4 py-3 border-t border-slate-800 flex justify-end gap-2 flex-shrink-0">
+          <button id="digestCopyBtn" class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm hidden" onclick="copyDigestContent()">Копіювати</button>
+        </div>
       </div>
     </div>
 
@@ -883,6 +909,84 @@
         });
       }
 
+      // ─── Digest modal ────────────────────────────────────────────────────
+      let _digestContent = '';
+
+      async function openDigestModal() {
+        const m = document.getElementById('digestModal');
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+        await loadDigestList();
+      }
+
+      function closeDigestModal() {
+        const m = document.getElementById('digestModal');
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+        _digestContent = '';
+      }
+
+      async function loadDigestList() {
+        const adminToken = (typeof getAdminToken === 'function') ? getAdminToken() : null;
+        if (!adminToken) {
+          document.getElementById('digestModalBody').innerHTML =
+            '<p class="text-slate-400 text-sm">Перегляд дайджесту доступний лише адміністратору.</p>';
+          return;
+        }
+        const res = await fetch(`${apiBase}/api/digest/list?limit=30`, {
+          headers: { 'Authorization': `Bearer ${adminToken}` },
+        });
+        if (!res.ok) {
+          document.getElementById('digestModalBody').innerHTML =
+            '<p class="text-rose-400 text-sm">Помилка завантаження</p>';
+          return;
+        }
+        const data = await res.json();
+        const sel = document.getElementById('digestDateSelect');
+        sel.innerHTML = '<option value="">Оберіть дату...</option>';
+        if (!data.digests || !data.digests.length) {
+          document.getElementById('digestModalBody').innerHTML =
+            '<p class="text-slate-400 text-sm">Дайджестів ще немає. Налаштуйте та згенеруйте перший у розділі Налаштування → Дайджест.</p>';
+          return;
+        }
+        data.digests.forEach(d => {
+          if (d.status === 'ok') {
+            const opt = document.createElement('option');
+            opt.value = d.digest_date;
+            opt.textContent = d.digest_date;
+            sel.appendChild(opt);
+          }
+        });
+        if (data.digests[0] && data.digests[0].status === 'ok') {
+          sel.value = data.digests[0].digest_date;
+          await loadDigestForDate(data.digests[0].digest_date);
+        } else {
+          document.getElementById('digestModalBody').innerHTML =
+            '<p class="text-slate-400 text-sm">Оберіть дату зі списку.</p>';
+        }
+      }
+
+      async function loadDigestForDate(dateStr) {
+        if (!dateStr) return;
+        const adminToken = (typeof getAdminToken === 'function') ? getAdminToken() : null;
+        const headers = adminToken ? { 'Authorization': `Bearer ${adminToken}` } : {};
+        const body = document.getElementById('digestModalBody');
+        body.innerHTML = '<p class="text-slate-400 text-sm">Завантаження...</p>';
+        const res = await fetch(`${apiBase}/api/digest/${dateStr}`, { headers });
+        if (!res.ok) { body.innerHTML = '<p class="text-rose-400 text-sm">Не вдалося завантажити</p>'; return; }
+        const data = await res.json();
+        _digestContent = data.content || '';
+        document.getElementById('digestModalMeta').textContent =
+          `${data.message_count ?? 0} повідомлень · згенеровано ${data.generated_at ? new Date(data.generated_at + 'Z').toLocaleString() : ''}`;
+        body.innerHTML = `<pre class="whitespace-pre-wrap text-sm text-slate-200 font-sans leading-relaxed">${escapeHtml(_digestContent)}</pre>`;
+        document.getElementById('digestCopyBtn').classList.remove('hidden');
+      }
+
+      function copyDigestContent() {
+        if (_digestContent) navigator.clipboard.writeText(_digestContent);
+      }
+      // ─── End Digest modal ────────────────────────────────────────────────
+
       async function openStatsModal() {
         const m = document.getElementById('statsModal');
         m.classList.remove('hidden');
@@ -1016,9 +1120,11 @@
         document.getElementById('statsAlertsTable').innerHTML = alertsHtml;
       }
 
+      document.getElementById('digestBtn').addEventListener('click', openDigestModal);
       document.getElementById('statsBtn').addEventListener('click', openStatsModal);
       document.addEventListener('keydown', (e) => {
-        if (!document.getElementById('statsModal').classList.contains('hidden') && e.key === 'Escape') closeStatsModal();
+        if (!document.getElementById('digestModal').classList.contains('hidden') && e.key === 'Escape') closeDigestModal();
+        else if (!document.getElementById('statsModal').classList.contains('hidden') && e.key === 'Escape') closeStatsModal();
       });
     </script>
   </body>

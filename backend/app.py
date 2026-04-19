@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 import config
 from config import PROTOTYPE_DIR
 from db import init_db
+from services.digest import _digest_loop
 from services.monitor import _ai_loop, _monitor_loop
 
 from routers import alerts as alerts_router
@@ -17,6 +18,7 @@ from routers import keywords as keywords_router
 from routers import messages as messages_router
 from routers import monitor as monitor_router
 from routers import sources as sources_router
+from routers import digest as digest_router
 from routers import stats as stats_router
 from routers import telethon as telethon_router
 
@@ -30,6 +32,7 @@ app.include_router(alerts_router.router)
 app.include_router(monitor_router.router)
 app.include_router(integrations_router.router)
 app.include_router(telethon_router.router)
+app.include_router(digest_router.router)
 app.include_router(stats_router.router)
 
 
@@ -40,6 +43,8 @@ async def startup() -> None:
         config.monitor_task = asyncio.create_task(_monitor_loop())
     if config.ai_task is None:
         config.ai_task = asyncio.create_task(_ai_loop())
+    if config.digest_task is None:
+        config.digest_task = asyncio.create_task(_digest_loop())
 
 
 @app.get("/")

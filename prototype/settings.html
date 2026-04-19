@@ -30,6 +30,7 @@
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('taxonomyTab', this)">Категорії</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('alertsTab', this)">Сповіщення</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('sourcesTab', this)">Джерела</button>
+          <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('digestTab', this)">Дайджест</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('debugTab', this)">Debug</button>
         </div>
 
@@ -291,6 +292,107 @@
           <p id="sourceMessage" class="text-xs text-slate-400"></p>
         </div>
 
+        <!-- ═══════════════════════════════════════════════════ DIGEST TAB -->
+        <div id="digestTab" class="tab-panel hidden space-y-5">
+          <div class="flex items-center justify-between">
+            <h2 class="text-lg font-semibold">Щоденний дайджест</h2>
+            <button onclick="saveDigestConfig()" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-medium">Зберегти</button>
+          </div>
+
+          <!-- Enable + schedule -->
+          <div class="rounded-lg border border-slate-800 p-4 space-y-4 text-sm">
+            <p class="font-medium text-slate-200">Розклад</p>
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="font-medium">Автоматична генерація</p>
+                <p class="text-xs text-slate-400">Генерувати дайджест щодня у вказаний час</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input id="digestEnabled" type="checkbox" class="sr-only peer" />
+                <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+              </label>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Час генерації (година)</label>
+                <input id="digestHour" type="number" min="0" max="23" value="10"
+                  class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Часовий пояс</label>
+                <input id="digestTimezone" type="text" value="Europe/Kyiv" placeholder="Europe/Kyiv"
+                  class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Selection -->
+          <div class="rounded-lg border border-slate-800 p-4 space-y-4 text-sm">
+            <p class="font-medium text-slate-200">Відбір повідомлень</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Мінімальний score (від 1 до 10)</label>
+                <input id="digestMinScore" type="number" min="1" max="10" value="6"
+                  class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Максимум повідомлень на категорію</label>
+                <input id="digestMaxPerCategory" type="number" min="1" max="20" value="5"
+                  class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-2">Виключити категорії (оберіть категорії, які НЕ потрапляють у дайджест)</label>
+              <div id="digestExcludedCategories" class="flex flex-wrap gap-2 min-h-[2rem]">
+                <span class="text-xs text-slate-500">Завантаження...</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Format + prompt -->
+          <div class="rounded-lg border border-slate-800 p-4 space-y-4 text-sm">
+            <p class="font-medium text-slate-200">Формат та стиль</p>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Формат виводу</label>
+              <select id="digestFormat" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm">
+                <option value="article">Журналістська стаття (з підзаголовками)</option>
+                <option value="bullets">Маркований список (по категоріях)</option>
+                <option value="summary">Executive summary (до 200 слів)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Власний промпт (необов'язково)</label>
+              <textarea id="digestPrompt" rows="4" placeholder="Залиш порожнім для промпту за замовчуванням..."
+                class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-mono resize-y"></textarea>
+            </div>
+          </div>
+
+          <!-- Storage -->
+          <div class="rounded-lg border border-slate-800 p-4 space-y-2 text-sm">
+            <p class="font-medium text-slate-200">Зберігання</p>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Зберігати дайджести (днів)</label>
+              <input id="digestKeepDays" type="number" min="1" max="365" value="30"
+                class="w-32 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
+            </div>
+          </div>
+
+          <!-- Status + history -->
+          <div class="rounded-lg border border-slate-800 p-4 space-y-3 text-sm">
+            <div class="flex items-center justify-between">
+              <p class="font-medium text-slate-200">Останні дайджести</p>
+              <div class="flex gap-2">
+                <button onclick="loadDigestHistory()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">↻ Оновити</button>
+                <button onclick="generateDigestNow()" id="digestGenerateBtn" class="text-xs px-3 py-1.5 rounded-lg bg-violet-700 hover:bg-violet-600 text-white">⚡ Згенерувати зараз</button>
+              </div>
+            </div>
+            <p class="text-xs text-slate-400">«Згенерувати зараз» — дайджест за вчорашній день</p>
+            <div id="digestHistoryList" class="space-y-2">
+              <p class="text-xs text-slate-500">Завантаження...</p>
+            </div>
+          </div>
+        </div>
+
         <div id="debugTab" class="tab-panel hidden space-y-4">
           <div class="flex items-center justify-between">
             <h2 class="text-lg font-semibold">Debug</h2>
@@ -478,6 +580,15 @@
       const alertsBody = document.getElementById('alertsBody');
       let editingAlertId = null;
 
+      function showToast(msg, type) {
+        const t = document.createElement('div');
+        const bg = type === 'success' ? 'bg-emerald-700' : type === 'error' ? 'bg-rose-700' : 'bg-slate-700';
+        t.className = `fixed bottom-5 right-5 z-50 px-4 py-2 rounded-lg text-sm text-white shadow-lg ${bg}`;
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 3500);
+      }
+
       function escapeHtml(value) {
         if (value == null) return '';
         return String(value)
@@ -632,6 +743,8 @@
         loadSources();
         loadCategories();
         loadAlerts();
+        loadDigestConfig();
+        loadDigestHistory();
         loadMonitorStatus();
         loadTelethonAuthStatus();
         loadDebugAll();
@@ -690,6 +803,7 @@
           loadMonitorStatus();
         }
         if (tabId === 'alertsTab') loadAlerts();
+        if (tabId === 'digestTab') { loadDigestConfig(); loadDigestHistory(); }
         if (tabId === 'debugTab') loadDebugAll();
       }
 
@@ -796,6 +910,160 @@
         const info = `Моніторинг: ${data.state} • Оновлено: ${data.updated_sources}/${data.total_sources} • Ingested: ${data.ingested_messages || 0}`;
         setMonitorSignal(data.state, info);
       }
+
+      // ─── Digest ────────────────────────────────────────────────────────────
+      let _digestExcluded = [];
+
+      async function loadDigestConfig() {
+        const res = await authFetch(`${apiBase}/api/digest/config`);
+        if (!res.ok) return;
+        const d = await res.json();
+        document.getElementById('digestEnabled').checked = !!d.enabled;
+        document.getElementById('digestHour').value = d.hour ?? 10;
+        document.getElementById('digestTimezone').value = d.timezone || 'Europe/Kyiv';
+        document.getElementById('digestMinScore').value = d.min_score ?? 6;
+        document.getElementById('digestMaxPerCategory').value = d.max_per_category ?? 5;
+        document.getElementById('digestFormat').value = d.format || 'article';
+        document.getElementById('digestPrompt').value = d.ai_prompt || '';
+        document.getElementById('digestKeepDays').value = d.keep_days ?? 30;
+        _digestExcluded = Array.isArray(d.excluded_categories) ? d.excluded_categories : [];
+        renderDigestCategoryChips();
+      }
+
+      function renderDigestCategoryChips() {
+        const container = document.getElementById('digestExcludedCategories');
+        const cats = window._allCategories || [];
+        if (!cats.length) {
+          container.innerHTML = '<span class="text-xs text-slate-500">Немає категорій</span>';
+          return;
+        }
+        container.innerHTML = cats.map(c => {
+          const excluded = _digestExcluded.includes(c.name);
+          const cls = excluded
+            ? 'px-3 py-1 rounded-full text-xs font-medium bg-rose-700 text-white cursor-pointer'
+            : 'px-3 py-1 rounded-full text-xs font-medium bg-slate-700 hover:bg-slate-600 text-slate-300 cursor-pointer';
+          return `<button class="${cls}" onclick="toggleDigestExclude('${escapeHtml(c.name)}')">${escapeHtml(c.name)}</button>`;
+        }).join('');
+      }
+
+      function toggleDigestExclude(name) {
+        const idx = _digestExcluded.indexOf(name);
+        if (idx >= 0) _digestExcluded.splice(idx, 1);
+        else _digestExcluded.push(name);
+        renderDigestCategoryChips();
+      }
+
+      async function saveDigestConfig() {
+        const payload = {
+          enabled: document.getElementById('digestEnabled').checked,
+          hour: parseInt(document.getElementById('digestHour').value) || 10,
+          timezone: document.getElementById('digestTimezone').value.trim() || 'Europe/Kyiv',
+          min_score: parseInt(document.getElementById('digestMinScore').value) || 6,
+          max_per_category: parseInt(document.getElementById('digestMaxPerCategory').value) || 5,
+          excluded_categories: _digestExcluded,
+          format: document.getElementById('digestFormat').value,
+          ai_prompt: document.getElementById('digestPrompt').value.trim(),
+          keep_days: parseInt(document.getElementById('digestKeepDays').value) || 30,
+        };
+        const res = await authFetch(`${apiBase}/api/digest/config`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (res.ok) {
+          showToast('Налаштування дайджесту збережено', 'success');
+        } else {
+          showToast('Помилка збереження', 'error');
+        }
+      }
+
+      async function loadDigestHistory() {
+        const res = await authFetch(`${apiBase}/api/digest/list?limit=7`);
+        const container = document.getElementById('digestHistoryList');
+        if (!res.ok) { container.innerHTML = '<p class="text-xs text-rose-400">Помилка завантаження</p>'; return; }
+        const data = await res.json();
+        if (!data.digests || !data.digests.length) {
+          container.innerHTML = '<p class="text-xs text-slate-500">Дайджестів ще немає</p>';
+          return;
+        }
+        container.innerHTML = data.digests.map(d => {
+          const statusCls = d.status === 'ok' ? 'text-emerald-400' : d.status === 'skipped' ? 'text-amber-400' : 'text-rose-400';
+          const statusLabel = d.status === 'ok' ? 'OK' : d.status === 'skipped' ? 'Пропущено' : d.status;
+          const genAt = d.generated_at ? formatLocalDateTime(d.generated_at) : '—';
+          const viewBtn = d.status === 'ok'
+            ? `<button onclick="viewDigest('${escapeHtml(d.digest_date)}')" class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600">Переглянути</button>`
+            : '';
+          return `<div class="flex items-center justify-between gap-3 py-2 border-t border-slate-800/60 text-xs">
+            <div class="flex items-center gap-3">
+              <span class="font-mono text-slate-300">${escapeHtml(d.digest_date)}</span>
+              <span class="${statusCls}">${escapeHtml(statusLabel)}</span>
+              <span class="text-slate-500">${d.message_count ?? 0} повідомлень</span>
+            </div>
+            <div class="flex items-center gap-2 text-slate-500">
+              <span>${escapeHtml(genAt)}</span>
+              ${viewBtn}
+            </div>
+          </div>`;
+        }).join('');
+      }
+
+      async function generateDigestNow() {
+        const btn = document.getElementById('digestGenerateBtn');
+        btn.disabled = true;
+        btn.textContent = '⏳ Генерація...';
+        try {
+          const res = await authFetch(`${apiBase}/api/digest/generate`, { method: 'POST' });
+          const data = await res.json();
+          if (res.ok) {
+            showToast(`Дайджест за ${data.date} згенеровано (${data.message_count} повідомлень)`, 'success');
+            loadDigestHistory();
+          } else {
+            showToast(data.detail || 'Помилка генерації', 'error');
+          }
+        } catch (e) {
+          showToast('Помилка мережі', 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '⚡ Згенерувати зараз';
+        }
+      }
+
+      async function viewDigest(digestDate) {
+        const res = await authFetch(`${apiBase}/api/digest/${digestDate}`);
+        if (!res.ok) { showToast('Не вдалося завантажити дайджест', 'error'); return; }
+        const data = await res.json();
+        openDigestModal(data.digest_date, data.content, data.message_count);
+      }
+
+      function openDigestModal(digestDate, content, messageCount) {
+        const existing = document.getElementById('digestViewModal');
+        if (existing) existing.remove();
+        const modal = document.createElement('div');
+        modal.id = 'digestViewModal';
+        modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4';
+        modal.innerHTML = `
+          <div class="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+            <div class="flex items-center justify-between p-4 border-b border-slate-800">
+              <div>
+                <h3 class="font-semibold">Дайджест за ${escapeHtml(digestDate)}</h3>
+                <p class="text-xs text-slate-400 mt-0.5">${messageCount ?? 0} повідомлень</p>
+              </div>
+              <button onclick="document.getElementById('digestViewModal').remove()" class="text-slate-400 hover:text-white text-xl leading-none">✕</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4">
+              <div class="prose prose-invert prose-sm max-w-none">
+                <pre class="whitespace-pre-wrap text-sm text-slate-200 font-sans leading-relaxed">${escapeHtml(content)}</pre>
+              </div>
+            </div>
+            <div class="p-3 border-t border-slate-800 flex justify-end gap-2">
+              <button onclick="navigator.clipboard.writeText(${JSON.stringify(content)})" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">Копіювати</button>
+              <button onclick="document.getElementById('digestViewModal').remove()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">Закрити</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+      }
+      // ─── End Digest ────────────────────────────────────────────────────────
 
       async function loadDebugStats() {
         const res = await authFetch(`${apiBase}/api/debug/stats`);
@@ -1245,7 +1513,9 @@
         const res = await fetch(`${apiBase}/api/categories`);
         if (!res.ok) return;
         const rows = await res.json();
+        window._allCategories = rows;
         categoriesBody.innerHTML = rows.map(categoryRow).join('');
+        renderDigestCategoryChips();
       }
 
       async function addCategory() {

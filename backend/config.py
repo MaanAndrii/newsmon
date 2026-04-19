@@ -54,6 +54,7 @@ repo = Repository()
 # ---------------------------------------------------------------------------
 monitor_task: asyncio.Task | None = None
 ai_task: asyncio.Task | None = None
+digest_task: asyncio.Task | None = None
 
 # ---------------------------------------------------------------------------
 # Shared mutable state
