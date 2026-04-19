@@ -282,7 +282,7 @@
       const resetFiltersBtn = document.getElementById('resetFiltersBtn');
       const scrollTopBtn = document.getElementById('scrollTopBtn');
       const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
-      const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '', maxScore: '' };
+      const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '', maxScore: '', contentHash: '' };
       const filterOptions = { categories: [], sources: [], keywords: [] };
       let pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
       let filterPickerType = null;
@@ -405,6 +405,7 @@
           const max = queryStateCache.maxScore || '10';
           parts.push(min === max ? `Оцінка = ${min}` : `Оцінка ${min}–${max}`);
         }
+        if (queryStateCache.contentHash) parts.push('🔁 Дублікати повідомлення');
         filterLabel.textContent = parts.join(' • ');
         filterCount.textContent = `Показано: ${latestItems.length}`;
         channelsCard.classList.add('hidden');
@@ -418,7 +419,8 @@
           queryStateCache.sourceId ||
           queryStateCache.keyword ||
           queryStateCache.minScore ||
-          queryStateCache.maxScore
+          queryStateCache.maxScore ||
+          queryStateCache.contentHash
         );
       }
 
@@ -459,10 +461,16 @@
 
       function renderMessageCard(item, idx) {
         const preview = escapeHtml((item.text || 'Повідомлення без тексту').slice(0, 280));
-        return `<article class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex flex-col gap-3">
+        const isDedup = !!item.is_dedup;
+        const borderClass = isDedup ? ' border-l-4 border-l-amber-500' : '';
+        const dedupIcon = isDedup && item.content_hash
+          ? `<button class="text-base leading-none text-amber-400 hover:text-amber-300 flex-shrink-0" title="Оцінка скопійована з іншого каналу. Клік — показати всі дублікати" data-hash="${escapeHtml(item.content_hash)}" onclick="filterByContentHash(this.dataset.hash)">🔁</button>`
+          : '';
+        return `<article class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex flex-col gap-3${borderClass}">
           <div class="flex items-center justify-between">
             <div><p class="font-semibold">${escapeHtml(item.source_name)}</p><p class="text-xs text-slate-400">${formatPublishedAt(item.published_at)}</p></div>
             <div class="flex gap-1 items-center">
+              ${dedupIcon}
               ${scoreBadge(item.ai_score)}
               <button class="px-2 py-1 rounded text-sm bg-sky-700 hover:bg-sky-600" data-category="${escapeHtml(item.ai_category || '')}" onclick="applyCategoryFilter(this.dataset.category)" title="Фільтрувати за категорією">
                 ${escapeHtml(item.ai_category || '—')}
@@ -477,6 +485,14 @@
         </article>`;
       }
 
+      function filterByContentHash(hash) {
+        if (!hash) return;
+        queryStateCache.contentHash = hash;
+        visibleCount = PAGE_SIZE;
+        updateResetButtonState();
+        loadMessages();
+      }
+
       async function loadMessages() {
         try {
           const params = new URLSearchParams({ limit: '500' });
@@ -486,6 +502,7 @@
           if (queryStateCache.keyword) params.set('keyword', queryStateCache.keyword);
           if (queryStateCache.minScore) params.set('min_score', queryStateCache.minScore);
           if (queryStateCache.maxScore) params.set('max_score', queryStateCache.maxScore);
+          if (queryStateCache.contentHash) params.set('content_hash', queryStateCache.contentHash);
           const res = await fetch(`/api/messages?${params.toString()}`);
           const items = res.ok ? await res.json() : [];
           const unique = [];
@@ -796,6 +813,7 @@
         queryStateCache.keyword = '';
         queryStateCache.minScore = '';
         queryStateCache.maxScore = '';
+        queryStateCache.contentHash = '';
         searchInput.value = '';
         pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
         const catBtn = document.getElementById('filterCategoryBtn');
