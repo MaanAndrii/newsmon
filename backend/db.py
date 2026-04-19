@@ -228,12 +228,14 @@ class Repository:
         keyword: str | None = None,
         min_score: int | None = None,
         max_score: int | None = None,
+        content_hash: str | None = None,
     ) -> list[dict[str, Any]]:
         where_parts = ["m.ai_status = 'done'"]
         params: list[Any] = []
         search_raw = (search_query or "").strip()
         category_raw = (category or "").strip()
         keyword_raw = (keyword or "").strip()
+        content_hash_raw = (content_hash or "").strip()
         if search_raw:
             where_parts.append(
                 "m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH ?)"
@@ -254,12 +256,15 @@ class Repository:
         if max_score is not None:
             where_parts.append("m.ai_score <= ?")
             params.append(int(max_score))
+        if content_hash_raw:
+            where_parts.append("m.content_hash = ?")
+            params.append(content_hash_raw)
         params.append(limit)
         query = f"""
             SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
                    m.tg_message_id, m.published_at, m.text, m.media_type,
                    m.ai_score, m.ai_category, m.ai_status, m.workflow_status,
-                   m.telegram_url, m.created_at
+                   m.telegram_url, m.created_at, m.is_dedup, m.content_hash
             FROM messages m
             JOIN sources s ON s.id = m.source_id
             WHERE {" AND ".join(where_parts)}
@@ -290,12 +295,15 @@ class Repository:
                     if max_score is not None:
                         fallback_where.append("m.ai_score <= ?")
                         fallback_params.append(int(max_score))
+                    if content_hash_raw:
+                        fallback_where.append("m.content_hash = ?")
+                        fallback_params.append(content_hash_raw)
                     fallback_params.append(limit)
                     fallback_query = f"""
                         SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
                                m.tg_message_id, m.published_at, m.text, m.media_type,
                                m.ai_score, m.ai_category, m.ai_status, m.workflow_status,
-                               m.telegram_url, m.created_at
+                               m.telegram_url, m.created_at, m.is_dedup, m.content_hash
                         FROM messages m
                         JOIN sources s ON s.id = m.source_id
                         WHERE {" AND ".join(fallback_where)}
@@ -1152,6 +1160,17 @@ class Repository:
             "active_sources": int(sources or 0),
             "dedup_count": int(dedup or 0),
         }
+
+    def get_dedup_stats(self) -> dict[str, int]:
+        with get_connection() as conn:
+            total = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM messages WHERE is_dedup = 1"
+            ).fetchone()["cnt"]
+            h24 = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM messages WHERE is_dedup = 1 "
+                "AND published_at >= datetime('now', '-24 hours')"
+            ).fetchone()["cnt"]
+        return {"dedup_total": int(total or 0), "dedup_24h": int(h24 or 0)}
 
     def get_stats_messages_over_time(self, days: int = 30) -> list[dict[str, Any]]:
         safe_days = max(1, min(int(days), 365))

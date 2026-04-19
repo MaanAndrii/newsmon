@@ -163,6 +163,7 @@ def get_debug_stats() -> dict:
     telegram_48h = [t for t in telegram_call_events if t >= two_days_ago]
     telegram_60m = [t for t in telegram_call_events if t >= hour_ago]
     ai_queue = repo.get_ai_queue_stats()
+    dedup = repo.get_dedup_stats()
     return {
         "claude_requests_24h": len(claude_24h),
         "claude_input_tokens_24h": sum(
@@ -179,6 +180,8 @@ def get_debug_stats() -> dict:
         "ai_queue_processing": ai_queue.get("processing", 0),
         "ai_queue_done": ai_queue.get("done", 0),
         "ai_queue_error": ai_queue.get("error", 0),
+        "dedup_total": dedup["dedup_total"],
+        "dedup_24h": dedup["dedup_24h"],
     }
 
 

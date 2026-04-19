@@ -333,6 +333,15 @@
             </div>
           </div>
 
+          <!-- Deduplication stats -->
+          <div class="rounded-lg border border-slate-800 p-3 text-sm">
+            <p class="font-medium mb-2">Дедублікація</p>
+            <div class="flex flex-wrap gap-5 text-xs">
+              <span class="text-slate-400">Всього дублікатів: <span id="dbgDedupTotal" class="text-amber-300 font-mono font-bold">—</span></span>
+              <span class="text-slate-400">За 24 год: <span id="dbgDedup24h" class="text-amber-300 font-mono font-bold">—</span></span>
+            </div>
+          </div>
+
           <!-- Last 10 collect cycles -->
           <div>
             <h3 class="text-sm font-medium mb-2">Останні 10 циклів збору</h3>
@@ -802,6 +811,8 @@
         document.getElementById('dbgAiProcessing').textContent = data.ai_queue_processing ?? 0;
         document.getElementById('dbgAiDone').textContent = data.ai_queue_done ?? 0;
         document.getElementById('dbgAiError').textContent = data.ai_queue_error ?? 0;
+        document.getElementById('dbgDedupTotal').textContent = data.dedup_total ?? 0;
+        document.getElementById('dbgDedup24h').textContent = data.dedup_24h ?? 0;
       }
 
       async function loadRunHistory() {
@@ -840,6 +851,7 @@
         ai_flush:        'text-amber-300',
         ai_reset_stale:  'text-amber-200',
         ai_reset_retry:  'text-amber-200',
+        dedup_hit:       'text-amber-400',
       };
 
       async function loadEventLog() {
