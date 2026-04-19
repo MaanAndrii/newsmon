@@ -21,7 +21,7 @@ def _get_digest_config() -> dict:
     return {
         "enabled": g("enabled", "0") == "1",
         "hour": int(g("hour", "10")),
-        "timezone": g("timezone", "Europe/Kyiv"),
+        "minute": int(g("minute", "0")),
         "min_score": int(g("min_score", "6")),
         "max_per_category": int(g("max_per_category", "5")),
         "excluded_categories": excluded,
@@ -157,15 +157,17 @@ async def _digest_loop() -> None:
 
             try:
                 import zoneinfo
-                tz = zoneinfo.ZoneInfo(cfg["timezone"])
+                tz = zoneinfo.ZoneInfo("Europe/Kyiv")
             except Exception:
                 tz = timezone.utc
 
             now_local = datetime.now(timezone.utc).astimezone(tz)
             target_hour: int = cfg["hour"]
+            target_minute: int = cfg["minute"]
+            target_total = target_hour * 60 + target_minute
 
             next_run = now_local.replace(
-                hour=target_hour, minute=0, second=0, microsecond=0
+                hour=target_hour, minute=target_minute, second=0, microsecond=0
             )
             if next_run <= now_local:
                 next_run += timedelta(days=1)
@@ -178,7 +180,7 @@ async def _digest_loop() -> None:
                 continue
 
             now_local = datetime.now(timezone.utc).astimezone(tz)
-            diff_min = abs(now_local.hour * 60 + now_local.minute - target_hour * 60)
+            diff_min = abs(now_local.hour * 60 + now_local.minute - target_total)
             if diff_min > 6:
                 continue
 
