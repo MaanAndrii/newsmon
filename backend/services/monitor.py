@@ -19,6 +19,7 @@ from config import (
     MONITOR_INTERVAL_SECONDS,
     _ai_counters,
     ai_processing_lock,
+    broadcast_sse,
     event_log,
     monitor_run_history,
     monitor_status,
@@ -593,6 +594,8 @@ async def _process_ai_queue(limit: int = 50) -> int:
 
         # Update shared counter so _monitor_loop can read it for run history
         _ai_counters["processed_since_last_collect"] += count
+        if count:
+            broadcast_sse("messages_updated", {"scored": count})
     return count
 
 
@@ -641,6 +644,7 @@ async def _monitor_loop() -> None:
                     repo.log_run(now_str, updated, total, ingested, ai_since_last, "warning", err)
                 except Exception:
                     pass
+                broadcast_sse("monitor_status", {k: v for k, v in monitor_status.items() if k != "last_error"})
             else:
                 monitor_status["state"] = "ok"
                 monitor_status["last_error"] = None
@@ -667,6 +671,7 @@ async def _monitor_loop() -> None:
                     repo.log_run(now_str, updated, total, ingested, ai_since_last, "ok", None)
                 except Exception:
                     pass
+                broadcast_sse("monitor_status", {k: v for k, v in monitor_status.items() if k != "last_error"})
         except Exception as exc:
             monitor_status["state"] = "error"
             monitor_status["last_error"] = "Непередбачена помилка моніторингу"

@@ -56,6 +56,19 @@ monitor_task: asyncio.Task | None = None
 ai_task: asyncio.Task | None = None
 digest_task: asyncio.Task | None = None
 
+# SSE client queues — each connected browser gets one queue
+_sse_clients: list[asyncio.Queue] = []
+
+
+def broadcast_sse(event_type: str, data: dict) -> None:
+    import json
+    payload = json.dumps({"type": event_type, **data}, ensure_ascii=False)
+    for q in list(_sse_clients):
+        try:
+            q.put_nowait(payload)
+        except Exception:
+            pass
+
 # ---------------------------------------------------------------------------
 # Shared mutable state
 # ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ import asyncio
 import json
 from datetime import date, datetime, timedelta, timezone
 
-from config import repo
+from config import broadcast_sse, repo
 from services.claude import _record_claude_call, _resolve_claude_model
 
 
@@ -134,6 +134,7 @@ async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
         )
         repo.save_digest(date_str, content, len(messages), "ok")
         repo.cleanup_old_digests(cfg["keep_days"])
+        broadcast_sse("digest_ready", {"date": date_str})
         return {
             "ok": True,
             "date": date_str,
