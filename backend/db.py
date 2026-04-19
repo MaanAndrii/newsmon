@@ -89,7 +89,6 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_messages_ai_score ON messages(ai_score);
             CREATE INDEX IF NOT EXISTS idx_messages_workflow ON messages(workflow_status);
             CREATE INDEX IF NOT EXISTS idx_messages_ai_status_date ON messages(ai_status, published_at DESC);
-            CREATE INDEX IF NOT EXISTS idx_messages_content_hash ON messages(content_hash);
 
             CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
                 text,
@@ -207,6 +206,9 @@ def init_db() -> None:
         _ensure_column(conn, "alerts", "is_ai_keyword", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "messages", "content_hash", "TEXT NULL")
         _ensure_column(conn, "messages", "is_dedup", "INTEGER NOT NULL DEFAULT 0")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_messages_content_hash ON messages(content_hash)"
+        )
 
 
 def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, ddl: str) -> None:
