@@ -82,6 +82,7 @@ class MonitorConfigPayload(BaseModel):
         le=MAX_MAX_MESSAGES,
     )
     ai_prompt: str | None = None
+    dedup_enabled: bool = True
 
 
 class ClearMessagesPayload(BaseModel):

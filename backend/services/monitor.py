@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
 import sqlite3
@@ -41,6 +42,24 @@ _AI_CONCURRENCY = 4
 
 # How often the dedicated AI loop wakes up (seconds)
 _AI_LOOP_INTERVAL = 30
+
+
+# ---------------------------------------------------------------------------
+# Content-hash helpers for deduplication
+# ---------------------------------------------------------------------------
+
+def _normalize_text(text: str) -> str:
+    t = text.strip().lower()
+    t = re.sub(r"\s+", " ", t)
+    t = re.sub(r"[^\w\s]", "", t, flags=re.UNICODE)
+    return t
+
+
+def _compute_content_hash(text: str) -> str | None:
+    normalized = _normalize_text(text)
+    if not normalized:
+        return None
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +139,7 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
         max_messages = DEFAULT_MAX_MESSAGES
     max_messages = max(MIN_MAX_MESSAGES, min(MAX_MAX_MESSAGES, max_messages))
     ai_prompt = (repo.get_setting("monitor.ai_prompt", "") or "").strip()
+    dedup_enabled = (repo.get_setting("monitor.dedup_enabled", "1") or "1") == "1"
     return {
         "collect_enabled": collect_enabled,
         "ai_enabled": ai_enabled,
@@ -127,6 +147,7 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
         "fetch_depth": fetch_depth,
         "max_messages": max_messages,
         "ai_prompt": ai_prompt,
+        "dedup_enabled": dedup_enabled,
     }
 
 
@@ -141,6 +162,7 @@ async def _fetch_one_source(
     window_start: datetime,
     fetch_depth: int,
     ai_enabled: bool,
+    dedup_enabled: bool = True,
 ) -> tuple[int, int]:
     """Fetch new messages for a single source.
 
@@ -236,6 +258,13 @@ async def _fetch_one_source(
                 # marked done immediately to avoid an infinite error loop.
                 has_text = bool(text.strip())
                 should_ai = ai_enabled and bool(source.get("ai_enabled")) and has_text
+
+                # Dedup check: if content hash already scored recently, copy result.
+                content_hash = _compute_content_hash(text) if has_text else None
+                dedup_original: dict | None = None
+                if dedup_enabled and content_hash and should_ai:
+                    dedup_original = repo.find_scored_message_by_hash(content_hash, hours=6)
+
                 new_message_id = repo.upsert_message(
                     source_id=int(source["id"]),
                     tg_message_id=message_id,
@@ -248,9 +277,23 @@ async def _fetch_one_source(
                         ensure_ascii=False,
                         default=str,
                     ),
-                    enqueue_ai=should_ai,
+                    enqueue_ai=should_ai and dedup_original is None,
+                    content_hash=content_hash,
                 )
-                if not should_ai:
+                if dedup_original is not None:
+                    repo.mark_message_dedup(
+                        new_message_id,
+                        int(dedup_original["ai_score"]),
+                        dedup_original.get("ai_category"),
+                    )
+                    _log_event(
+                        "dedup_hit",
+                        f"@{username} msg#{message_id}: дублікат msg#{dedup_original['id']}",
+                        username=username,
+                        message_id=new_message_id,
+                        original_id=dedup_original["id"],
+                    )
+                elif not should_ai:
                     repo.mark_message_no_ai(new_message_id, _get_default_category_name())
                 src_ingested += 1
                 await _process_alerts_for_message(new_message_id, "new_message")
@@ -337,6 +380,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                         _fetch_one_source(
                             client, src, semaphore, window_start,
                             fetch_depth, bool(monitor_cfg["ai_enabled"]),
+                            bool(monitor_cfg["dedup_enabled"]),
                         )
                         for src in active_sources
                     ],
@@ -371,6 +415,7 @@ async def _process_one_ai_item(
     categories: list[str],
     ai_prompt: str,
     keyword_patterns: list[str],
+    dedup_enabled: bool = True,
 ) -> None:
     async with semaphore:
         message_id = int(item.get("message_id") or 0)
@@ -381,6 +426,22 @@ async def _process_one_ai_item(
             repo.mark_message_no_ai(message_id, _get_default_category_name())
             _log_event("ai_flush", f"msg#{message_id}: порожній текст → позначено без оцінки")
             return
+
+        # Re-check for a scored duplicate (handles race conditions between parallel fetches).
+        if dedup_enabled:
+            content_hash = _compute_content_hash(text)
+            if content_hash:
+                original = repo.find_scored_message_by_hash(content_hash, hours=6, exclude_id=message_id)
+                if original:
+                    repo.mark_message_dedup(message_id, int(original["ai_score"]), original.get("ai_category"))
+                    _log_event(
+                        "dedup_hit",
+                        f"msg#{message_id}: дублікат (queue) msg#{original['id']}",
+                        message_id=message_id,
+                        original_id=original["id"],
+                    )
+                    return
+
         try:
             loop = asyncio.get_running_loop()
             # Pass keyword_patterns so scoring and keyword matching happen in one API call.
@@ -478,7 +539,8 @@ async def _process_ai_queue(limit: int = 50) -> int:
         await asyncio.gather(
             *[
                 _process_one_ai_item(
-                    item, semaphore, api_key, model, categories, ai_prompt, keyword_patterns
+                    item, semaphore, api_key, model, categories, ai_prompt, keyword_patterns,
+                    bool(monitor_cfg["dedup_enabled"]),
                 )
                 for item in pending
             ],

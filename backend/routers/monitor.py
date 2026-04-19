@@ -29,6 +29,7 @@ def get_monitor_config() -> dict:
 def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.collect_enabled", "1" if payload.collect_enabled else "0")
     repo.set_setting("monitor.ai_enabled", "1" if payload.ai_enabled else "0")
+    repo.set_setting("monitor.dedup_enabled", "1" if payload.dedup_enabled else "0")
     repo.set_setting("monitor.interval_seconds", str(payload.interval_seconds))
     repo.set_setting("monitor.fetch_depth", str(payload.fetch_depth))
     repo.set_setting("monitor.max_messages", str(payload.max_messages))
