@@ -566,7 +566,10 @@
       }
       // ─── End SSE ─────────────────────────────────────────────────────────
 
+      let _loadMessagesController = null;
       async function loadMessages() {
+        if (_loadMessagesController) _loadMessagesController.abort();
+        _loadMessagesController = new AbortController();
         try {
           const params = new URLSearchParams({ limit: '500' });
           if (queryStateCache.search) params.set('q', queryStateCache.search);
@@ -576,7 +579,7 @@
           if (queryStateCache.minScore) params.set('min_score', queryStateCache.minScore);
           if (queryStateCache.maxScore) params.set('max_score', queryStateCache.maxScore);
           if (queryStateCache.contentHash) params.set('content_hash', queryStateCache.contentHash);
-          const res = await fetch(`/api/messages?${params.toString()}`);
+          const res = await fetch(`/api/messages?${params.toString()}`, { signal: _loadMessagesController.signal });
           const items = res.ok ? await res.json() : [];
           const unique = [];
           const seen = new Set();
@@ -591,6 +594,7 @@
           updateFilterCard();
           updateResetButtonState();
         } catch (error) {
+          if (error.name === 'AbortError') return;
           latestItems = [];
           showMoreBtn.classList.add('hidden');
           messagesGrid.innerHTML = `<article class="rounded-xl border border-rose-700/40 bg-rose-950/20 p-6 text-sm text-rose-200">Не вдалося завантажити стрічку: ${escapeHtml(String(error))}</article>`;
@@ -976,7 +980,7 @@
       }
 
       async function loadDigestList() {
-        const res = await fetch(`${apiBase}/api/digest/list?limit=30`);
+        const res = await fetch(`/api/digest/list?limit=30`);
         if (!res.ok) {
           document.getElementById('digestModalBody').innerHTML =
             '<p class="text-rose-400 text-sm">Помилка завантаження</p>';
@@ -1012,7 +1016,8 @@
         if (!dateStr) return;
         const body = document.getElementById('digestModalBody');
         body.innerHTML = '<p class="text-slate-400 text-sm">Завантаження...</p>';
-        const res = await fetch(`${apiBase}/api/digest/${dateStr}`);
+        try {
+        const res = await fetch(`/api/digest/${dateStr}`);
         if (!res.ok) { body.innerHTML = '<p class="text-rose-400 text-sm">Не вдалося завантажити</p>'; return; }
         const data = await res.json();
         _digestContent = data.content || '';
@@ -1020,6 +1025,9 @@
           `${data.message_count ?? 0} повідомлень · згенеровано ${data.generated_at ? new Date(data.generated_at + 'Z').toLocaleString() : ''}`;
         body.innerHTML = `<pre class="whitespace-pre-wrap text-sm text-slate-200 font-sans leading-relaxed">${escapeHtml(_digestContent)}</pre>`;
         document.getElementById('digestCopyBtn').classList.remove('hidden');
+        } catch (e) {
+          body.innerHTML = '<p class="text-rose-400 text-sm">Помилка завантаження дайджесту</p>';
+        }
       }
 
       function copyDigestContent() {

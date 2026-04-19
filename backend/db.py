@@ -1247,7 +1247,7 @@ class Repository:
         with get_connection() as conn:
             rows = conn.execute(
                 """
-                SELECT CAST(strftime('%H', published_at) AS INTEGER) AS hour,
+                SELECT CAST(strftime('%H', datetime(published_at, '+3 hours')) AS INTEGER) AS hour,
                        COUNT(*) AS count
                 FROM messages
                 GROUP BY hour
@@ -1260,7 +1260,7 @@ class Repository:
         with get_connection() as conn:
             rows = conn.execute(
                 """
-                SELECT CAST(strftime('%w', published_at) AS INTEGER) AS weekday,
+                SELECT CAST(strftime('%w', datetime(published_at, '+3 hours')) AS INTEGER) AS weekday,
                        COUNT(*) AS count
                 FROM messages
                 GROUP BY weekday
@@ -1268,8 +1268,10 @@ class Repository:
                 """
             ).fetchall()
         weekday_map = {r["weekday"]: r["count"] for r in rows}
-        names = ["Нд", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
-        return [{"weekday": i, "name": names[i], "count": weekday_map.get(i, 0)} for i in range(7)]
+        # strftime %w: 0=Sun,1=Mon...6=Sat — reorder to Mon-Sun for display
+        order = [1, 2, 3, 4, 5, 6, 0]
+        names = {0: "Нд", 1: "Пн", 2: "Вт", 3: "Ср", 4: "Чт", 5: "Пт", 6: "Сб"}
+        return [{"weekday": i, "name": names[i], "count": weekday_map.get(i, 0)} for i in order]
 
     def get_stats_alerts(self) -> list[dict[str, Any]]:
         with get_connection() as conn:
