@@ -189,6 +189,16 @@ def init_db() -> None:
                 state TEXT NOT NULL DEFAULT 'ok',
                 error TEXT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS digests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                digest_date TEXT NOT NULL UNIQUE,
+                content TEXT NOT NULL DEFAULT '',
+                message_count INTEGER NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'ok',
+                generated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_digests_date ON digests(digest_date DESC);
             """
         )
         _ensure_column(conn, "sources", "ai_enabled", "INTEGER NOT NULL DEFAULT 1")
@@ -1281,3 +1291,89 @@ class Repository:
                 params,
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------
+    # Digest
+    # ------------------------------------------------------------------
+
+    def get_digest_messages(
+        self,
+        target_date: str,
+        min_score: int = 6,
+        excluded_categories: list[str] | None = None,
+        max_per_category: int = 5,
+    ) -> list[dict[str, Any]]:
+        excl_clause = ""
+        params: list[Any] = [min_score, target_date]
+        if excluded_categories:
+            placeholders = ",".join("?" * len(excluded_categories))
+            excl_clause = f"AND m.ai_category NOT IN ({placeholders})"
+            params.extend(excluded_categories)
+        with get_connection() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT m.id, m.text, m.ai_score, m.ai_category, m.published_at,
+                       s.name AS source_name
+                FROM messages m
+                JOIN sources s ON s.id = m.source_id
+                WHERE m.ai_status = 'done'
+                  AND m.is_dedup = 0
+                  AND m.ai_score >= ?
+                  AND DATE(m.published_at) = ?
+                  {excl_clause}
+                ORDER BY m.ai_category, m.ai_score DESC
+                """,
+                params,
+            ).fetchall()
+        by_category: dict[str, list[dict]] = {}
+        for row in rows:
+            cat = str(row["ai_category"] or "Інше")
+            if cat not in by_category:
+                by_category[cat] = []
+            if len(by_category[cat]) < max_per_category:
+                by_category[cat].append(dict(row))
+        result: list[dict] = []
+        for msgs in by_category.values():
+            result.extend(msgs)
+        return result
+
+    def save_digest(
+        self, digest_date: str, content: str, message_count: int, status: str
+    ) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO digests(digest_date, content, message_count, status, generated_at)
+                VALUES (?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(digest_date) DO UPDATE SET
+                    content=excluded.content,
+                    message_count=excluded.message_count,
+                    status=excluded.status,
+                    generated_at=datetime('now')
+                """,
+                (digest_date, content, message_count, status),
+            )
+
+    def get_digest(self, digest_date: str) -> dict[str, Any] | None:
+        with get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM digests WHERE digest_date = ?", (digest_date,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_digests(self, limit: int = 7) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 30))
+        with get_connection() as conn:
+            rows = conn.execute(
+                "SELECT digest_date, status, message_count, generated_at "
+                "FROM digests ORDER BY digest_date DESC LIMIT ?",
+                (safe_limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def cleanup_old_digests(self, keep_days: int = 30) -> None:
+        with get_connection() as conn:
+            conn.execute(
+                "DELETE FROM digests WHERE digest_date < date('now', ? || ' days')",
+                (f"-{keep_days}",),
+            )
