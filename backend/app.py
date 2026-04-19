@@ -19,6 +19,7 @@ from routers import messages as messages_router
 from routers import monitor as monitor_router
 from routers import sources as sources_router
 from routers import digest as digest_router
+from routers import sse as sse_router
 from routers import stats as stats_router
 from routers import telethon as telethon_router
 
@@ -33,6 +34,7 @@ app.include_router(monitor_router.router)
 app.include_router(integrations_router.router)
 app.include_router(telethon_router.router)
 app.include_router(digest_router.router)
+app.include_router(sse_router.router)
 app.include_router(stats_router.router)
 
 

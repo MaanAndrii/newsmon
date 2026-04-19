@@ -31,7 +31,7 @@ def save_digest_config(payload: DigestConfigPayload) -> dict:
     return _get_digest_config()
 
 
-@router.get("/api/digest/list", dependencies=[Depends(require_admin)])
+@router.get("/api/digest/list")
 def list_digests(limit: int = 7) -> dict:
     return {"digests": repo.list_digests(limit=min(limit, 30))}
 
@@ -44,7 +44,7 @@ async def generate_digest(target_date: str | None = None) -> dict:
     return result
 
 
-@router.get("/api/digest/{digest_date}", dependencies=[Depends(require_admin)])
+@router.get("/api/digest/{digest_date}")
 def get_digest(digest_date: str) -> dict:
     digest = repo.get_digest(digest_date)
     if not digest:

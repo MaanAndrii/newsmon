@@ -519,6 +519,49 @@
         loadMessages();
       }
 
+      // ─── SSE ─────────────────────────────────────────────────────────────
+      let _sseReconnectTimer = null;
+      let _sseMsgDebounce = null;
+      let _sseStatusEl = null;
+
+      function _initSSE() {
+        if (_sseStatusEl === null) {
+          _sseStatusEl = document.createElement('span');
+          _sseStatusEl.id = 'sseIndicator';
+          _sseStatusEl.style.cssText = 'width:8px;height:8px;border-radius:50%;display:inline-block;background:#475569;margin-right:4px;flex-shrink:0';
+          _sseStatusEl.title = 'SSE: підключення...';
+          const timer = document.getElementById('statusPollTimer');
+          if (timer) timer.parentElement.prepend(_sseStatusEl);
+        }
+        const es = new EventSource('/api/events');
+        es.onopen = () => {
+          _sseStatusEl.style.background = '#22c55e';
+          _sseStatusEl.title = 'SSE: підключено (реальний час)';
+        };
+        es.onmessage = (e) => {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'messages_updated') {
+              clearTimeout(_sseMsgDebounce);
+              _sseMsgDebounce = setTimeout(loadMessages, 800);
+            } else if (msg.type === 'monitor_status') {
+              loadSystemStatus();
+            } else if (msg.type === 'digest_ready') {
+              const sel = document.getElementById('digestDateSelect');
+              if (sel) loadDigestList();
+            }
+          } catch (_) {}
+        };
+        es.onerror = () => {
+          _sseStatusEl.style.background = '#f59e0b';
+          _sseStatusEl.title = 'SSE: перепідключення...';
+          es.close();
+          clearTimeout(_sseReconnectTimer);
+          _sseReconnectTimer = setTimeout(_initSSE, 5000);
+        };
+      }
+      // ─── End SSE ─────────────────────────────────────────────────────────
+
       async function loadMessages() {
         try {
           const params = new URLSearchParams({ limit: '500' });
@@ -880,11 +923,13 @@
       loadMessages();
       loadSystemStatus();
       sendDashboardHeartbeat();
-      setInterval(loadMessages, 10000);
-      setInterval(loadSystemStatus, 10000);
       setInterval(sendDashboardHeartbeat, 30000);
       setInterval(updatePollCountdown, 1000);
       setInterval(updateCurrentTime, 1000);
+      // Fallback polls in case SSE disconnects
+      setInterval(loadMessages, 60000);
+      setInterval(loadSystemStatus, 60000);
+      _initSSE();
       window.addEventListener('beforeunload', () => {
         sendDashboardHeartbeat();
       });
@@ -927,15 +972,7 @@
       }
 
       async function loadDigestList() {
-        const adminToken = (typeof getAdminToken === 'function') ? getAdminToken() : null;
-        if (!adminToken) {
-          document.getElementById('digestModalBody').innerHTML =
-            '<p class="text-slate-400 text-sm">Перегляд дайджесту доступний лише адміністратору.</p>';
-          return;
-        }
-        const res = await fetch(`${apiBase}/api/digest/list?limit=30`, {
-          headers: { 'Authorization': `Bearer ${adminToken}` },
-        });
+        const res = await fetch(`${apiBase}/api/digest/list?limit=30`);
         if (!res.ok) {
           document.getElementById('digestModalBody').innerHTML =
             '<p class="text-rose-400 text-sm">Помилка завантаження</p>';
@@ -968,11 +1005,9 @@
 
       async function loadDigestForDate(dateStr) {
         if (!dateStr) return;
-        const adminToken = (typeof getAdminToken === 'function') ? getAdminToken() : null;
-        const headers = adminToken ? { 'Authorization': `Bearer ${adminToken}` } : {};
         const body = document.getElementById('digestModalBody');
         body.innerHTML = '<p class="text-slate-400 text-sm">Завантаження...</p>';
-        const res = await fetch(`${apiBase}/api/digest/${dateStr}`, { headers });
+        const res = await fetch(`${apiBase}/api/digest/${dateStr}`);
         if (!res.ok) { body.innerHTML = '<p class="text-rose-400 text-sm">Не вдалося завантажити</p>'; return; }
         const data = await res.json();
         _digestContent = data.content || '';
