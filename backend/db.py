@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+try:
+    from zoneinfo import ZoneInfo
+    _KYIV_TZ: Any = ZoneInfo("Europe/Kyiv")
+except Exception:
+    _KYIV_TZ = timezone.utc
 
 DB_PATH = Path(__file__).resolve().parent / "newsmon.db"
 
@@ -1243,35 +1250,38 @@ class Repository:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_stats_hours(self) -> list[dict[str, Any]]:
+    def _iter_published_local(self) -> list[datetime]:
         with get_connection() as conn:
             rows = conn.execute(
-                """
-                SELECT CAST(strftime('%H', datetime(published_at, '+3 hours')) AS INTEGER) AS hour,
-                       COUNT(*) AS count
-                FROM messages
-                GROUP BY hour
-                ORDER BY hour ASC
-                """
+                "SELECT published_at FROM messages WHERE published_at IS NOT NULL"
             ).fetchall()
-        return [dict(r) for r in rows]
+        out: list[datetime] = []
+        for r in rows:
+            raw = r["published_at"]
+            if not raw:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(raw).replace(" ", "T").replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            out.append(dt.astimezone(_KYIV_TZ))
+        return out
+
+    def get_stats_hours(self) -> list[dict[str, Any]]:
+        counts: dict[int, int] = {}
+        for dt in self._iter_published_local():
+            counts[dt.hour] = counts.get(dt.hour, 0) + 1
+        return [{"hour": h, "count": counts[h]} for h in sorted(counts)]
 
     def get_stats_weekday(self) -> list[dict[str, Any]]:
-        with get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT CAST(strftime('%w', datetime(published_at, '+3 hours')) AS INTEGER) AS weekday,
-                       COUNT(*) AS count
-                FROM messages
-                GROUP BY weekday
-                ORDER BY weekday ASC
-                """
-            ).fetchall()
-        weekday_map = {r["weekday"]: r["count"] for r in rows}
-        # strftime %w: 0=Sun,1=Mon...6=Sat — reorder to Mon-Sun for display
-        order = [1, 2, 3, 4, 5, 6, 0]
-        names = {0: "Нд", 1: "Пн", 2: "Вт", 3: "Ср", 4: "Чт", 5: "Пт", 6: "Сб"}
-        return [{"weekday": i, "name": names[i], "count": weekday_map.get(i, 0)} for i in order]
+        # weekday(): Mon=0..Sun=6
+        counts: dict[int, int] = {}
+        for dt in self._iter_published_local():
+            counts[dt.weekday()] = counts.get(dt.weekday(), 0) + 1
+        names = {0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Нд"}
+        return [{"weekday": i, "name": names[i], "count": counts.get(i, 0)} for i in range(7)]
 
     def get_stats_alerts(self) -> list[dict[str, Any]]:
         with get_connection() as conn:
