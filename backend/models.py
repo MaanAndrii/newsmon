@@ -116,7 +116,7 @@ class AlertCreate(BaseModel):
 class DigestConfigPayload(BaseModel):
     enabled: bool = False
     hour: int = Field(default=10, ge=0, le=23)
-    timezone: str = Field(default="Europe/Kyiv", max_length=64)
+    minute: int = Field(default=0, ge=0, le=59)
     min_score: int = Field(default=6, ge=1, le=10)
     max_per_category: int = Field(default=5, ge=1, le=20)
     excluded_categories: list[str] = []

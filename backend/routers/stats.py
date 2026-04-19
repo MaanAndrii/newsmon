@@ -17,5 +17,6 @@ def get_stats(days: int = 30) -> dict:
         "categories": repo.get_stats_categories(),
         "top_sources": repo.get_stats_sources(10),
         "hourly": repo.get_stats_hours(),
+        "weekday": repo.get_stats_weekday(),
         "alerts": repo.get_stats_alerts(),
     }

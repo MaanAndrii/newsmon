@@ -250,13 +250,17 @@
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+              <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Активність за днями тижня</p>
+              <canvas id="chartWeekday" height="160"></canvas>
+            </div>
+            <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
               <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Топ категорій</p>
               <canvas id="chartCategories" height="160"></canvas>
             </div>
-            <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-              <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Топ каналів</p>
-              <canvas id="chartSources" height="160"></canvas>
-            </div>
+          </div>
+          <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+            <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Топ каналів</p>
+            <canvas id="chartSources" height="80"></canvas>
           </div>
           <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
             <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Спрацювання алертів</p>
@@ -994,12 +998,13 @@
             sel.appendChild(opt);
           }
         });
-        if (data.digests[0] && data.digests[0].status === 'ok') {
-          sel.value = data.digests[0].digest_date;
-          await loadDigestForDate(data.digests[0].digest_date);
+        const firstOk = data.digests.find(d => d.status === 'ok');
+        if (firstOk) {
+          sel.value = firstOk.digest_date;
+          await loadDigestForDate(firstOk.digest_date);
         } else {
           document.getElementById('digestModalBody').innerHTML =
-            '<p class="text-slate-400 text-sm">Оберіть дату зі списку.</p>';
+            '<p class="text-slate-400 text-sm">Немає готових дайджестів. Згенеруйте перший у Налаштуваннях → Дайджест.</p>';
         }
       }
 
@@ -1111,6 +1116,17 @@
             datasets: [{ data: hours.map(h => hourMap[h] || 0), backgroundColor: '#6366f1', borderRadius: 3 }]
           },
           options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e293b' }, ticks: { maxTicksLimit: 8, maxRotation: 0 } }, y: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { precision: 0 } } } }
+        });
+
+        // Weekday
+        const weekdays = data.weekday || [];
+        _statCharts.weekday = new Chart(document.getElementById('chartWeekday'), {
+          type: 'bar',
+          data: {
+            labels: weekdays.map(d => d.name),
+            datasets: [{ data: weekdays.map(d => d.count), backgroundColor: '#f59e0b', borderRadius: 4 }]
+          },
+          options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e293b' } }, y: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { precision: 0 } } } }
         });
 
         // Top categories

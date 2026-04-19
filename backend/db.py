@@ -1256,6 +1256,21 @@ class Repository:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_stats_weekday(self) -> list[dict[str, Any]]:
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT CAST(strftime('%w', published_at) AS INTEGER) AS weekday,
+                       COUNT(*) AS count
+                FROM messages
+                GROUP BY weekday
+                ORDER BY weekday ASC
+                """
+            ).fetchall()
+        weekday_map = {r["weekday"]: r["count"] for r in rows}
+        names = ["Нд", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
+        return [{"weekday": i, "name": names[i], "count": weekday_map.get(i, 0)} for i in range(7)]
+
     def get_stats_alerts(self) -> list[dict[str, Any]]:
         with get_connection() as conn:
             rows = conn.execute(
@@ -1370,6 +1385,11 @@ class Repository:
                 (safe_limit,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def delete_digest(self, digest_date: str) -> bool:
+        with get_connection() as conn:
+            cur = conn.execute("DELETE FROM digests WHERE digest_date = ?", (digest_date,))
+        return cur.rowcount > 0
 
     def cleanup_old_digests(self, keep_days: int = 30) -> None:
         with get_connection() as conn:

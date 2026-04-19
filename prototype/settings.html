@@ -312,16 +312,19 @@
                 <div class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
               </label>
             </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs text-slate-400 mb-1">Час генерації (година)</label>
-                <input id="digestHour" type="number" min="0" max="23" value="10"
-                  class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
-              </div>
-              <div>
-                <label class="block text-xs text-slate-400 mb-1">Часовий пояс</label>
-                <input id="digestTimezone" type="text" value="Europe/Kyiv" placeholder="Europe/Kyiv"
-                  class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Час генерації (за Київським часом)</label>
+              <div class="flex items-center gap-2">
+                <select id="digestHour" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm">
+                  <!-- populated by JS -->
+                </select>
+                <span class="text-slate-400">:</span>
+                <select id="digestMinute" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm">
+                  <option value="0">00</option>
+                  <option value="15">15</option>
+                  <option value="30">30</option>
+                  <option value="45">45</option>
+                </select>
               </div>
             </div>
           </div>
@@ -914,13 +917,26 @@
       // ─── Digest ────────────────────────────────────────────────────────────
       let _digestExcluded = [];
 
+      function _populateHourSelect() {
+        const sel = document.getElementById('digestHour');
+        if (sel && !sel.options.length) {
+          for (let h = 0; h < 24; h++) {
+            const o = document.createElement('option');
+            o.value = h;
+            o.textContent = String(h).padStart(2, '0');
+            sel.appendChild(o);
+          }
+        }
+      }
+
       async function loadDigestConfig() {
+        _populateHourSelect();
         const res = await authFetch(`${apiBase}/api/digest/config`);
         if (!res.ok) return;
         const d = await res.json();
         document.getElementById('digestEnabled').checked = !!d.enabled;
         document.getElementById('digestHour').value = d.hour ?? 10;
-        document.getElementById('digestTimezone').value = d.timezone || 'Europe/Kyiv';
+        document.getElementById('digestMinute').value = d.minute ?? 0;
         document.getElementById('digestMinScore').value = d.min_score ?? 6;
         document.getElementById('digestMaxPerCategory').value = d.max_per_category ?? 5;
         document.getElementById('digestFormat').value = d.format || 'article';
@@ -957,7 +973,7 @@
         const payload = {
           enabled: document.getElementById('digestEnabled').checked,
           hour: parseInt(document.getElementById('digestHour').value) || 10,
-          timezone: document.getElementById('digestTimezone').value.trim() || 'Europe/Kyiv',
+          minute: parseInt(document.getElementById('digestMinute').value) || 0,
           min_score: parseInt(document.getElementById('digestMinScore').value) || 6,
           max_per_category: parseInt(document.getElementById('digestMaxPerCategory').value) || 5,
           excluded_categories: _digestExcluded,
@@ -1002,9 +1018,21 @@
             <div class="flex items-center gap-2 text-slate-500">
               <span>${escapeHtml(genAt)}</span>
               ${viewBtn}
+              <button onclick="deleteDigest('${escapeHtml(d.digest_date)}')" class="text-xs px-2 py-1 rounded bg-rose-900/60 hover:bg-rose-800 text-rose-300">Видалити</button>
             </div>
           </div>`;
         }).join('');
+      }
+
+      async function deleteDigest(digestDate) {
+        if (!confirm(`Видалити дайджест за ${digestDate}?`)) return;
+        const res = await authFetch(`${apiBase}/api/digest/${digestDate}`, { method: 'DELETE' });
+        if (res.ok) {
+          showToast('Дайджест видалено', 'success');
+          loadDigestHistory();
+        } else {
+          showToast('Помилка видалення', 'error');
+        }
       }
 
       async function generateDigestNow() {
@@ -1035,7 +1063,9 @@
         openDigestModal(data.digest_date, data.content, data.message_count);
       }
 
+      let _settingsDigestContent = '';
       function openDigestModal(digestDate, content, messageCount) {
+        _settingsDigestContent = content;
         const existing = document.getElementById('digestViewModal');
         if (existing) existing.remove();
         const modal = document.createElement('div');
@@ -1051,12 +1081,10 @@
               <button onclick="document.getElementById('digestViewModal').remove()" class="text-slate-400 hover:text-white text-xl leading-none">✕</button>
             </div>
             <div class="flex-1 overflow-y-auto p-4">
-              <div class="prose prose-invert prose-sm max-w-none">
-                <pre class="whitespace-pre-wrap text-sm text-slate-200 font-sans leading-relaxed">${escapeHtml(content)}</pre>
-              </div>
+              <pre class="whitespace-pre-wrap text-sm text-slate-200 font-sans leading-relaxed">${escapeHtml(content)}</pre>
             </div>
             <div class="p-3 border-t border-slate-800 flex justify-end gap-2">
-              <button onclick="navigator.clipboard.writeText(${JSON.stringify(content)})" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">Копіювати</button>
+              <button onclick="navigator.clipboard.writeText(_settingsDigestContent)" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">Копіювати</button>
               <button onclick="document.getElementById('digestViewModal').remove()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">Закрити</button>
             </div>
           </div>`;
