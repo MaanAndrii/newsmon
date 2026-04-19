@@ -7,6 +7,16 @@ from datetime import date, datetime, timedelta, timezone
 from config import broadcast_sse, repo
 from services.claude import _record_claude_call, _resolve_claude_model
 
+try:
+    from zoneinfo import ZoneInfo
+    _KYIV_TZ = ZoneInfo("Europe/Kyiv")
+except Exception:
+    _KYIV_TZ = timezone.utc
+
+
+def _kyiv_yesterday() -> date:
+    return (datetime.now(timezone.utc).astimezone(_KYIV_TZ) - timedelta(days=1)).date()
+
 
 def _get_digest_config() -> dict:
     def g(k: str, d: str) -> str:
@@ -80,7 +90,7 @@ async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
         return {"ok": False, "error": "Claude API key не налаштовано"}
 
     if target_date is None:
-        target_date = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+        target_date = _kyiv_yesterday()
     elif isinstance(target_date, str):
         try:
             target_date = date.fromisoformat(target_date)
@@ -155,12 +165,7 @@ async def _digest_loop() -> None:
                 await asyncio.sleep(300)
                 continue
 
-            try:
-                import zoneinfo
-                tz = zoneinfo.ZoneInfo("Europe/Kyiv")
-            except Exception:
-                tz = timezone.utc
-
+            tz = _KYIV_TZ
             now_local = datetime.now(timezone.utc).astimezone(tz)
             target_hour: int = cfg["hour"]
             target_minute: int = cfg["minute"]
@@ -184,7 +189,7 @@ async def _digest_loop() -> None:
             if diff_min > 6:
                 continue
 
-            yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+            yesterday = _kyiv_yesterday()
             existing = repo.get_digest(yesterday.isoformat())
             if not existing or existing.get("status") not in ("ok",):
                 await _generate_daily_digest(yesterday)

@@ -1017,21 +1017,22 @@
         const body = document.getElementById('digestModalBody');
         body.innerHTML = '<p class="text-slate-400 text-sm">Завантаження...</p>';
         try {
-        const res = await fetch(`/api/digest/${dateStr}`);
-        if (!res.ok) { body.innerHTML = '<p class="text-rose-400 text-sm">Не вдалося завантажити</p>'; return; }
-        const data = await res.json();
-        _digestContent = data.content || '';
-        document.getElementById('digestModalMeta').textContent =
-          `${data.message_count ?? 0} повідомлень · згенеровано ${data.generated_at ? new Date(data.generated_at + 'Z').toLocaleString() : ''}`;
-        body.innerHTML = `<pre class="whitespace-pre-wrap text-sm text-slate-200 font-sans leading-relaxed">${escapeHtml(_digestContent)}</pre>`;
-        document.getElementById('digestCopyBtn').classList.remove('hidden');
+          const res = await fetch(`/api/digest/${dateStr}`);
+          if (!res.ok) { body.innerHTML = '<p class="text-rose-400 text-sm">Не вдалося завантажити</p>'; return; }
+          const data = await res.json();
+          _digestContent = data.content || '';
+          document.getElementById('digestModalMeta').textContent =
+            `${data.message_count ?? 0} повідомлень · згенеровано ${data.generated_at ? new Date(data.generated_at + 'Z').toLocaleString() : ''}`;
+          body.innerHTML = `<pre class="whitespace-pre-wrap text-sm text-slate-200 font-sans leading-relaxed">${escapeHtml(_digestContent)}</pre>`;
+          document.getElementById('digestCopyBtn').classList.remove('hidden');
         } catch (e) {
           body.innerHTML = '<p class="text-rose-400 text-sm">Помилка завантаження дайджесту</p>';
         }
       }
 
-      function copyDigestContent() {
-        if (_digestContent) navigator.clipboard.writeText(_digestContent);
+      async function copyDigestContent() {
+        if (!_digestContent) return;
+        try { await navigator.clipboard.writeText(_digestContent); } catch (_) {}
       }
       // ─── End Digest modal ────────────────────────────────────────────────
 

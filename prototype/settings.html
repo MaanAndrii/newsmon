@@ -1064,6 +1064,10 @@
       }
 
       let _settingsDigestContent = '';
+      async function copySettingsDigest() {
+        if (!_settingsDigestContent) return;
+        try { await navigator.clipboard.writeText(_settingsDigestContent); } catch (_) {}
+      }
       function openDigestModal(digestDate, content, messageCount) {
         _settingsDigestContent = content;
         const existing = document.getElementById('digestViewModal');
@@ -1084,7 +1088,7 @@
               <pre class="whitespace-pre-wrap text-sm text-slate-200 font-sans leading-relaxed">${escapeHtml(content)}</pre>
             </div>
             <div class="p-3 border-t border-slate-800 flex justify-end gap-2">
-              <button onclick="navigator.clipboard.writeText(_settingsDigestContent)" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">Копіювати</button>
+              <button onclick="copySettingsDigest()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">Копіювати</button>
               <button onclick="document.getElementById('digestViewModal').remove()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">Закрити</button>
             </div>
           </div>`;
