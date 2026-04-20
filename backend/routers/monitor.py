@@ -32,7 +32,7 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.dedup_enabled", "1" if payload.dedup_enabled else "0")
     repo.set_setting("monitor.interval_seconds", str(payload.interval_seconds))
     repo.set_setting("monitor.fetch_depth", str(payload.fetch_depth))
-    repo.set_setting("monitor.max_messages", str(payload.max_messages))
+    repo.set_setting("monitor.retention_months", str(payload.retention_months))
     repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
     repo.set_setting("monitor.ai_provider", payload.ai_provider)
     return _get_monitor_config()

@@ -146,7 +146,7 @@
             <span id="monitorText" class="text-sm font-normal text-slate-400">стан невідомий</span>
           </h2>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
               <div>
                 <p class="font-medium">Глобальна ШІ-оцінка</p>
                 <p class="text-xs text-slate-400">Вмикає/вимикає постановку повідомлень у AI queue для всіх каналів.</p>
@@ -156,7 +156,7 @@
                 <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
               </label>
             </div>
-            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
               <div>
                 <p class="font-medium">Глобальний збір повідомлень</p>
                 <p class="text-xs text-slate-400">Вмикає/вимикає ingestion для всіх каналів.</p>
@@ -166,7 +166,7 @@
                 <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
               </label>
             </div>
-            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
               <div>
                 <p class="font-medium">Дедублікація повідомлень</p>
                 <p class="text-xs text-slate-400">Якщо увімкнено, схожі повідомлення з різних каналів не відправляються на оцінку ШІ повторно — оцінка копіюється з вже обробленого.</p>
@@ -176,7 +176,7 @@
                 <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
               </label>
             </div>
-            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
               <div>
                 <p class="font-medium">Інтервал авто-отримання</p>
                 <p class="text-xs text-slate-400">Збір запускається на початку кожного інтервалу.</p>
@@ -191,21 +191,27 @@
                 <option value="7200">120 хв</option>
               </select>
             </div>
-            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
-              <div>
-                <p class="font-medium">Глибина отримання повідомлень</p>
-                <p class="text-xs text-slate-400">Скільки старих повідомлень можна дозавантажити за один запуск (1..10).</p>
+            <div id="monitorFetchDepthCard" class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 transition-colors hover:border-slate-700">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="font-medium">Глибина дозавантаження</p>
+                  <p class="text-xs text-slate-400">Ліміт <span class="text-slate-300">останніх</span> повідомлень з кожного каналу за цикл (1..10). Потрібно, коли моніторинг був вимкнений і треба наздогнати нові пости.</p>
+                </div>
+                <input id="monitorFetchDepth" type="number" min="1" max="10" step="1" class="w-20 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="3" />
               </div>
-              <input id="monitorFetchDepth" type="number" min="1" max="10" step="1" class="w-20 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="3" />
+              <p id="monitorFetchDepthHint" class="text-[11px] text-slate-500 mt-2">До 3 повідомлень/канал за цикл</p>
             </div>
-            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
               <div>
-                <p class="font-medium">Макс. повідомлень у БД</p>
-                <p class="text-xs text-slate-400">Зберігати від 500 до 10000 повідомлень. Старіші будуть видалятись автоматично.</p>
+                <p class="font-medium">Термін зберігання повідомлень</p>
+                <p class="text-xs text-slate-400">Скільки місяців зберігати повідомлення у БД. Старіші видаляються автоматично.</p>
               </div>
-              <input id="monitorMaxMessages" type="number" min="500" max="10000" step="100" class="w-28 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="5000" />
+              <div class="flex items-center gap-2">
+                <input id="monitorRetentionMonths" type="number" min="1" max="6" step="1" class="w-20 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="3" />
+                <span class="text-xs text-slate-500">міс.</span>
+              </div>
             </div>
-            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
               <div>
                 <p class="font-medium">AI-провайдер для оцінки</p>
                 <p class="text-xs text-slate-400">Який сервіс використовувати для оцінки важливості повідомлень.</p>
@@ -1322,21 +1328,36 @@
         document.getElementById('monitorDedupEnabled').checked = data.dedup_enabled !== false;
         document.getElementById('monitorIntervalSeconds').value = Number(data.interval_seconds || 600);
         document.getElementById('monitorFetchDepth').value = Number(data.fetch_depth || 3);
-        document.getElementById('monitorMaxMessages').value = Number(data.max_messages || 5000);
+        document.getElementById('monitorRetentionMonths').value = Number(data.retention_months || 3);
         document.getElementById('monitorAiProvider').value = data.ai_provider || 'claude';
         const promptEl = document.getElementById('monitorAiPrompt');
         if (document.activeElement !== promptEl) {
           promptEl.value = data.ai_prompt || '';
         }
         updateMonitorFormState();
+        updateFetchDepthHint();
         document.getElementById('monitorConfigMessage').textContent = 'Налаштування моніторингу завантажено.';
       }
 
       function updateMonitorFormState() {
         const collectEnabled = document.getElementById('monitorCollectEnabled').checked;
         const intervalInput = document.getElementById('monitorIntervalSeconds');
+        const fetchDepthInput = document.getElementById('monitorFetchDepth');
+        const fetchDepthCard = document.getElementById('monitorFetchDepthCard');
         intervalInput.disabled = !collectEnabled;
+        fetchDepthInput.disabled = !collectEnabled;
         intervalInput.classList.toggle('opacity-50', !collectEnabled);
+        fetchDepthInput.classList.toggle('opacity-50', !collectEnabled);
+        fetchDepthCard.classList.toggle('opacity-70', !collectEnabled);
+      }
+
+      function updateFetchDepthHint() {
+        const input = document.getElementById('monitorFetchDepth');
+        const hint = document.getElementById('monitorFetchDepthHint');
+        const parsed = Number(input.value || 3);
+        const clamped = Math.max(1, Math.min(10, Number.isFinite(parsed) ? parsed : 3));
+        input.value = clamped;
+        hint.textContent = `До ${clamped} повідомлень/канал за цикл`;
       }
 
       async function saveMonitorConfig() {
@@ -1345,8 +1366,8 @@
           collect_enabled: document.getElementById('monitorCollectEnabled').checked,
           dedup_enabled: document.getElementById('monitorDedupEnabled').checked,
           interval_seconds: Number(document.getElementById('monitorIntervalSeconds').value || 600),
-          fetch_depth: Number(document.getElementById('monitorFetchDepth').value || 3),
-          max_messages: Number(document.getElementById('monitorMaxMessages').value || 5000),
+          fetch_depth: Math.max(1, Math.min(10, Number(document.getElementById('monitorFetchDepth').value || 3))),
+          retention_months: Math.max(1, Math.min(6, Number(document.getElementById('monitorRetentionMonths').value || 3))),
           ai_prompt: document.getElementById('monitorAiPrompt').value,
           ai_provider: document.getElementById('monitorAiProvider').value || 'claude',
         };
@@ -1357,7 +1378,7 @@
         });
         const data = await parseApiBody(res);
         document.getElementById('monitorConfigMessage').textContent = res.ok
-          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, дедуп: ${data.dedup_enabled ? 'увімкнено' : 'вимкнено'}, інтервал: ${data.interval_seconds} сек.`
+          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, дедуп: ${data.dedup_enabled ? 'увімкнено' : 'вимкнено'}, інтервал: ${data.interval_seconds} сек., зберігання: ${data.retention_months} міс.`
           : (data.detail || 'Не вдалося зберегти налаштування моніторингу.');
       }
 
@@ -1415,6 +1436,8 @@
         detail.textContent = parts.join(' • ');
         detail.classList.remove('hidden');
       }
+
+      document.getElementById('monitorFetchDepth').addEventListener('input', updateFetchDepthHint);
 
       document.getElementById('monitorAiPrompt').addEventListener('input', () => {
         const badge = document.getElementById('promptTokenBadge');
