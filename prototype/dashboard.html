@@ -498,7 +498,7 @@
 
       function renderMessageCard(item, idx) {
         const preview = escapeHtml((item.text || '').slice(0, 280));
-        const isDedup = !!item.is_dedup;
+        const isDedup = !!item.is_dedup || item.dedup_count > 0;
         const borderClass = isDedup ? ' border-l-4 border-l-amber-500' : '';
         const dedupBtn = isDedup && item.content_hash
           ? `<button class="text-base leading-none text-amber-400 hover:text-amber-300 flex-shrink-0" title="Оцінка скопійована з іншого каналу. Клік — показати всі дублікати" data-hash="${escapeHtml(item.content_hash)}" onclick="filterByContentHash(this.dataset.hash)">🔁</button>`
