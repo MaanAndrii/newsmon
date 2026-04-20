@@ -316,7 +316,7 @@
       const showMoreBtn = document.getElementById('showMoreBtn');
       const resetFiltersBtn = document.getElementById('resetFiltersBtn');
       const scrollTopBtn = document.getElementById('scrollTopBtn');
-      const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
+      const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true, prevState: '' };
       const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '', maxScore: '', contentHash: '', date: '' };
       const filterOptions = { categories: [], sources: [], keywords: [] };
       let pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
@@ -790,16 +790,28 @@
           const monitorState = monitor?.state || 'unknown';
           const aiEnabled = Boolean(monitor?.ai_enabled);
           const collectEnabled = Boolean(monitor?.collect_enabled);
+          const ingested = monitor?.ingested_messages || 0;
+          const prevState = statusCache.prevState;
+          statusCache.prevState = monitorState;
           statusCache.collectEnabled = collectEnabled;
           statusCache.intervalSeconds = Number(monitor?.interval_seconds || 600);
-          statusCache.lastRunAt = monitor?.last_run_at ? new Date((monitor.last_run_at || '').replace(' ', 'T') + 'Z') : null;
+          // Reset countdown to now when cycle just completed (running → idle/done)
+          if (prevState === 'running' && monitorState !== 'running') {
+            statusCache.lastRunAt = new Date();
+          } else {
+            statusCache.lastRunAt = monitor?.last_run_at ? new Date((monitor.last_run_at || '').replace(' ', 'T') + 'Z') : null;
+          }
           statusCache.telegram = `Стан: ${monitorState}. Помилка: ${monitor?.last_error || 'немає'}`;
-          statusCache.ai = `AI: ${aiEnabled ? 'увімкнено' : 'вимкнено'}. Ingested: ${monitor?.ingested_messages || 0}`;
+          statusCache.ai = `AI: ${aiEnabled ? 'увімкнено' : 'вимкнено'}. Ingested: ${ingested}`;
           statusCache.channels = `Активних ${activeSources}/${totalSources}, оновлено ${monitor?.updated_sources || 0}`;
           statusCache.clock = `Інтервал: ${statusCache.intervalSeconds} сек. Збір: ${collectEnabled ? 'увімкнено' : 'вимкнено'}`;
           updateCurrentTime();
           statusCache.updatedAt = `Оновлено: ${new Date().toLocaleString('uk-UA')}`;
-          document.getElementById('statusChannels').textContent = `${activeSources}/${totalSources}`;
+          if (monitorState === 'running') {
+            document.getElementById('statusChannels').textContent = `Обробка... (↓${ingested})`;
+          } else {
+            document.getElementById('statusChannels').textContent = `${activeSources}/${totalSources}`;
+          }
           document.getElementById('statusPollTimer').textContent = collectEnabled ? document.getElementById('statusPollTimer').textContent : '--:--';
           paintStatusCard('statusChannelsCard', activeSources > 0 ? true : null);
           paintStatusCard('statusClockCard', collectEnabled ? true : null);

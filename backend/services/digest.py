@@ -42,7 +42,11 @@ def _get_digest_config() -> dict:
     }
 
 
-async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
+async def _generate_daily_digest(
+    target_date: date | str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict:
     cfg = _get_digest_config()
     integrations = repo.get_integrations()
 
@@ -50,32 +54,45 @@ async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
     if not provider.has_credentials():
         return {"ok": False, "error": f"API ключ або модель для провайдера '{cfg['ai_provider']}' не налаштовані"}
 
-    if target_date is None:
-        target_date = _kyiv_yesterday()
-    elif isinstance(target_date, str):
-        try:
-            target_date = date.fromisoformat(target_date)
-        except ValueError:
-            return {"ok": False, "error": f"Невірний формат дати: {target_date}"}
+    use_range = bool(date_from and date_to)
 
-    date_str = target_date.isoformat()
+    if use_range:
+        date_str = date_from[:10]
+        try:
+            target_date = date.fromisoformat(date_str)
+        except ValueError:
+            return {"ok": False, "error": f"Невірний формат дати: {date_from}"}
+        date_label = f"{date_from} — {date_to}"
+    else:
+        if target_date is None:
+            target_date = _kyiv_yesterday()
+        elif isinstance(target_date, str):
+            try:
+                target_date = date.fromisoformat(target_date)
+            except ValueError:
+                return {"ok": False, "error": f"Невірний формат дати: {target_date}"}
+        date_str = target_date.isoformat()
+        date_label = target_date.strftime("%d.%m.%Y")
 
     existing = repo.get_digest(date_str)
-    if existing and existing.get("status") == "ok" and existing.get("content"):
+    if not use_range and existing and existing.get("status") == "ok" and existing.get("content"):
         return {"ok": True, "date": date_str, "cached": True, **existing}
 
     messages = repo.get_digest_messages(
-        target_date=date_str,
+        target_date=None if use_range else date_str,
         min_score=cfg["min_score"],
         excluded_categories=cfg["excluded_categories"] or None,
         max_per_category=cfg["max_per_category"],
+        start_datetime=date_from if use_range else None,
+        end_datetime=date_to if use_range else None,
     )
 
     if not messages:
-        repo.save_digest(date_str, "", 0, "skipped")
+        if not use_range:
+            repo.save_digest(date_str, "", 0, "skipped")
         return {
             "ok": False,
-            "error": f"Недостатньо повідомлень (score ≥ {cfg['min_score']}) за {date_str}",
+            "error": f"Недостатньо повідомлень (score ≥ {cfg['min_score']}) за {date_label}",
             "date": date_str,
         }
 
@@ -87,8 +104,6 @@ async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
         text = (m.get("text") or "").strip()[:200]
         lines.append(f"[{cat}, {score}, {source}] {text}")
     messages_text = "\n\n".join(lines)
-
-    date_label = target_date.strftime("%d.%m.%Y")
     model_name = getattr(provider, "model", cfg["ai_provider"])
 
     try:
@@ -101,9 +116,10 @@ async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
             cfg["format"],
             date_label,
         )
-        repo.save_digest(date_str, result.content, len(messages), "ok", model_name, result.tokens_in, result.tokens_out)
-        repo.cleanup_old_digests(cfg["keep_days"])
-        broadcast_sse("digest_ready", {"date": date_str})
+        if not use_range:
+            repo.save_digest(date_str, result.content, len(messages), "ok", model_name, result.tokens_in, result.tokens_out)
+            repo.cleanup_old_digests(cfg["keep_days"])
+            broadcast_sse("digest_ready", {"date": date_str})
         return {
             "ok": True,
             "date": date_str,
@@ -112,7 +128,8 @@ async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
         }
     except Exception as exc:
         err = str(exc)
-        repo.save_digest(date_str, "", 0, f"error: {err}")
+        if not use_range:
+            repo.save_digest(date_str, "", 0, f"error: {err}")
         return {"ok": False, "error": err, "date": date_str}
 
 
