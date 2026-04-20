@@ -123,6 +123,7 @@ class DigestConfigPayload(BaseModel):
     format: str = Field(default="article", pattern=r"^(article|bullets|summary)$")
     ai_prompt: str = Field(default="", max_length=2000)
     keep_days: int = Field(default=30, ge=1, le=365)
+    digest_model: str = Field(default="", max_length=100)
 
 
 class AlertUpdate(BaseModel):

@@ -356,6 +356,12 @@
           <div class="rounded-lg border border-slate-800 p-4 space-y-4 text-sm">
             <p class="font-medium text-slate-200">Формат та стиль</p>
             <div>
+              <label class="block text-xs text-slate-400 mb-1">Модель Claude для дайджесту</label>
+              <input id="digestModel" type="text" autocomplete="off"
+                class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-mono"
+                placeholder="Порожньо = модель з налаштувань інтеграції" />
+            </div>
+            <div>
               <label class="block text-xs text-slate-400 mb-1">Формат виводу</label>
               <select id="digestFormat" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm">
                 <option value="article">Журналістська стаття (з підзаголовками)</option>
@@ -939,6 +945,7 @@
         document.getElementById('digestMinute').value = d.minute ?? 0;
         document.getElementById('digestMinScore').value = d.min_score ?? 6;
         document.getElementById('digestMaxPerCategory').value = d.max_per_category ?? 5;
+        document.getElementById('digestModel').value = d.digest_model || '';
         document.getElementById('digestFormat').value = d.format || 'article';
         document.getElementById('digestPrompt').value = d.ai_prompt || '';
         document.getElementById('digestKeepDays').value = d.keep_days ?? 30;
@@ -977,6 +984,7 @@
           min_score: parseInt(document.getElementById('digestMinScore').value) || 6,
           max_per_category: parseInt(document.getElementById('digestMaxPerCategory').value) || 5,
           excluded_categories: _digestExcluded,
+          digest_model: document.getElementById('digestModel').value,
           format: document.getElementById('digestFormat').value,
           ai_prompt: document.getElementById('digestPrompt').value.trim(),
           keep_days: parseInt(document.getElementById('digestKeepDays').value) || 30,

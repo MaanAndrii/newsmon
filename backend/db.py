@@ -246,8 +246,16 @@ class Repository:
         min_score: int | None = None,
         max_score: int | None = None,
         content_hash: str | None = None,
+        include_dedup: bool = False,
+        published_date: str | None = None,
     ) -> list[dict[str, Any]]:
-        where_parts = ["m.ai_status = 'done'"]
+        where_parts = [
+            "m.ai_status = 'done'",
+            "m.text IS NOT NULL",
+            "m.text != ''",
+        ]
+        if not include_dedup:
+            where_parts.append("m.is_dedup = 0")
         params: list[Any] = []
         search_raw = (search_query or "").strip()
         category_raw = (category or "").strip()
@@ -276,12 +284,19 @@ class Repository:
         if content_hash_raw:
             where_parts.append("m.content_hash = ?")
             params.append(content_hash_raw)
+        published_date_raw = (published_date or "").strip()
+        if published_date_raw:
+            where_parts.append("DATE(datetime(m.published_at, '+3 hours')) = ?")
+            params.append(published_date_raw)
         params.append(limit)
         query = f"""
             SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
                    m.tg_message_id, m.published_at, m.text, m.media_type,
                    m.ai_score, m.ai_category, m.ai_status, m.workflow_status,
-                   m.telegram_url, m.created_at, m.is_dedup, m.content_hash
+                   m.telegram_url, m.created_at, m.is_dedup, m.content_hash,
+                   (SELECT COUNT(*) FROM messages md
+                    WHERE md.content_hash = m.content_hash AND md.is_dedup = 1
+                      AND m.content_hash IS NOT NULL AND m.content_hash != '') AS dedup_count
             FROM messages m
             JOIN sources s ON s.id = m.source_id
             WHERE {" AND ".join(where_parts)}
@@ -294,7 +309,13 @@ class Repository:
             except sqlite3.OperationalError:
                 if search_raw:
                     fallback_params: list[Any] = []
-                    fallback_where = ["m.ai_status = 'done'"]
+                    fallback_where = [
+                        "m.ai_status = 'done'",
+                        "m.text IS NOT NULL",
+                        "m.text != ''",
+                    ]
+                    if not include_dedup:
+                        fallback_where.append("m.is_dedup = 0")
                     fallback_where.append("COALESCE(m.text, '') LIKE ?")
                     fallback_params.append(f"%{search_raw}%")
                     if category_raw:
@@ -315,12 +336,18 @@ class Repository:
                     if content_hash_raw:
                         fallback_where.append("m.content_hash = ?")
                         fallback_params.append(content_hash_raw)
+                    if published_date_raw:
+                        fallback_where.append("DATE(datetime(m.published_at, '+3 hours')) = ?")
+                        fallback_params.append(published_date_raw)
                     fallback_params.append(limit)
                     fallback_query = f"""
                         SELECT m.id, m.source_id, s.name AS source_name, s.url AS source_url,
                                m.tg_message_id, m.published_at, m.text, m.media_type,
                                m.ai_score, m.ai_category, m.ai_status, m.workflow_status,
-                               m.telegram_url, m.created_at, m.is_dedup, m.content_hash
+                               m.telegram_url, m.created_at, m.is_dedup, m.content_hash,
+                               (SELECT COUNT(*) FROM messages md
+                                WHERE md.content_hash = m.content_hash AND md.is_dedup = 1
+                                  AND m.content_hash IS NOT NULL AND m.content_hash != '') AS dedup_count
                         FROM messages m
                         JOIN sources s ON s.id = m.source_id
                         WHERE {" AND ".join(fallback_where)}

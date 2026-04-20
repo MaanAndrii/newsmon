@@ -162,6 +162,11 @@
             <span class="text-slate-400 text-xs font-medium uppercase tracking-wide">Ключове слово</span>
             <button id="filterKeywordBtn" onclick="openFilterPicker('keyword')" class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-left hover:bg-slate-700 text-slate-200 truncate">Всі ключові слова</button>
           </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-slate-400 text-xs font-medium uppercase tracking-wide">Дата</span>
+            <input type="date" id="filterDate"
+              class="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-200 [color-scheme:dark]" />
+          </div>
           <div class="flex flex-col gap-2">
             <div class="flex justify-between items-center">
               <span class="text-slate-400 text-xs font-medium uppercase tracking-wide">Оцінка AI</span>
@@ -312,7 +317,7 @@
       const resetFiltersBtn = document.getElementById('resetFiltersBtn');
       const scrollTopBtn = document.getElementById('scrollTopBtn');
       const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true };
-      const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '', maxScore: '', contentHash: '' };
+      const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '', maxScore: '', contentHash: '', date: '' };
       const filterOptions = { categories: [], sources: [], keywords: [] };
       let pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
       let filterPickerType = null;
@@ -436,6 +441,7 @@
           parts.push(min === max ? `Оцінка = ${min}` : `Оцінка ${min}–${max}`);
         }
         if (queryStateCache.contentHash) parts.push('🔁 Дублікати повідомлення');
+        if (queryStateCache.date) parts.push(`📅 ${queryStateCache.date}`);
         filterLabel.textContent = parts.join(' • ');
         filterCount.textContent = `Показано: ${latestItems.length}`;
         channelsCard.classList.add('hidden');
@@ -448,6 +454,7 @@
           queryStateCache.category ||
           queryStateCache.sourceId ||
           queryStateCache.keyword ||
+          queryStateCache.date ||
           queryStateCache.minScore ||
           queryStateCache.maxScore ||
           queryStateCache.contentHash
@@ -490,17 +497,16 @@
       }
 
       function renderMessageCard(item, idx) {
-        const preview = escapeHtml((item.text || 'Повідомлення без тексту').slice(0, 280));
-        const isDedup = !!item.is_dedup;
-        const borderClass = isDedup ? ' border-l-4 border-l-amber-500' : '';
-        const dedupIcon = isDedup && item.content_hash
-          ? `<button class="text-base leading-none text-amber-400 hover:text-amber-300 flex-shrink-0" title="Оцінка скопійована з іншого каналу. Клік — показати всі дублікати" data-hash="${escapeHtml(item.content_hash)}" onclick="filterByContentHash(this.dataset.hash)">🔁</button>`
+        const preview = escapeHtml((item.text || '').slice(0, 280));
+        const dedupCount = item.dedup_count || 0;
+        const dedupBadge = dedupCount > 0 && item.content_hash
+          ? `<button class="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs text-amber-400 hover:text-amber-300 bg-amber-900/30 hover:bg-amber-900/50 flex-shrink-0" title="Знайдено ${dedupCount} дублікат(ів) з інших каналів. Клік — показати всі" data-hash="${escapeHtml(item.content_hash)}" onclick="filterByContentHash(this.dataset.hash)">🔁 ${dedupCount}</button>`
           : '';
-        return `<article class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex flex-col gap-3${borderClass}">
+        return `<article class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex flex-col gap-3">
           <div class="flex items-center justify-between">
             <div><p class="font-semibold">${escapeHtml(item.source_name)}</p><p class="text-xs text-slate-400">${formatPublishedAt(item.published_at)}</p></div>
             <div class="flex gap-1 items-center">
-              ${dedupIcon}
+              ${dedupBadge}
               ${scoreBadge(item.ai_score)}
               <button class="px-2 py-1 rounded text-sm bg-sky-700 hover:bg-sky-600" data-category="${escapeHtml(item.ai_category || '')}" onclick="applyCategoryFilter(this.dataset.category)" title="Фільтрувати за категорією">
                 ${escapeHtml(item.ai_category || '—')}
@@ -579,6 +585,7 @@
           if (queryStateCache.minScore) params.set('min_score', queryStateCache.minScore);
           if (queryStateCache.maxScore) params.set('max_score', queryStateCache.maxScore);
           if (queryStateCache.contentHash) params.set('content_hash', queryStateCache.contentHash);
+          if (queryStateCache.date) params.set('published_date', queryStateCache.date);
           const res = await fetch(`/api/messages?${params.toString()}`, { signal: _loadMessagesController.signal });
           const items = res.ok ? await res.json() : [];
           const unique = [];
@@ -722,6 +729,8 @@
 
       function clearModalFilters() {
         pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
+        const dateEl = document.getElementById('filterDate');
+        if (dateEl) dateEl.value = '';
         syncFilterBtns();
       }
 
@@ -735,6 +744,7 @@
         queryStateCache.keyword = pendingFilters.keyword;
         queryStateCache.minScore = isDefault ? '' : String(minScore);
         queryStateCache.maxScore = isDefault ? '' : String(maxScore);
+        queryStateCache.date = document.getElementById('filterDate').value || '';
         visibleCount = PAGE_SIZE;
         updateResetButtonState();
         closeFiltersModal();
@@ -891,7 +901,10 @@
         queryStateCache.minScore = '';
         queryStateCache.maxScore = '';
         queryStateCache.contentHash = '';
+        queryStateCache.date = '';
         searchInput.value = '';
+        const dateEl = document.getElementById('filterDate');
+        if (dateEl) dateEl.value = '';
         pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
         const catBtn = document.getElementById('filterCategoryBtn');
         const srcBtn = document.getElementById('filterSourceBtn');
