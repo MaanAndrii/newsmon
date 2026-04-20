@@ -29,6 +29,7 @@ def save_digest_config(payload: DigestConfigPayload) -> dict:
     repo.set_setting("digest.ai_prompt", (payload.ai_prompt or "").strip())
     repo.set_setting("digest.keep_days", str(payload.keep_days))
     repo.set_setting("digest.ai_provider", payload.ai_provider)
+    repo.set_setting("digest.mode", payload.mode)
     return _get_digest_config()
 
 
@@ -38,12 +39,8 @@ def list_digests(limit: int = 7) -> dict:
 
 
 @router.post("/api/digest/generate", dependencies=[Depends(require_admin)])
-async def generate_digest(
-    target_date: str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-) -> dict:
-    result = await _generate_daily_digest(target_date, date_from=date_from, date_to=date_to)
+async def generate_digest() -> dict:
+    result = await _generate_daily_digest()
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Помилка генерації"))
     return result

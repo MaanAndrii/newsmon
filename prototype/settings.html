@@ -376,6 +376,13 @@
                 </select>
               </div>
             </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Режим відбору повідомлень</label>
+              <select id="digestMode" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm">
+                <option value="previous_day">Попередній календарний день (00:00 – 00:00)</option>
+                <option value="previous_24h">Попередні 24 години (ковзне вікно)</option>
+              </select>
+            </div>
           </div>
 
           <!-- Selection -->
@@ -445,21 +452,6 @@
                 <button onclick="loadDigestHistory()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">↻ Оновити</button>
                 <button onclick="generateDigestNow()" id="digestGenerateBtn" class="text-xs px-3 py-1.5 rounded-lg bg-violet-700 hover:bg-violet-600 text-white">⚡ Згенерувати зараз</button>
               </div>
-            </div>
-            <p class="text-xs text-slate-400">«Згенерувати зараз» — дайджест за вчорашній день</p>
-            <div class="border-t border-slate-800 pt-3 space-y-2">
-              <p class="text-xs text-slate-400 font-medium">Або вказати діапазон вручну:</p>
-              <div class="grid grid-cols-2 gap-2">
-                <label class="flex flex-col gap-1">
-                  <span class="text-[10px] text-slate-500">Від (дата + час)</span>
-                  <input id="digestRangeFrom" type="datetime-local" class="px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs" />
-                </label>
-                <label class="flex flex-col gap-1">
-                  <span class="text-[10px] text-slate-500">До (дата + час)</span>
-                  <input id="digestRangeTo" type="datetime-local" class="px-2 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-xs" />
-                </label>
-              </div>
-              <button onclick="generateDigestRange()" id="digestRangeBtn" class="text-xs px-3 py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white">⚡ Згенерувати за діапазоном</button>
             </div>
             <div id="digestHistoryList" class="space-y-2">
               <p class="text-xs text-slate-500">Завантаження...</p>
@@ -1072,6 +1064,7 @@
         document.getElementById('digestFormat').value = d.format || 'article';
         document.getElementById('digestPrompt').value = d.ai_prompt || '';
         document.getElementById('digestKeepDays').value = d.keep_days ?? 30;
+        document.getElementById('digestMode').value = d.mode || 'previous_day';
         _digestExcluded = Array.isArray(d.excluded_categories) ? d.excluded_categories : [];
         renderDigestCategoryChips();
       }
@@ -1111,6 +1104,7 @@
           format: document.getElementById('digestFormat').value,
           ai_prompt: document.getElementById('digestPrompt').value.trim(),
           keep_days: parseInt(document.getElementById('digestKeepDays').value) || 30,
+          mode: document.getElementById('digestMode').value || 'previous_day',
         };
         const res = await authFetch(`${apiBase}/api/digest/config`, {
           method: 'POST',
@@ -1191,34 +1185,6 @@
         } finally {
           btn.disabled = false;
           btn.textContent = '⚡ Згенерувати зараз';
-        }
-      }
-
-      async function generateDigestRange() {
-        const fromEl = document.getElementById('digestRangeFrom');
-        const toEl = document.getElementById('digestRangeTo');
-        const btn = document.getElementById('digestRangeBtn');
-        const fromVal = fromEl.value;
-        const toVal = toEl.value;
-        if (!fromVal || !toVal) { showToast('Вкажіть обидва значення діапазону', 'error'); return; }
-        const dateFrom = fromVal.replace('T', ' ') + ':00';
-        const dateTo = toVal.replace('T', ' ') + ':00';
-        btn.disabled = true;
-        btn.textContent = '⏳ Генерація...';
-        try {
-          const url = `${apiBase}/api/digest/generate?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`;
-          const res = await authFetch(url, { method: 'POST' });
-          const data = await res.json();
-          if (res.ok) {
-            openDigestModal(`${fromVal} — ${toVal}`, data.content, data.message_count);
-          } else {
-            showToast(data.detail || 'Помилка генерації', 'error');
-          }
-        } catch (e) {
-          showToast('Помилка мережі', 'error');
-        } finally {
-          btn.disabled = false;
-          btn.textContent = '⚡ Згенерувати за діапазоном';
         }
       }
 

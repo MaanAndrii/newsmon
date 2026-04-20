@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from config import broadcast_sse, repo
 from services.providers import get_provider
@@ -12,10 +12,6 @@ try:
     _KYIV_TZ = ZoneInfo("Europe/Kyiv")
 except Exception:
     _KYIV_TZ = timezone.utc
-
-
-def _kyiv_yesterday() -> date:
-    return (datetime.now(timezone.utc).astimezone(_KYIV_TZ) - timedelta(days=1)).date()
 
 
 def _get_digest_config() -> dict:
@@ -39,14 +35,11 @@ def _get_digest_config() -> dict:
         "ai_prompt": g("ai_prompt", ""),
         "keep_days": int(g("keep_days", "30")),
         "ai_provider": g("ai_provider", "claude"),
+        "mode": g("mode", "previous_day"),
     }
 
 
-async def _generate_daily_digest(
-    target_date: date | str | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
-) -> dict:
+async def _generate_daily_digest(reference_dt: datetime | None = None) -> dict:
     cfg = _get_digest_config()
     integrations = repo.get_integrations()
 
@@ -54,42 +47,46 @@ async def _generate_daily_digest(
     if not provider.has_credentials():
         return {"ok": False, "error": f"API ключ або модель для провайдера '{cfg['ai_provider']}' не налаштовані"}
 
-    use_range = bool(date_from and date_to)
+    mode = cfg.get("mode", "previous_day")
+    tz = _KYIV_TZ
 
-    if use_range:
-        date_str = date_from[:10]
-        try:
-            target_date = date.fromisoformat(date_str)
-        except ValueError:
-            return {"ok": False, "error": f"Невірний формат дати: {date_from}"}
-        date_label = f"{date_from} — {date_to}"
+    if reference_dt is None:
+        reference_dt = datetime.now(timezone.utc).astimezone(tz)
+
+    if mode == "previous_24h":
+        dt_to = reference_dt
+        dt_from = dt_to - timedelta(hours=24)
+        date_str = dt_from.astimezone(tz).date().isoformat()
+        date_label = (
+            f"{dt_from.astimezone(tz).strftime('%d.%m.%Y %H:%M')} — "
+            f"{dt_to.astimezone(tz).strftime('%d.%m.%Y %H:%M')}"
+        )
     else:
-        if target_date is None:
-            target_date = _kyiv_yesterday()
-        elif isinstance(target_date, str):
-            try:
-                target_date = date.fromisoformat(target_date)
-            except ValueError:
-                return {"ok": False, "error": f"Невірний формат дати: {target_date}"}
-        date_str = target_date.isoformat()
-        date_label = target_date.strftime("%d.%m.%Y")
+        today_midnight = reference_dt.astimezone(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+        yesterday_midnight = today_midnight - timedelta(days=1)
+        dt_to = today_midnight
+        dt_from = yesterday_midnight
+        date_str = yesterday_midnight.date().isoformat()
+        date_label = yesterday_midnight.strftime("%d.%m.%Y")
 
     existing = repo.get_digest(date_str)
-    if not use_range and existing and existing.get("status") == "ok" and existing.get("content"):
+    if existing and existing.get("status") == "ok" and existing.get("content"):
         return {"ok": True, "date": date_str, "cached": True, **existing}
 
+    start_datetime = dt_from.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    end_datetime = dt_to.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
     messages = repo.get_digest_messages(
-        target_date=None if use_range else date_str,
+        target_date=None,
         min_score=cfg["min_score"],
         excluded_categories=cfg["excluded_categories"] or None,
         max_per_category=cfg["max_per_category"],
-        start_datetime=date_from if use_range else None,
-        end_datetime=date_to if use_range else None,
+        start_datetime=start_datetime,
+        end_datetime=end_datetime,
     )
 
     if not messages:
-        if not use_range:
-            repo.save_digest(date_str, "", 0, "skipped")
+        repo.save_digest(date_str, "", 0, "skipped")
         return {
             "ok": False,
             "error": f"Недостатньо повідомлень (score ≥ {cfg['min_score']}) за {date_label}",
@@ -116,10 +113,9 @@ async def _generate_daily_digest(
             cfg["format"],
             date_label,
         )
-        if not use_range:
-            repo.save_digest(date_str, result.content, len(messages), "ok", model_name, result.tokens_in, result.tokens_out)
-            repo.cleanup_old_digests(cfg["keep_days"])
-            broadcast_sse("digest_ready", {"date": date_str})
+        repo.save_digest(date_str, result.content, len(messages), "ok", model_name, result.tokens_in, result.tokens_out)
+        repo.cleanup_old_digests(cfg["keep_days"])
+        broadcast_sse("digest_ready", {"date": date_str})
         return {
             "ok": True,
             "date": date_str,
@@ -128,8 +124,7 @@ async def _generate_daily_digest(
         }
     except Exception as exc:
         err = str(exc)
-        if not use_range:
-            repo.save_digest(date_str, "", 0, f"error: {err}")
+        repo.save_digest(date_str, "", 0, f"error: {err}")
         return {"ok": False, "error": err, "date": date_str}
 
 
@@ -165,10 +160,10 @@ async def _digest_loop() -> None:
             if diff_min > 6:
                 continue
 
-            yesterday = _kyiv_yesterday()
-            existing = repo.get_digest(yesterday.isoformat())
-            if not existing or existing.get("status") not in ("ok",):
-                await _generate_daily_digest(yesterday)
+            target_run_dt = now_local.replace(
+                hour=target_hour, minute=target_minute, second=0, microsecond=0
+            )
+            await _generate_daily_digest(reference_dt=target_run_dt)
 
         except Exception:
             await asyncio.sleep(60)

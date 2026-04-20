@@ -262,15 +262,12 @@ class Repository:
             "m.text != ''",
         ]
         if not include_dedup:
-            # Show dedup copies (is_dedup=1) + originals that have NO dedup copies.
-            # Hides originals that were already deduplicated to another channel's copy.
             where_parts.append(
-                "(m.is_dedup = 1 OR NOT EXISTS ("
-                "SELECT 1 FROM messages md "
+                "(m.content_hash IS NULL OR m.content_hash = '' OR "
+                "NOT EXISTS (SELECT 1 FROM messages md "
                 "WHERE md.content_hash = m.content_hash "
-                "AND md.is_dedup = 1 "
-                "AND m.content_hash IS NOT NULL "
-                "AND m.content_hash != ''))"
+                "AND md.id < m.id "
+                "AND md.ai_status = 'done'))"
             )
         params: list[Any] = []
         search_raw = (search_query or "").strip()
@@ -332,12 +329,11 @@ class Repository:
                     ]
                     if not include_dedup:
                         fallback_where.append(
-                            "(m.is_dedup = 1 OR NOT EXISTS ("
-                            "SELECT 1 FROM messages md "
+                            "(m.content_hash IS NULL OR m.content_hash = '' OR "
+                            "NOT EXISTS (SELECT 1 FROM messages md "
                             "WHERE md.content_hash = m.content_hash "
-                            "AND md.is_dedup = 1 "
-                            "AND m.content_hash IS NOT NULL "
-                            "AND m.content_hash != ''))"
+                            "AND md.id < m.id "
+                            "AND md.ai_status = 'done'))"
                         )
                     fallback_where.append("COALESCE(m.text, '') LIKE ?")
                     fallback_params.append(f"%{search_raw}%")

@@ -129,6 +129,7 @@ class DigestConfigPayload(BaseModel):
     ai_prompt: str = Field(default="", max_length=2000)
     keep_days: int = Field(default=30, ge=1, le=365)
     ai_provider: str = Field(default="claude", pattern=r"^(claude|grok|gemini)$")
+    mode: str = Field(default="previous_day", pattern=r"^(previous_24h|previous_day)$")
 
 
 class AlertUpdate(BaseModel):
