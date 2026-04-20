@@ -1387,13 +1387,21 @@ class Repository:
 
     def get_digest_messages(
         self,
-        target_date: str,
+        target_date: str | None = None,
         min_score: int = 6,
         excluded_categories: list[str] | None = None,
         max_per_category: int = 5,
+        start_datetime: str | None = None,
+        end_datetime: str | None = None,
     ) -> list[dict[str, Any]]:
         excl_clause = ""
-        params: list[Any] = [min_score, target_date]
+        params: list[Any] = [min_score]
+        if start_datetime and end_datetime:
+            date_clause = "AND m.published_at BETWEEN ? AND ?"
+            params.extend([start_datetime, end_datetime])
+        else:
+            date_clause = "AND DATE(m.published_at) = ?"
+            params.append(target_date or "")
         if excluded_categories:
             placeholders = ",".join("?" * len(excluded_categories))
             excl_clause = f"AND m.ai_category NOT IN ({placeholders})"
@@ -1408,7 +1416,7 @@ class Repository:
                 WHERE m.ai_status = 'done'
                   AND m.is_dedup = 0
                   AND m.ai_score >= ?
-                  AND DATE(m.published_at) = ?
+                  {date_clause}
                   {excl_clause}
                 ORDER BY m.ai_category, m.ai_score DESC
                 """,

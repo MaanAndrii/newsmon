@@ -20,12 +20,13 @@ def _resolve_claude_model(value: str | None) -> str:
     return model if model else DEFAULT_CLAUDE_MODEL
 
 
-def _record_claude_call(input_tokens: int, output_tokens: int) -> None:
+def _record_claude_call(input_tokens: int, output_tokens: int, provider: str = "claude") -> None:
     claude_call_events.append(
         {
             "at": datetime.now(timezone.utc),
             "input_tokens": int(input_tokens),
             "output_tokens": int(output_tokens),
+            "provider": provider,
         }
     )
     try:
@@ -53,7 +54,7 @@ def _call_claude_score_sync(
     categories: list[str],
     custom_prompt: str,
     keywords: list[str] | None = None,
-) -> tuple[int, str | None, str | None]:
+) -> tuple[int, str | None, str | None, int, int]:
     """Score a message and optionally match keywords in a single API call.
 
     Returns (score, category, matched_keyword).
@@ -115,10 +116,9 @@ def _call_claude_score_sync(
             f"Claude API не відповідає після {len(_RETRY_DELAYS) + 1} спроб"
         ) from last_exc
 
-    _record_claude_call(
-        int(getattr(response.usage, "input_tokens", 0) or 0),
-        int(getattr(response.usage, "output_tokens", 0) or 0),
-    )
+    tok_in = int(getattr(response.usage, "input_tokens", 0) or 0)
+    tok_out = int(getattr(response.usage, "output_tokens", 0) or 0)
+    _record_claude_call(tok_in, tok_out)
 
     payload = "".join(
         block.text for block in response.content if hasattr(block, "text")
@@ -143,7 +143,7 @@ def _call_claude_score_sync(
                 if kw.lower() == raw_match.lower():
                     matched_keyword = kw
                     break
-    return score, category, matched_keyword
+    return score, category, matched_keyword, tok_in, tok_out
 
 
 def _call_claude_digest_sync(

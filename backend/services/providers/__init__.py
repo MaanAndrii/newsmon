@@ -25,7 +25,7 @@ def get_provider(provider: str, integrations: dict) -> ClaudeProvider | OpenAICo
     api_key = (integrations.get(f"{p}_api_key") or "").strip()
     model = (integrations.get(f"{p}_model") or "").strip()
     base_url = _PROVIDER_URLS[p]
-    return OpenAICompatProvider(api_key, model, base_url)
+    return OpenAICompatProvider(api_key, model, base_url, p)
 
 
 __all__ = [

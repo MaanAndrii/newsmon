@@ -417,6 +417,7 @@ async def _process_one_ai_item(
     ai_prompt: str,
     keyword_patterns: list[str],
     dedup_enabled: bool = True,
+    ai_provider_name: str = "claude",
 ) -> None:
     async with semaphore:
         message_id = int(item.get("message_id") or 0)
@@ -452,15 +453,19 @@ async def _process_one_ai_item(
                 keyword_patterns or None,
             )
             score, category, matched_keyword = result.score, result.category, result.matched_keyword
+            tok_in, tok_out = result.tokens_in, result.tokens_out
             if category is None:
                 category = _get_default_category_name()
             repo.mark_ai_result(message_id, score, category)
             _log_event(
                 "ai_scored",
-                f"msg#{message_id}: score={score}, cat={category}",
+                f"msg#{message_id}: score={score}, cat={category} [{ai_provider_name}, {tok_in}+{tok_out}tok]",
                 message_id=message_id,
                 score=score,
                 category=category,
+                provider=ai_provider_name,
+                tokens_in=tok_in,
+                tokens_out=tok_out,
             )
             await _process_alerts_for_message(
                 message_id, "ai_scored", score=score,
@@ -557,7 +562,7 @@ async def _process_ai_queue(limit: int = 50) -> int:
             *[
                 _process_one_ai_item(
                     item, semaphore, provider, categories, ai_prompt, keyword_patterns,
-                    dedup_batch_enabled,
+                    dedup_batch_enabled, ai_provider_name,
                 )
                 for item in primary_items
             ],

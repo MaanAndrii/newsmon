@@ -11,10 +11,11 @@ _RETRY_DELAYS = (2.0, 4.0, 8.0)
 
 
 class OpenAICompatProvider:
-    def __init__(self, api_key: str, model: str, base_url: str) -> None:
+    def __init__(self, api_key: str, model: str, base_url: str, provider_name: str = "openai_compat") -> None:
         self.api_key = api_key
         self.model = model.strip()
         self.base_url = base_url
+        self.provider_name = provider_name
 
     def has_credentials(self) -> bool:
         return bool(self.api_key and self.model)
@@ -83,7 +84,7 @@ class OpenAICompatProvider:
         usage = getattr(response, "usage", None)
         tok_in = int(getattr(usage, "prompt_tokens", 0) or 0)
         tok_out = int(getattr(usage, "completion_tokens", 0) or 0)
-        _record_claude_call(tok_in, tok_out)
+        _record_claude_call(tok_in, tok_out, provider=self.provider_name)
 
         payload = (response.choices[0].message.content or "").strip()
         try:
@@ -105,7 +106,8 @@ class OpenAICompatProvider:
                     if kw.lower() == raw_match.lower():
                         matched_keyword = kw
                         break
-        return ScoreResult(score=score, category=category, matched_keyword=matched_keyword)
+        return ScoreResult(score=score, category=category, matched_keyword=matched_keyword,
+                           tokens_in=tok_in, tokens_out=tok_out)
 
     def generate_digest(
         self,

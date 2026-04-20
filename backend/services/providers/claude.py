@@ -23,7 +23,7 @@ class ClaudeProvider:
         ai_prompt: str,
         keywords: list[str] | None = None,
     ) -> ScoreResult:
-        score, category, matched_keyword = _call_claude_score_sync(
+        score, category, matched_keyword, tok_in, tok_out = _call_claude_score_sync(
             self.api_key,
             self.model,
             text,
@@ -31,7 +31,8 @@ class ClaudeProvider:
             ai_prompt,
             keywords,
         )
-        return ScoreResult(score=score, category=category, matched_keyword=matched_keyword)
+        return ScoreResult(score=score, category=category, matched_keyword=matched_keyword,
+                           tokens_in=tok_in, tokens_out=tok_out)
 
     def generate_digest(
         self,

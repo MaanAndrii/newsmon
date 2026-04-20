@@ -155,11 +155,14 @@ def get_debug_stats() -> dict:
     day_ago = now - timedelta(hours=24)
     two_days_ago = now - timedelta(hours=48)
     hour_ago = now - timedelta(hours=1)
-    claude_24h = [
+    all_ai_24h = [
         e
         for e in claude_call_events
         if isinstance(e.get("at"), datetime) and e["at"] >= day_ago
     ]
+    claude_24h = [e for e in all_ai_24h if (e.get("provider") or "claude") == "claude"]
+    grok_24h = [e for e in all_ai_24h if e.get("provider") == "grok"]
+    gemini_24h = [e for e in all_ai_24h if e.get("provider") == "gemini"]
     telegram_24h = [t for t in telegram_call_events if t >= day_ago]
     telegram_48h = [t for t in telegram_call_events if t >= two_days_ago]
     telegram_60m = [t for t in telegram_call_events if t >= hour_ago]
@@ -173,6 +176,12 @@ def get_debug_stats() -> dict:
         "claude_output_tokens_24h": sum(
             int(e.get("output_tokens") or 0) for e in claude_24h
         ),
+        "grok_requests_24h": len(grok_24h),
+        "grok_input_tokens_24h": sum(int(e.get("input_tokens") or 0) for e in grok_24h),
+        "grok_output_tokens_24h": sum(int(e.get("output_tokens") or 0) for e in grok_24h),
+        "gemini_requests_24h": len(gemini_24h),
+        "gemini_input_tokens_24h": sum(int(e.get("input_tokens") or 0) for e in gemini_24h),
+        "gemini_output_tokens_24h": sum(int(e.get("output_tokens") or 0) for e in gemini_24h),
         "telegram_requests_24h": len(telegram_24h),
         "telegram_requests_48h": len(telegram_48h),
         "telegram_requests_60m": len(telegram_60m),
