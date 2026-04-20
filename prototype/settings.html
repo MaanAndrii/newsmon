@@ -59,30 +59,68 @@
             </div>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <label class="flex flex-col gap-1">
-              <span class="text-slate-300">Claude API Key</span>
-              <input id="claudeApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="sk-ant-..." />
-              <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
-            </label>
-            <label class="flex flex-col gap-1">
-              <span class="text-slate-300">Telegram API ID</span>
-              <input id="telegramApiId" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456" />
-            </label>
-            <label class="flex flex-col gap-1 md:col-span-2">
-              <span class="text-slate-300">Telegram API Hash</span>
-              <input id="telegramApiHash" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="loremipsumhash" />
-              <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
-            </label>
-            <label class="flex flex-col gap-1">
-              <span class="text-slate-300">Telegram Bot Token</span>
-              <input id="telegramBotToken" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456:AA...mock_token" />
-              <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
-            </label>
-            <label class="flex flex-col gap-1">
-              <span class="text-slate-300">Claude Model ID</span>
-              <input id="claudeModel" type="text" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="claude-haiku-4-5-20251001" />
-              <span class="text-[10px] text-slate-500">Актуальний список на <a href="https://platform.claude.com/docs/en/about-claude/models/overview" target="_blank" class="underline text-sky-400 hover:text-sky-300">docs.anthropic.com → Models</a></span>
-            </label>
+            <div class="md:col-span-2">
+              <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Claude (Anthropic)</p>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">Claude API Key</span>
+                  <input id="claudeApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="sk-ant-..." />
+                  <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">Claude Model ID</span>
+                  <input id="claudeModel" type="text" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="claude-haiku-4-5-20251001" />
+                  <span class="text-[10px] text-slate-500">Актуальний список: <a href="https://platform.claude.com/docs/en/about-claude/models/overview" target="_blank" class="underline text-sky-400 hover:text-sky-300">docs.anthropic.com → Models</a></span>
+                </label>
+              </div>
+            </div>
+            <div class="md:col-span-2">
+              <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Grok (xAI)</p>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">Grok API Key</span>
+                  <input id="grokApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="xai-..." />
+                  <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">Grok Model ID</span>
+                  <input id="grokModel" type="text" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="grok-3-mini" />
+                </label>
+              </div>
+            </div>
+            <div class="md:col-span-2">
+              <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Gemini (Google)</p>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">Gemini API Key</span>
+                  <input id="geminiApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="AIza..." />
+                  <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">Gemini Model ID</span>
+                  <input id="geminiModel" type="text" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="gemini-2.0-flash" />
+                </label>
+              </div>
+            </div>
+            <div class="md:col-span-2 border-t border-slate-800 pt-3">
+              <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Telegram</p>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">Telegram API ID</span>
+                  <input id="telegramApiId" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456" />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">Telegram API Hash</span>
+                  <input id="telegramApiHash" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="loremipsumhash" />
+                  <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">Telegram Bot Token</span>
+                  <input id="telegramBotToken" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456:AA...mock_token" />
+                  <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
+                </label>
+              </div>
+            </div>
           </div>
           <div class="rounded-lg border border-slate-800 p-3 space-y-2">
             <h3 class="text-sm font-semibold">Telethon авторизація користувача</h3>
@@ -166,6 +204,17 @@
                 <p class="text-xs text-slate-400">Зберігати від 500 до 10000 повідомлень. Старіші будуть видалятись автоматично.</p>
               </div>
               <input id="monitorMaxMessages" type="number" min="500" max="10000" step="100" class="w-28 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="5000" />
+            </div>
+            <div class="rounded-lg border border-slate-800 p-3 flex items-center justify-between">
+              <div>
+                <p class="font-medium">AI-провайдер для оцінки</p>
+                <p class="text-xs text-slate-400">Який сервіс використовувати для оцінки важливості повідомлень.</p>
+              </div>
+              <select id="monitorAiProvider" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right">
+                <option value="claude">Claude (Anthropic)</option>
+                <option value="grok">Grok (xAI)</option>
+                <option value="gemini">Gemini (Google)</option>
+              </select>
             </div>
             <div class="rounded-lg border border-slate-800 p-3 md:col-span-2">
               <div class="flex items-center justify-between mb-1 gap-2">
@@ -356,10 +405,12 @@
           <div class="rounded-lg border border-slate-800 p-4 space-y-4 text-sm">
             <p class="font-medium text-slate-200">Формат та стиль</p>
             <div>
-              <label class="block text-xs text-slate-400 mb-1">Модель Claude для дайджесту</label>
-              <input id="digestModel" type="text" autocomplete="off"
-                class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-mono"
-                placeholder="Порожньо = модель з налаштувань інтеграції" />
+              <label class="block text-xs text-slate-400 mb-1">AI-провайдер для дайджесту</label>
+              <select id="digestAiProvider" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm">
+                <option value="claude">Claude (Anthropic)</option>
+                <option value="grok">Grok (xAI)</option>
+                <option value="gemini">Gemini (Google)</option>
+              </select>
             </div>
             <div>
               <label class="block text-xs text-slate-400 mb-1">Формат виводу</label>
@@ -817,13 +868,21 @@
       }
 
       function integrationPayload() {
-        const payload = { claude_model: document.getElementById('claudeModel').value };
         const trim = (id) => document.getElementById(id).value.trim();
+        const payload = {
+          claude_model: trim('claudeModel'),
+          grok_model: trim('grokModel'),
+          gemini_model: trim('geminiModel'),
+        };
         const claudeKey = trim('claudeApiKey');
+        const grokKey = trim('grokApiKey');
+        const geminiKey = trim('geminiApiKey');
         const apiId = trim('telegramApiId');
         const apiHash = trim('telegramApiHash');
         const botToken = trim('telegramBotToken');
         if (claudeKey) payload.claude_api_key = claudeKey;
+        if (grokKey) payload.grok_api_key = grokKey;
+        if (geminiKey) payload.gemini_api_key = geminiKey;
         if (apiId) payload.telegram_api_id = apiId;
         if (apiHash) payload.telegram_api_hash = apiHash;
         if (botToken) payload.telegram_bot_token = botToken;
@@ -860,9 +919,13 @@
         if (!res.ok) return;
         const data = await res.json();
         applySecretPlaceholder('claudeApiKey', data.claude_api_key_set, data.claude_api_key_preview);
+        applySecretPlaceholder('grokApiKey', data.grok_api_key_set, data.grok_api_key_preview);
+        applySecretPlaceholder('geminiApiKey', data.gemini_api_key_set, data.gemini_api_key_preview);
         applySecretPlaceholder('telegramApiHash', data.telegram_api_hash_set, data.telegram_api_hash_preview);
         applySecretPlaceholder('telegramBotToken', data.telegram_bot_token_set, data.telegram_bot_token_preview);
         document.getElementById('claudeModel').value = data.claude_model || 'claude-haiku-4-5-20251001';
+        document.getElementById('grokModel').value = data.grok_model || '';
+        document.getElementById('geminiModel').value = data.gemini_model || '';
         document.getElementById('telegramApiId').value = data.telegram_api_id || '';
       }
 
@@ -945,7 +1008,7 @@
         document.getElementById('digestMinute').value = d.minute ?? 0;
         document.getElementById('digestMinScore').value = d.min_score ?? 6;
         document.getElementById('digestMaxPerCategory').value = d.max_per_category ?? 5;
-        document.getElementById('digestModel').value = d.digest_model || '';
+        document.getElementById('digestAiProvider').value = d.ai_provider || 'claude';
         document.getElementById('digestFormat').value = d.format || 'article';
         document.getElementById('digestPrompt').value = d.ai_prompt || '';
         document.getElementById('digestKeepDays').value = d.keep_days ?? 30;
@@ -984,7 +1047,7 @@
           min_score: parseInt(document.getElementById('digestMinScore').value) || 6,
           max_per_category: parseInt(document.getElementById('digestMaxPerCategory').value) || 5,
           excluded_categories: _digestExcluded,
-          digest_model: document.getElementById('digestModel').value,
+          ai_provider: document.getElementById('digestAiProvider').value || 'claude',
           format: document.getElementById('digestFormat').value,
           ai_prompt: document.getElementById('digestPrompt').value.trim(),
           keep_days: parseInt(document.getElementById('digestKeepDays').value) || 30,
@@ -1202,6 +1265,7 @@
         document.getElementById('monitorIntervalSeconds').value = Number(data.interval_seconds || 600);
         document.getElementById('monitorFetchDepth').value = Number(data.fetch_depth || 3);
         document.getElementById('monitorMaxMessages').value = Number(data.max_messages || 5000);
+        document.getElementById('monitorAiProvider').value = data.ai_provider || 'claude';
         const promptEl = document.getElementById('monitorAiPrompt');
         if (document.activeElement !== promptEl) {
           promptEl.value = data.ai_prompt || '';
@@ -1226,6 +1290,7 @@
           fetch_depth: Number(document.getElementById('monitorFetchDepth').value || 3),
           max_messages: Number(document.getElementById('monitorMaxMessages').value || 5000),
           ai_prompt: document.getElementById('monitorAiPrompt').value,
+          ai_provider: document.getElementById('monitorAiProvider').value || 'claude',
         };
         const res = await authFetch(`${apiBase}/api/monitor/config`, {
           method: 'POST',

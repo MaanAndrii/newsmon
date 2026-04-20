@@ -34,6 +34,7 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.fetch_depth", str(payload.fetch_depth))
     repo.set_setting("monitor.max_messages", str(payload.max_messages))
     repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
+    repo.set_setting("monitor.ai_provider", payload.ai_provider)
     return _get_monitor_config()
 
 

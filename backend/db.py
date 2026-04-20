@@ -229,6 +229,10 @@ def init_db() -> None:
         _ensure_column(conn, "digests", "model_name", "TEXT NOT NULL DEFAULT ''")
         _ensure_column(conn, "digests", "tokens_in", "INTEGER NOT NULL DEFAULT 0")
         _ensure_column(conn, "digests", "tokens_out", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "integrations", "grok_api_key", "TEXT NULL")
+        _ensure_column(conn, "integrations", "grok_model", "TEXT NULL")
+        _ensure_column(conn, "integrations", "gemini_api_key", "TEXT NULL")
+        _ensure_column(conn, "integrations", "gemini_model", "TEXT NULL")
 
 
 def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, ddl: str) -> None:
@@ -652,7 +656,8 @@ class Repository:
         with get_connection() as conn:
             row = conn.execute(
                 """
-                SELECT claude_api_key, claude_model, telegram_api_id, telegram_api_hash,
+                SELECT claude_api_key, claude_model, grok_api_key, grok_model,
+                       gemini_api_key, gemini_model, telegram_api_id, telegram_api_hash,
                        telegram_bot_token, telegram_bot_chat_id, updated_at
                 FROM integrations WHERE id = 1
                 """
@@ -661,7 +666,8 @@ class Repository:
                 conn.execute("INSERT INTO integrations(id) VALUES (1)")
                 row = conn.execute(
                     """
-                    SELECT claude_api_key, claude_model, telegram_api_id, telegram_api_hash,
+                    SELECT claude_api_key, claude_model, grok_api_key, grok_model,
+                           gemini_api_key, gemini_model, telegram_api_id, telegram_api_hash,
                            telegram_bot_token, telegram_bot_chat_id, updated_at
                     FROM integrations WHERE id = 1
                     """
@@ -696,13 +702,18 @@ class Repository:
             conn.execute(
                 """
                 INSERT INTO integrations(
-                    id, claude_api_key, claude_model, telegram_api_id, telegram_api_hash,
+                    id, claude_api_key, claude_model, grok_api_key, grok_model,
+                    gemini_api_key, gemini_model, telegram_api_id, telegram_api_hash,
                     telegram_bot_token, telegram_bot_chat_id, updated_at
                 )
-                VALUES (1, ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(id) DO UPDATE SET
                     claude_api_key=excluded.claude_api_key,
                     claude_model=excluded.claude_model,
+                    grok_api_key=excluded.grok_api_key,
+                    grok_model=excluded.grok_model,
+                    gemini_api_key=excluded.gemini_api_key,
+                    gemini_model=excluded.gemini_model,
                     telegram_api_id=excluded.telegram_api_id,
                     telegram_api_hash=excluded.telegram_api_hash,
                     telegram_bot_token=excluded.telegram_bot_token,
@@ -712,6 +723,10 @@ class Repository:
                 (
                     payload.get("claude_api_key"),
                     payload.get("claude_model"),
+                    payload.get("grok_api_key"),
+                    payload.get("grok_model"),
+                    payload.get("gemini_api_key"),
+                    payload.get("gemini_model"),
                     payload.get("telegram_api_id"),
                     payload.get("telegram_api_hash"),
                     payload.get("telegram_bot_token"),
@@ -720,7 +735,8 @@ class Repository:
             )
             row = conn.execute(
                 """
-                SELECT claude_api_key, claude_model, telegram_api_id, telegram_api_hash,
+                SELECT claude_api_key, claude_model, grok_api_key, grok_model,
+                       gemini_api_key, gemini_model, telegram_api_id, telegram_api_hash,
                        telegram_bot_token, telegram_bot_chat_id, updated_at
                 FROM integrations WHERE id = 1
                 """

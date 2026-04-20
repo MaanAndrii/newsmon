@@ -13,6 +13,8 @@ router = APIRouter()
 
 SECRET_INTEGRATION_FIELDS = (
     "claude_api_key",
+    "grok_api_key",
+    "gemini_api_key",
     "telegram_api_hash",
     "telegram_bot_token",
 )
@@ -28,6 +30,8 @@ def _integrations_public_view(data: dict) -> dict:
     for key in PUBLIC_INTEGRATION_FIELDS:
         result[key] = (data.get(key) or "").strip()
     result["claude_model"] = _resolve_claude_model(data.get("claude_model"))
+    result["grok_model"] = (data.get("grok_model") or "").strip()
+    result["gemini_model"] = (data.get("gemini_model") or "").strip()
     return result
 
 
@@ -56,6 +60,8 @@ def save_integrations(payload: IntegrationsPayload) -> dict:
         )
         merged[key] = new_value or (existing.get(key) or "").strip()
     merged["claude_model"] = _resolve_claude_model(incoming.get("claude_model"))
+    merged["grok_model"] = (incoming.get("grok_model") or "").strip()
+    merged["gemini_model"] = (incoming.get("gemini_model") or "").strip()
     saved = repo.save_integrations(merged)
     return _integrations_public_view(saved)
 
