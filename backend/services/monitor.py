@@ -8,14 +8,14 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from config import (
-    DEFAULT_MAX_MESSAGES,
     DEFAULT_MONITOR_DEPTH,
-    MAX_MAX_MESSAGES,
+    DEFAULT_RETENTION_MONTHS,
     MAX_MONITOR_DEPTH,
     MAX_MONITOR_INTERVAL_SECONDS,
-    MIN_MAX_MESSAGES,
+    MAX_RETENTION_MONTHS,
     MIN_MONITOR_DEPTH,
     MIN_MONITOR_INTERVAL_SECONDS,
+    MIN_RETENTION_MONTHS,
     MONITOR_INTERVAL_SECONDS,
     _ai_counters,
     ai_processing_lock,
@@ -129,15 +129,17 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
     except ValueError:
         fetch_depth = DEFAULT_MONITOR_DEPTH
     fetch_depth = max(MIN_MONITOR_DEPTH, min(MAX_MONITOR_DEPTH, fetch_depth))
-    max_messages_raw = (
-        repo.get_setting("monitor.max_messages", str(DEFAULT_MAX_MESSAGES))
-        or str(DEFAULT_MAX_MESSAGES)
+    retention_raw = (
+        repo.get_setting("monitor.retention_months", str(DEFAULT_RETENTION_MONTHS))
+        or str(DEFAULT_RETENTION_MONTHS)
     )
     try:
-        max_messages = int(max_messages_raw)
+        retention_months = int(retention_raw)
     except ValueError:
-        max_messages = DEFAULT_MAX_MESSAGES
-    max_messages = max(MIN_MAX_MESSAGES, min(MAX_MAX_MESSAGES, max_messages))
+        retention_months = DEFAULT_RETENTION_MONTHS
+    retention_months = max(
+        MIN_RETENTION_MONTHS, min(MAX_RETENTION_MONTHS, retention_months)
+    )
     ai_prompt = (repo.get_setting("monitor.ai_prompt", "") or "").strip()
     dedup_enabled = (repo.get_setting("monitor.dedup_enabled", "1") or "1") == "1"
     ai_provider = (repo.get_setting("monitor.ai_provider", "claude") or "claude").strip()
@@ -146,7 +148,7 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
         "ai_enabled": ai_enabled,
         "interval_seconds": interval_seconds,
         "fetch_depth": fetch_depth,
-        "max_messages": max_messages,
+        "retention_months": retention_months,
         "ai_prompt": ai_prompt,
         "dedup_enabled": dedup_enabled,
         "ai_provider": ai_provider,
@@ -397,7 +399,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                         updated += src_updated
                         ingested += src_ingested
 
-                repo.enforce_max_messages(int(monitor_cfg["max_messages"]))
+                repo.enforce_retention_months(int(monitor_cfg["retention_months"]))
             finally:
                 await client.disconnect()
         except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:

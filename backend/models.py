@@ -5,14 +5,14 @@ from pydantic import BaseModel, Field
 from config import (
     DEFAULT_CLAUDE_MODEL,
     DEFAULT_MONITOR_DEPTH,
-    DEFAULT_MAX_MESSAGES,
+    DEFAULT_RETENTION_MONTHS,
     MIN_MONITOR_INTERVAL_SECONDS,
     MAX_MONITOR_INTERVAL_SECONDS,
     MONITOR_INTERVAL_SECONDS,
     MIN_MONITOR_DEPTH,
     MAX_MONITOR_DEPTH,
-    MIN_MAX_MESSAGES,
-    MAX_MAX_MESSAGES,
+    MIN_RETENTION_MONTHS,
+    MAX_RETENTION_MONTHS,
 )
 
 
@@ -80,10 +80,10 @@ class MonitorConfigPayload(BaseModel):
         ge=MIN_MONITOR_DEPTH,
         le=MAX_MONITOR_DEPTH,
     )
-    max_messages: int = Field(
-        default=DEFAULT_MAX_MESSAGES,
-        ge=MIN_MAX_MESSAGES,
-        le=MAX_MAX_MESSAGES,
+    retention_months: int = Field(
+        default=DEFAULT_RETENTION_MONTHS,
+        ge=MIN_RETENTION_MONTHS,
+        le=MAX_RETENTION_MONTHS,
     )
     ai_prompt: str | None = None
     dedup_enabled: bool = True

@@ -203,10 +203,13 @@
             </div>
             <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
               <div>
-                <p class="font-medium">Макс. повідомлень у БД</p>
-                <p class="text-xs text-slate-400">Зберігати від 500 до 10000 повідомлень. Старіші будуть видалятись автоматично.</p>
+                <p class="font-medium">Термін зберігання повідомлень</p>
+                <p class="text-xs text-slate-400">Скільки місяців зберігати повідомлення у БД. Старіші видаляються автоматично.</p>
               </div>
-              <input id="monitorMaxMessages" type="number" min="500" max="10000" step="100" class="w-28 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="5000" />
+              <div class="flex items-center gap-2">
+                <input id="monitorRetentionMonths" type="number" min="1" max="6" step="1" class="w-20 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="3" />
+                <span class="text-xs text-slate-500">міс.</span>
+              </div>
             </div>
             <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
               <div>
@@ -1325,7 +1328,7 @@
         document.getElementById('monitorDedupEnabled').checked = data.dedup_enabled !== false;
         document.getElementById('monitorIntervalSeconds').value = Number(data.interval_seconds || 600);
         document.getElementById('monitorFetchDepth').value = Number(data.fetch_depth || 3);
-        document.getElementById('monitorMaxMessages').value = Number(data.max_messages || 5000);
+        document.getElementById('monitorRetentionMonths').value = Number(data.retention_months || 3);
         document.getElementById('monitorAiProvider').value = data.ai_provider || 'claude';
         const promptEl = document.getElementById('monitorAiPrompt');
         if (document.activeElement !== promptEl) {
@@ -1364,7 +1367,7 @@
           dedup_enabled: document.getElementById('monitorDedupEnabled').checked,
           interval_seconds: Number(document.getElementById('monitorIntervalSeconds').value || 600),
           fetch_depth: Math.max(1, Math.min(10, Number(document.getElementById('monitorFetchDepth').value || 3))),
-          max_messages: Number(document.getElementById('monitorMaxMessages').value || 5000),
+          retention_months: Math.max(1, Math.min(6, Number(document.getElementById('monitorRetentionMonths').value || 3))),
           ai_prompt: document.getElementById('monitorAiPrompt').value,
           ai_provider: document.getElementById('monitorAiProvider').value || 'claude',
         };
@@ -1375,7 +1378,7 @@
         });
         const data = await parseApiBody(res);
         document.getElementById('monitorConfigMessage').textContent = res.ok
-          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, дедуп: ${data.dedup_enabled ? 'увімкнено' : 'вимкнено'}, інтервал: ${data.interval_seconds} сек.`
+          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, дедуп: ${data.dedup_enabled ? 'увімкнено' : 'вимкнено'}, інтервал: ${data.interval_seconds} сек., зберігання: ${data.retention_months} міс.`
           : (data.detail || 'Не вдалося зберегти налаштування моніторингу.');
       }
 

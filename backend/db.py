@@ -415,6 +415,24 @@ class Repository:
             conn.execute(f"DELETE FROM messages WHERE id IN ({placeholders})", ids)
         return excess
 
+    def enforce_retention_months(self, retention_months: int) -> int:
+        safe_months = max(1, min(6, int(retention_months)))
+        with get_connection() as conn:
+            old_rows = conn.execute(
+                """
+                SELECT id
+                FROM messages
+                WHERE datetime(published_at) < datetime('now', ?)
+                """,
+                (f"-{safe_months} months",),
+            ).fetchall()
+            ids = [int(r["id"]) for r in old_rows]
+            if not ids:
+                return 0
+            placeholders = ",".join("?" for _ in ids)
+            conn.execute(f"DELETE FROM messages WHERE id IN ({placeholders})", ids)
+        return len(ids)
+
     def upsert_message(
         self,
         source_id: int,
