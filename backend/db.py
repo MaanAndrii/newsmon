@@ -226,6 +226,9 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_messages_content_hash ON messages(content_hash)"
         )
+        _ensure_column(conn, "digests", "model_name", "TEXT NOT NULL DEFAULT ''")
+        _ensure_column(conn, "digests", "tokens_in", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "digests", "tokens_out", "INTEGER NOT NULL DEFAULT 0")
 
 
 def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, ddl: str) -> None:
@@ -255,7 +258,16 @@ class Repository:
             "m.text != ''",
         ]
         if not include_dedup:
-            where_parts.append("m.is_dedup = 0")
+            # Show dedup copies (is_dedup=1) + originals that have NO dedup copies.
+            # Hides originals that were already deduplicated to another channel's copy.
+            where_parts.append(
+                "(m.is_dedup = 1 OR NOT EXISTS ("
+                "SELECT 1 FROM messages md "
+                "WHERE md.content_hash = m.content_hash "
+                "AND md.is_dedup = 1 "
+                "AND m.content_hash IS NOT NULL "
+                "AND m.content_hash != ''))"
+            )
         params: list[Any] = []
         search_raw = (search_query or "").strip()
         category_raw = (category or "").strip()
@@ -315,7 +327,14 @@ class Repository:
                         "m.text != ''",
                     ]
                     if not include_dedup:
-                        fallback_where.append("m.is_dedup = 0")
+                        fallback_where.append(
+                            "(m.is_dedup = 1 OR NOT EXISTS ("
+                            "SELECT 1 FROM messages md "
+                            "WHERE md.content_hash = m.content_hash "
+                            "AND md.is_dedup = 1 "
+                            "AND m.content_hash IS NOT NULL "
+                            "AND m.content_hash != ''))"
+                        )
                     fallback_where.append("COALESCE(m.text, '') LIKE ?")
                     fallback_params.append(f"%{search_raw}%")
                     if category_raw:
@@ -1392,20 +1411,31 @@ class Repository:
         return result
 
     def save_digest(
-        self, digest_date: str, content: str, message_count: int, status: str
+        self,
+        digest_date: str,
+        content: str,
+        message_count: int,
+        status: str,
+        model_name: str = "",
+        tokens_in: int = 0,
+        tokens_out: int = 0,
     ) -> None:
         with get_connection() as conn:
             conn.execute(
                 """
-                INSERT INTO digests(digest_date, content, message_count, status, generated_at)
-                VALUES (?, ?, ?, ?, datetime('now'))
+                INSERT INTO digests(digest_date, content, message_count, status, generated_at,
+                                    model_name, tokens_in, tokens_out)
+                VALUES (?, ?, ?, ?, datetime('now'), ?, ?, ?)
                 ON CONFLICT(digest_date) DO UPDATE SET
                     content=excluded.content,
                     message_count=excluded.message_count,
                     status=excluded.status,
-                    generated_at=datetime('now')
+                    generated_at=datetime('now'),
+                    model_name=excluded.model_name,
+                    tokens_in=excluded.tokens_in,
+                    tokens_out=excluded.tokens_out
                 """,
-                (digest_date, content, message_count, status),
+                (digest_date, content, message_count, status, model_name, tokens_in, tokens_out),
             )
 
     def get_digest(self, digest_date: str) -> dict[str, Any] | None:
@@ -1419,7 +1449,8 @@ class Repository:
         safe_limit = max(1, min(int(limit), 30))
         with get_connection() as conn:
             rows = conn.execute(
-                "SELECT digest_date, status, message_count, generated_at "
+                "SELECT digest_date, status, message_count, generated_at, "
+                "model_name, tokens_in, tokens_out "
                 "FROM digests ORDER BY digest_date DESC LIMIT ?",
                 (safe_limit,),
             ).fetchall()
