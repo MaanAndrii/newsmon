@@ -1014,20 +1014,27 @@
           const statusCls = d.status === 'ok' ? 'text-emerald-400' : d.status === 'skipped' ? 'text-amber-400' : 'text-rose-400';
           const statusLabel = d.status === 'ok' ? 'OK' : d.status === 'skipped' ? 'Пропущено' : d.status;
           const genAt = d.generated_at ? formatLocalDateTime(d.generated_at) : '—';
+          const modelLabel = d.model_name ? `<span class="font-mono text-slate-400">${escapeHtml(d.model_name)}</span>` : '';
+          const tokensLabel = (d.tokens_in || d.tokens_out)
+            ? `<span class="text-slate-500">↑${d.tokens_in ?? 0} ↓${d.tokens_out ?? 0}</span>`
+            : '';
           const viewBtn = d.status === 'ok'
             ? `<button onclick="viewDigest('${escapeHtml(d.digest_date)}')" class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600">Переглянути</button>`
             : '';
-          return `<div class="flex items-center justify-between gap-3 py-2 border-t border-slate-800/60 text-xs">
-            <div class="flex items-center gap-3">
-              <span class="font-mono text-slate-300">${escapeHtml(d.digest_date)}</span>
-              <span class="${statusCls}">${escapeHtml(statusLabel)}</span>
-              <span class="text-slate-500">${d.message_count ?? 0} повідомлень</span>
+          return `<div class="py-2 border-t border-slate-800/60 text-xs space-y-1">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <span class="font-mono text-slate-300">${escapeHtml(d.digest_date)}</span>
+                <span class="${statusCls}">${escapeHtml(statusLabel)}</span>
+                <span class="text-slate-500">${d.message_count ?? 0} повідомлень</span>
+              </div>
+              <div class="flex items-center gap-2 text-slate-500">
+                <span>${escapeHtml(genAt)}</span>
+                ${viewBtn}
+                <button onclick="deleteDigest('${escapeHtml(d.digest_date)}')" class="text-xs px-2 py-1 rounded bg-rose-900/60 hover:bg-rose-800 text-rose-300">Видалити</button>
+              </div>
             </div>
-            <div class="flex items-center gap-2 text-slate-500">
-              <span>${escapeHtml(genAt)}</span>
-              ${viewBtn}
-              <button onclick="deleteDigest('${escapeHtml(d.digest_date)}')" class="text-xs px-2 py-1 rounded bg-rose-900/60 hover:bg-rose-800 text-rose-300">Видалити</button>
-            </div>
+            ${modelLabel || tokensLabel ? `<div class="flex items-center gap-3 pl-0.5">${modelLabel}${tokensLabel}</div>` : ''}
           </div>`;
         }).join('');
       }

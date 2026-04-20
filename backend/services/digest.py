@@ -49,7 +49,7 @@ def _call_claude_digest_sync(
     custom_prompt: str,
     format_style: str,
     date_label: str,
-) -> str:
+) -> tuple[str, int, int]:
     try:
         import anthropic
     except ImportError as exc:
@@ -76,11 +76,11 @@ def _call_claude_digest_sync(
         system=system_prompt,
         messages=[{"role": "user", "content": messages_text}],
     )
-    _record_claude_call(
-        int(getattr(response.usage, "input_tokens", 0)),
-        int(getattr(response.usage, "output_tokens", 0)),
-    )
-    return "".join(b.text for b in response.content if hasattr(b, "text")).strip()
+    tok_in = int(getattr(response.usage, "input_tokens", 0))
+    tok_out = int(getattr(response.usage, "output_tokens", 0))
+    _record_claude_call(tok_in, tok_out)
+    text = "".join(b.text for b in response.content if hasattr(b, "text")).strip()
+    return text, tok_in, tok_out
 
 
 async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
@@ -134,7 +134,7 @@ async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
 
     try:
         loop = asyncio.get_running_loop()
-        content = await loop.run_in_executor(
+        content, tok_in, tok_out = await loop.run_in_executor(
             None,
             _call_claude_digest_sync,
             api_key,
@@ -144,7 +144,7 @@ async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
             cfg["format"],
             date_label,
         )
-        repo.save_digest(date_str, content, len(messages), "ok")
+        repo.save_digest(date_str, content, len(messages), "ok", model, tok_in, tok_out)
         repo.cleanup_old_digests(cfg["keep_days"])
         broadcast_sse("digest_ready", {"date": date_str})
         return {
