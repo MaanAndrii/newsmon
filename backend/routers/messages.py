@@ -19,6 +19,7 @@ def list_messages(
     min_score: int | None = None,
     max_score: int | None = None,
     content_hash: str | None = None,
+    published_date: str | None = None,
 ) -> list[dict]:
     safe_limit = max(1, min(limit, 500))
     search_query = (q or "").strip() or None
@@ -28,6 +29,7 @@ def list_messages(
     min_score_filter = min_score if min_score is not None and 1 <= min_score <= 10 else None
     max_score_filter = max_score if max_score is not None and 1 <= max_score <= 10 else None
     content_hash_filter = (content_hash or "").strip() or None
+    published_date_filter = (published_date or "").strip() or None
     return repo.list_messages(
         limit=safe_limit,
         search_query=search_query,
@@ -38,6 +40,7 @@ def list_messages(
         max_score=max_score_filter,
         content_hash=content_hash_filter,
         include_dedup=bool(content_hash_filter),
+        published_date=published_date_filter,
     )
 
 
