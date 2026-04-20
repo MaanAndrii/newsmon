@@ -340,6 +340,21 @@ pip install -r requirements.txt
 - Перевір `GET /api/messages?limit=5`.
 - Перевір `journalctl -u newsmon -f`.
 
+### 4. `Пакет openai не встановлено` (Grok або Gemini API)
+
+Пакет `openai>=1.0` потрібен для роботи з Grok (xAI) та Gemini (Google) через
+OpenAI-сумісний API. Він вже включений у `requirements.txt`, але може бути
+відсутнім, якщо venv було створено до його додавання.
+
+```bash
+cd /home/maan/newsmon/backend
+source .venv/bin/activate
+pip install openai>=1.0
+# або перевстановити всі залежності:
+pip install -r requirements.txt
+sudo systemctl restart newsmon
+```
+
 ---
 
 ## 13) Telethon не аутентифікується (EOF / readonly) — команди порядково
