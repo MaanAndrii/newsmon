@@ -37,6 +37,7 @@ def list_messages(
         min_score=min_score_filter,
         max_score=max_score_filter,
         content_hash=content_hash_filter,
+        include_dedup=bool(content_hash_filter),
     )
 
 

@@ -38,6 +38,7 @@ def _get_digest_config() -> dict:
         "format": g("format", "article"),
         "ai_prompt": g("ai_prompt", ""),
         "keep_days": int(g("keep_days", "30")),
+        "digest_model": g("model", ""),
     }
 
 
@@ -127,7 +128,8 @@ async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
         lines.append(f"[{cat}, {score}, {source}] {text}")
     messages_text = "\n\n".join(lines)
 
-    model = _resolve_claude_model(integrations.get("claude_model"))
+    digest_model = cfg.get("digest_model", "").strip()
+    model = _resolve_claude_model(digest_model or integrations.get("claude_model"))
     date_label = target_date.strftime("%d.%m.%Y")
 
     try:
