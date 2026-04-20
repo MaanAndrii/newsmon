@@ -5,7 +5,7 @@ import json
 from datetime import date, datetime, timedelta, timezone
 
 from config import broadcast_sse, repo
-from services.claude import _record_claude_call, _resolve_claude_model
+from services.providers import get_provider
 
 try:
     from zoneinfo import ZoneInfo
@@ -38,57 +38,17 @@ def _get_digest_config() -> dict:
         "format": g("format", "article"),
         "ai_prompt": g("ai_prompt", ""),
         "keep_days": int(g("keep_days", "30")),
-        "digest_model": g("model", ""),
+        "ai_provider": g("ai_provider", "claude"),
     }
-
-
-def _call_claude_digest_sync(
-    api_key: str,
-    model: str,
-    messages_text: str,
-    custom_prompt: str,
-    format_style: str,
-    date_label: str,
-) -> tuple[str, int, int]:
-    try:
-        import anthropic
-    except ImportError as exc:
-        raise RuntimeError("Пакет anthropic не встановлено") from exc
-
-    fmt_map = {
-        "article": "у форматі журналістської статті з підзаголовками по темах (300–600 слів)",
-        "bullets": "у форматі маркованого списку, згрупованого по категоріях",
-        "summary": "у форматі короткого executive summary до 200 слів",
-    }
-    fmt_instruction = fmt_map.get(format_style, fmt_map["article"])
-
-    system_prompt = custom_prompt.strip() or (
-        f"Ти редактор новинного видання. На основі повідомлень з моніторингу "
-        f"напиши огляд подій за {date_label} {fmt_instruction} українською мовою. "
-        f"Виділи найважливіше, вкажи конкретні факти і цифри. "
-        f"Не вигадуй деталей, яких немає у вхідних даних."
-    )
-
-    client = anthropic.Anthropic(api_key=api_key, timeout=90.0)
-    response = client.messages.create(
-        model=model,
-        max_tokens=1500,
-        system=system_prompt,
-        messages=[{"role": "user", "content": messages_text}],
-    )
-    tok_in = int(getattr(response.usage, "input_tokens", 0))
-    tok_out = int(getattr(response.usage, "output_tokens", 0))
-    _record_claude_call(tok_in, tok_out)
-    text = "".join(b.text for b in response.content if hasattr(b, "text")).strip()
-    return text, tok_in, tok_out
 
 
 async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
     cfg = _get_digest_config()
     integrations = repo.get_integrations()
-    api_key = (integrations.get("claude_api_key") or "").strip()
-    if not api_key:
-        return {"ok": False, "error": "Claude API key не налаштовано"}
+
+    provider = get_provider(cfg["ai_provider"], integrations)
+    if not provider.has_credentials():
+        return {"ok": False, "error": f"API ключ або модель для провайдера '{cfg['ai_provider']}' не налаштовані"}
 
     if target_date is None:
         target_date = _kyiv_yesterday()
@@ -128,30 +88,27 @@ async def _generate_daily_digest(target_date: date | str | None = None) -> dict:
         lines.append(f"[{cat}, {score}, {source}] {text}")
     messages_text = "\n\n".join(lines)
 
-    digest_model = cfg.get("digest_model", "").strip()
-    model = _resolve_claude_model(digest_model or integrations.get("claude_model"))
     date_label = target_date.strftime("%d.%m.%Y")
+    model_name = getattr(provider, "model", cfg["ai_provider"])
 
     try:
         loop = asyncio.get_running_loop()
-        content, tok_in, tok_out = await loop.run_in_executor(
+        result = await loop.run_in_executor(
             None,
-            _call_claude_digest_sync,
-            api_key,
-            model,
+            provider.generate_digest,
             messages_text,
             cfg["ai_prompt"],
             cfg["format"],
             date_label,
         )
-        repo.save_digest(date_str, content, len(messages), "ok", model, tok_in, tok_out)
+        repo.save_digest(date_str, result.content, len(messages), "ok", model_name, result.tokens_in, result.tokens_out)
         repo.cleanup_old_digests(cfg["keep_days"])
         broadcast_sse("digest_ready", {"date": date_str})
         return {
             "ok": True,
             "date": date_str,
             "message_count": len(messages),
-            "content": content,
+            "content": result.content,
         }
     except Exception as exc:
         err = str(exc)

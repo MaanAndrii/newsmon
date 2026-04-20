@@ -146,6 +146,46 @@ def _call_claude_score_sync(
     return score, category, matched_keyword
 
 
+def _call_claude_digest_sync(
+    api_key: str,
+    model: str,
+    messages_text: str,
+    custom_prompt: str,
+    format_style: str,
+    date_label: str,
+) -> tuple[str, int, int]:
+    try:
+        import anthropic
+    except ImportError as exc:
+        raise RuntimeError("Пакет anthropic не встановлено") from exc
+
+    fmt_map = {
+        "article": "у форматі журналістської статті з підзаголовками по темах (300–600 слів)",
+        "bullets": "у форматі маркованого списку, згрупованого по категоріях",
+        "summary": "у форматі короткого executive summary до 200 слів",
+    }
+    fmt_instruction = fmt_map.get(format_style, fmt_map["article"])
+    system_prompt = custom_prompt.strip() or (
+        f"Ти редактор новинного видання. На основі повідомлень з моніторингу "
+        f"напиши огляд подій за {date_label} {fmt_instruction} українською мовою. "
+        f"Виділи найважливіше, вкажи конкретні факти і цифри. "
+        f"Не вигадуй деталей, яких немає у вхідних даних."
+    )
+
+    client = anthropic.Anthropic(api_key=api_key, timeout=90.0)
+    response = client.messages.create(
+        model=model,
+        max_tokens=1500,
+        system=system_prompt,
+        messages=[{"role": "user", "content": messages_text}],
+    )
+    tok_in = int(getattr(response.usage, "input_tokens", 0))
+    tok_out = int(getattr(response.usage, "output_tokens", 0))
+    _record_claude_call(tok_in, tok_out)
+    text = "".join(b.text for b in response.content if hasattr(b, "text")).strip()
+    return text, tok_in, tok_out
+
+
 def _call_claude_keyword_match_sync(
     api_key: str,
     model: str,

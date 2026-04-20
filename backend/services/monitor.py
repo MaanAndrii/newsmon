@@ -27,11 +27,10 @@ from config import (
     telethon_client_lock,
 )
 from services.alerts import _process_alerts_for_message
-from services.claude import (
-    _call_claude_score_sync,
-    _prepare_ai_text,
-    _resolve_claude_model,
-)
+from services.claude import _prepare_ai_text
+from services.providers import get_provider
+from services.providers.claude import ClaudeProvider
+from services.providers.openai_compat import OpenAICompatProvider
 from services.telegram import _extract_telegram_username, _record_telegram_call
 from services.telethon import _get_saved_string_session, _telethon_client_init_data, _telethon_session_base
 
@@ -141,6 +140,7 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
     max_messages = max(MIN_MAX_MESSAGES, min(MAX_MAX_MESSAGES, max_messages))
     ai_prompt = (repo.get_setting("monitor.ai_prompt", "") or "").strip()
     dedup_enabled = (repo.get_setting("monitor.dedup_enabled", "1") or "1") == "1"
+    ai_provider = (repo.get_setting("monitor.ai_provider", "claude") or "claude").strip()
     return {
         "collect_enabled": collect_enabled,
         "ai_enabled": ai_enabled,
@@ -149,6 +149,7 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
         "max_messages": max_messages,
         "ai_prompt": ai_prompt,
         "dedup_enabled": dedup_enabled,
+        "ai_provider": ai_provider,
     }
 
 
@@ -411,8 +412,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
 async def _process_one_ai_item(
     item: dict,
     semaphore: asyncio.Semaphore,
-    api_key: str,
-    model: str,
+    provider: ClaudeProvider | OpenAICompatProvider,
     categories: list[str],
     ai_prompt: str,
     keyword_patterns: list[str],
@@ -422,8 +422,6 @@ async def _process_one_ai_item(
         message_id = int(item.get("message_id") or 0)
         text = (item.get("text") or "").strip()
         if message_id <= 0 or not text:
-            # Mark as done without a score so it appears on the dashboard
-            # and is never retried.
             repo.mark_message_no_ai(message_id, _get_default_category_name())
             _log_event("ai_flush", f"msg#{message_id}: порожній текст → позначено без оцінки")
             return
@@ -445,17 +443,15 @@ async def _process_one_ai_item(
 
         try:
             loop = asyncio.get_running_loop()
-            # Pass keyword_patterns so scoring and keyword matching happen in one API call.
-            score, category, matched_keyword = await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 None,
-                _call_claude_score_sync,
-                api_key,
-                model,
+                provider.score_message,
                 _prepare_ai_text(text),
                 categories,
                 ai_prompt,
                 keyword_patterns or None,
             )
+            score, category, matched_keyword = result.score, result.category, result.matched_keyword
             if category is None:
                 category = _get_default_category_name()
             repo.mark_ai_result(message_id, score, category)
@@ -504,19 +500,19 @@ async def _process_ai_queue(limit: int = 50) -> int:
         return 0
 
     integrations = repo.get_integrations()
-    api_key = (integrations.get("claude_api_key") or "").strip()
+    ai_provider_name = str(monitor_cfg.get("ai_provider") or "claude")
+    provider = get_provider(ai_provider_name, integrations)
 
-    if not api_key:
+    if not provider.has_credentials():
         flushed = repo.flush_ai_queue_no_ai(_get_default_category_name())
         if flushed:
             _log_event(
                 "ai_flush",
-                f"Немає Claude API ключа: {flushed} повідомлень позначено без оцінки",
+                f"Немає API ключа ({ai_provider_name}): {flushed} повідомлень позначено без оцінки",
                 flushed=flushed,
             )
         return 0
 
-    model = _resolve_claude_model(integrations.get("claude_model"))
     categories = [
         c.get("name", "").strip() for c in repo.list_categories() if c.get("name")
     ]
@@ -560,7 +556,7 @@ async def _process_ai_queue(limit: int = 50) -> int:
         await asyncio.gather(
             *[
                 _process_one_ai_item(
-                    item, semaphore, api_key, model, categories, ai_prompt, keyword_patterns,
+                    item, semaphore, provider, categories, ai_prompt, keyword_patterns,
                     dedup_batch_enabled,
                 )
                 for item in primary_items
@@ -588,7 +584,7 @@ async def _process_ai_queue(limit: int = 50) -> int:
             else:
                 # Fallback: original wasn't scored (e.g. AI error) — score normally.
                 await _process_one_ai_item(
-                    item, semaphore, api_key, model, categories, ai_prompt, keyword_patterns,
+                    item, semaphore, provider, categories, ai_prompt, keyword_patterns,
                     dedup_batch_enabled,
                 )
 
