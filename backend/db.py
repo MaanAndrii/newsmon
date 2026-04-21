@@ -1306,57 +1306,102 @@ class Repository:
             ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_stats_score_distribution(self) -> list[dict[str, Any]]:
+    def get_stats_score_distribution(self, days: int | None = None) -> list[dict[str, Any]]:
         with get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT ai_score AS score, COUNT(*) AS count
-                FROM messages
-                WHERE ai_status = 'done' AND ai_score IS NOT NULL
-                GROUP BY ai_score
-                ORDER BY ai_score ASC
-                """
-            ).fetchall()
+            if days is not None:
+                safe = max(1, min(int(days), 365))
+                rows = conn.execute(
+                    """
+                    SELECT ai_score AS score, COUNT(*) AS count
+                    FROM messages
+                    WHERE ai_status = 'done' AND ai_score IS NOT NULL
+                      AND published_at >= datetime('now', ? || ' days')
+                    GROUP BY ai_score ORDER BY ai_score ASC
+                    """,
+                    (f"-{safe}",),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT ai_score AS score, COUNT(*) AS count
+                    FROM messages
+                    WHERE ai_status = 'done' AND ai_score IS NOT NULL
+                    GROUP BY ai_score ORDER BY ai_score ASC
+                    """
+                ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_stats_categories(self) -> list[dict[str, Any]]:
+    def get_stats_categories(self, days: int | None = None) -> list[dict[str, Any]]:
         with get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT ai_category AS category, COUNT(*) AS count
-                FROM messages
-                WHERE ai_status = 'done'
-                  AND ai_category IS NOT NULL
-                  AND TRIM(ai_category) != ''
-                GROUP BY ai_category
-                ORDER BY count DESC
-                LIMIT 15
-                """
-            ).fetchall()
+            if days is not None:
+                safe = max(1, min(int(days), 365))
+                rows = conn.execute(
+                    """
+                    SELECT ai_category AS category, COUNT(*) AS count
+                    FROM messages
+                    WHERE ai_status = 'done'
+                      AND ai_category IS NOT NULL
+                      AND TRIM(ai_category) != ''
+                      AND published_at >= datetime('now', ? || ' days')
+                    GROUP BY ai_category ORDER BY count DESC LIMIT 15
+                    """,
+                    (f"-{safe}",),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT ai_category AS category, COUNT(*) AS count
+                    FROM messages
+                    WHERE ai_status = 'done'
+                      AND ai_category IS NOT NULL
+                      AND TRIM(ai_category) != ''
+                    GROUP BY ai_category ORDER BY count DESC LIMIT 15
+                    """
+                ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_stats_sources(self, limit: int = 10) -> list[dict[str, Any]]:
+    def get_stats_sources(self, limit: int = 10, days: int | None = None) -> list[dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 50))
         with get_connection() as conn:
-            rows = conn.execute(
-                """
-                SELECT s.name, COUNT(m.id) AS count
-                FROM messages m
-                JOIN sources s ON s.id = m.source_id
-                WHERE m.ai_status = 'done'
-                GROUP BY m.source_id
-                ORDER BY count DESC
-                LIMIT ?
-                """,
-                (safe_limit,),
-            ).fetchall()
+            if days is not None:
+                safe = max(1, min(int(days), 365))
+                rows = conn.execute(
+                    """
+                    SELECT s.name, COUNT(m.id) AS count
+                    FROM messages m
+                    JOIN sources s ON s.id = m.source_id
+                    WHERE m.ai_status = 'done'
+                      AND m.published_at >= datetime('now', ? || ' days')
+                    GROUP BY m.source_id ORDER BY count DESC LIMIT ?
+                    """,
+                    (f"-{safe}", safe_limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT s.name, COUNT(m.id) AS count
+                    FROM messages m
+                    JOIN sources s ON s.id = m.source_id
+                    WHERE m.ai_status = 'done'
+                    GROUP BY m.source_id ORDER BY count DESC LIMIT ?
+                    """,
+                    (safe_limit,),
+                ).fetchall()
         return [dict(r) for r in rows]
 
-    def _iter_published_local(self) -> list[datetime]:
+    def _iter_published_local(self, days: int | None = None) -> list[datetime]:
         with get_connection() as conn:
-            rows = conn.execute(
-                "SELECT published_at FROM messages WHERE published_at IS NOT NULL"
-            ).fetchall()
+            if days is not None:
+                safe = max(1, min(int(days), 365))
+                rows = conn.execute(
+                    "SELECT published_at FROM messages WHERE published_at IS NOT NULL"
+                    " AND published_at >= datetime('now', ? || ' days')",
+                    (f"-{safe}",),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT published_at FROM messages WHERE published_at IS NOT NULL"
+                ).fetchall()
         out: list[datetime] = []
         for r in rows:
             raw = r["published_at"]
@@ -1371,19 +1416,34 @@ class Repository:
             out.append(dt.astimezone(_KYIV_TZ))
         return out
 
-    def get_stats_hours(self) -> list[dict[str, Any]]:
-        counts: dict[int, int] = {}
-        for dt in self._iter_published_local():
-            counts[dt.hour] = counts.get(dt.hour, 0) + 1
-        return [{"hour": h, "count": counts[h]} for h in sorted(counts)]
+    def get_stats_hours(self, days: int | None = None) -> list[dict[str, Any]]:
+        hour_totals: dict[int, int] = {}
+        all_dates: set = set()
+        for dt in self._iter_published_local(days):
+            hour_totals[dt.hour] = hour_totals.get(dt.hour, 0) + 1
+            all_dates.add(dt.date())
+        n_days = len(all_dates) or 1
+        return [
+            {"hour": h, "count": round(total / n_days, 1), "total": total}
+            for h, total in sorted(hour_totals.items())
+        ]
 
-    def get_stats_weekday(self) -> list[dict[str, Any]]:
-        # weekday(): Mon=0..Sun=6
-        counts: dict[int, int] = {}
-        for dt in self._iter_published_local():
-            counts[dt.weekday()] = counts.get(dt.weekday(), 0) + 1
+    def get_stats_weekday(self, days: int | None = None) -> list[dict[str, Any]]:
+        # weekday(): Mon=0..Sun=6 — return average per weekday occurrence, not cumulative
+        day_totals: dict[int, int] = {}
+        day_dates: dict[int, set] = {}
+        for dt in self._iter_published_local(days):
+            wd = dt.weekday()
+            day_totals[wd] = day_totals.get(wd, 0) + 1
+            day_dates.setdefault(wd, set()).add(dt.date())
         names = {0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Нд"}
-        return [{"weekday": i, "name": names[i], "count": counts.get(i, 0)} for i in range(7)]
+        result = []
+        for i in range(7):
+            total = day_totals.get(i, 0)
+            n = len(day_dates.get(i, set()))
+            avg = round(total / n, 1) if n > 0 else 0
+            result.append({"weekday": i, "name": names[i], "count": avg, "total": total, "days": n})
+        return result
 
     def get_stats_alerts(self) -> list[dict[str, Any]]:
         with get_connection() as conn:
