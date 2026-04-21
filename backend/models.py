@@ -48,10 +48,16 @@ class KeywordCreate(BaseModel):
 class IntegrationsPayload(BaseModel):
     claude_api_key: str | None = None
     claude_model: str | None = DEFAULT_CLAUDE_MODEL
+    claude_model_2: str | None = None
+    claude_model_3: str | None = None
     grok_api_key: str | None = None
     grok_model: str | None = None
+    grok_model_2: str | None = None
+    grok_model_3: str | None = None
     gemini_api_key: str | None = None
     gemini_model: str | None = None
+    gemini_model_2: str | None = None
+    gemini_model_3: str | None = None
     telegram_api_id: str | None = None
     telegram_api_hash: str | None = None
     telegram_bot_token: str | None = None
@@ -88,6 +94,7 @@ class MonitorConfigPayload(BaseModel):
     ai_prompt: str | None = None
     dedup_enabled: bool = True
     ai_provider: str = Field(default="claude", pattern=r"^(claude|grok|gemini)$")
+    ai_model: str | None = None
 
 
 class ClearMessagesPayload(BaseModel):
@@ -129,6 +136,7 @@ class DigestConfigPayload(BaseModel):
     ai_prompt: str = Field(default="", max_length=2000)
     keep_days: int = Field(default=30, ge=1, le=365)
     ai_provider: str = Field(default="claude", pattern=r"^(claude|grok|gemini)$")
+    ai_model: str | None = None
     mode: str = Field(default="previous_day", pattern=r"^(previous_24h|previous_day)$")
 
 

@@ -8,7 +8,7 @@ from config import claude_call_events, event_log, monitor_run_history, monitor_s
 from models import DashboardHeartbeatPayload, MonitorConfigPayload, PromptTokensPayload
 from security import _rate_limit_hit, require_admin
 from services.claude import _resolve_claude_model
-from services.monitor import _get_monitor_config, _process_ai_queue, _sync_sources_last_messages
+from services.monitor import _get_monitor_config, _process_ai_queue, _seconds_until_next_tick, _sync_sources_last_messages
 from utils import _resolve_client_ip
 
 router = APIRouter()
@@ -17,7 +17,23 @@ router = APIRouter()
 @router.get("/api/monitor/status")
 def get_monitor_status() -> dict:
     public = {k: v for k, v in monitor_status.items() if k != "last_error"}
-    return {**public, **_get_monitor_config()}
+    cfg = _get_monitor_config()
+    try:
+        interval = int(cfg["interval_seconds"])
+        next_tick_seconds = round(_seconds_until_next_tick(interval))
+    except Exception:
+        next_tick_seconds = 0
+    try:
+        ai_stats = repo.get_ai_queue_stats()
+    except Exception:
+        ai_stats = {}
+    return {
+        **public,
+        **cfg,
+        "next_tick_seconds": next_tick_seconds,
+        "ai_queue_pending": ai_stats.get("pending", 0),
+        "ai_queue_processing": ai_stats.get("processing", 0),
+    }
 
 
 @router.get("/api/monitor/config", dependencies=[Depends(require_admin)])
@@ -35,6 +51,7 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.retention_months", str(payload.retention_months))
     repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
     repo.set_setting("monitor.ai_provider", payload.ai_provider)
+    repo.set_setting("monitor.ai_model", (payload.ai_model or "").strip())
     return _get_monitor_config()
 
 

@@ -29,6 +29,7 @@ def save_digest_config(payload: DigestConfigPayload) -> dict:
     repo.set_setting("digest.ai_prompt", (payload.ai_prompt or "").strip())
     repo.set_setting("digest.keep_days", str(payload.keep_days))
     repo.set_setting("digest.ai_provider", payload.ai_provider)
+    repo.set_setting("digest.ai_model", (payload.ai_model or "").strip())
     repo.set_setting("digest.mode", payload.mode)
     return _get_digest_config()
 

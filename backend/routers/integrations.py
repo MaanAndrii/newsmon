@@ -20,6 +20,12 @@ SECRET_INTEGRATION_FIELDS = (
 )
 PUBLIC_INTEGRATION_FIELDS = ("telegram_api_id",)
 
+_EXTRA_MODEL_FIELDS = (
+    "claude_model_2", "claude_model_3",
+    "grok_model_2", "grok_model_3",
+    "gemini_model_2", "gemini_model_3",
+)
+
 
 def _integrations_public_view(data: dict) -> dict:
     result: dict[str, object] = {}
@@ -32,6 +38,8 @@ def _integrations_public_view(data: dict) -> dict:
     result["claude_model"] = _resolve_claude_model(data.get("claude_model"))
     result["grok_model"] = (data.get("grok_model") or "").strip()
     result["gemini_model"] = (data.get("gemini_model") or "").strip()
+    for key in _EXTRA_MODEL_FIELDS:
+        result[key] = (data.get(key) or "").strip()
     return result
 
 
@@ -62,6 +70,8 @@ def save_integrations(payload: IntegrationsPayload) -> dict:
     merged["claude_model"] = _resolve_claude_model(incoming.get("claude_model"))
     merged["grok_model"] = (incoming.get("grok_model") or "").strip()
     merged["gemini_model"] = (incoming.get("gemini_model") or "").strip()
+    for key in _EXTRA_MODEL_FIELDS:
+        merged[key] = (incoming.get(key) or "").strip()
     saved = repo.save_integrations(merged)
     return _integrations_public_view(saved)
 
@@ -80,27 +90,70 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
     claude_model = _resolve_claude_model(
         data.get("claude_model") or existing.get("claude_model")
     )
+    grok_key = _pick("grok_api_key")
+    grok_model = (data.get("grok_model") or existing.get("grok_model") or "").strip()
+    gemini_key = _pick("gemini_api_key")
+    gemini_model = (data.get("gemini_model") or existing.get("gemini_model") or "").strip()
     telegram_api_id = _pick("telegram_api_id")
     telegram_api_hash = _pick("telegram_api_hash")
     telegram_bot_token = _pick("telegram_bot_token")
 
-    claude_format = bool(
+    # --- Claude ---
+    claude_key_format = bool(
         re.fullmatch(r"sk-ant-(?:api03-)?[A-Za-z0-9_-]{20,}", claude_key)
     )
+    claude_model_ok = bool(
+        re.fullmatch(r"claude-[a-z0-9]+(?:-[a-z0-9]+)+", claude_model or "")
+    )
+    claude_ok = claude_key_format and claude_model_ok
+    claude_reason = (
+        None if claude_ok
+        else "Очікується ключ формату sk-ant-... і Model ID формату claude-*"
+    )
+
+    # --- Grok ---
+    grok_key_present = bool(grok_key)
+    grok_model_present = bool(grok_model)
+    if not grok_key_present:
+        grok_ok = None
+        grok_reason = "API ключ Grok не налаштовано"
+    elif not grok_model_present:
+        grok_ok = False
+        grok_reason = "Model ID Grok не вказано"
+    else:
+        grok_ok = True
+        grok_reason = f"Ключ присутній, модель: {grok_model}"
+
+    # --- Gemini ---
+    gemini_key_present = bool(gemini_key)
+    gemini_model_present = bool(gemini_model)
+    if not gemini_key_present:
+        gemini_ok = None
+        gemini_reason = "API ключ Gemini не налаштовано"
+    elif not gemini_model_present:
+        gemini_ok = False
+        gemini_reason = "Model ID Gemini не вказано"
+    else:
+        gemini_ok = True
+        gemini_reason = f"Ключ присутній, модель: {gemini_model}"
+
+    # Extra models format check
+    extra_model_issues: list[str] = []
+    for field, prefix, pattern in [
+        ("claude_model_2", "claude_model_2", r"claude-[a-z0-9]+(?:-[a-z0-9]+)+"),
+        ("claude_model_3", "claude_model_3", r"claude-[a-z0-9]+(?:-[a-z0-9]+)+"),
+    ]:
+        val = _pick(field).strip()
+        if val and not re.fullmatch(pattern, val):
+            extra_model_issues.append(f"{field}: невірний формат")
+
+    # --- Telegram ---
     telegram_user_format = bool(
         re.fullmatch(r"\d{5,12}", telegram_api_id)
         and re.fullmatch(r"[a-fA-F0-9]{32}", telegram_api_hash)
     )
     telegram_bot_format = bool(
         re.fullmatch(r"\d{6,12}:[A-Za-z0-9_-]{30,}", telegram_bot_token)
-    )
-    claude_model_ok = bool(
-        re.fullmatch(r"claude-[a-z0-9]+(?:-[a-z0-9]+)+", claude_model or "")
-    )
-    claude_ok = claude_format and claude_model_ok
-    claude_reason = (
-        None if claude_ok
-        else "Очікується ключ формату sk-ant-... і Model ID формату claude-*"
     )
     telegram_user_reason = (
         "API ID/Hash коректні. Фактична перевірка виконується через Telethon авторизацію."
@@ -111,11 +164,29 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
     telegram_bot_reason = (
         None if telegram_bot_ok else "Bot token не відповідає формату Telegram"
     )
+
+    overall_ok = (
+        claude_ok
+        and telegram_user_format
+        and telegram_bot_ok
+        and not extra_model_issues
+    )
+
     return {
         "claude": {
             "ok": claude_ok,
             "reason": claude_reason,
             "model": claude_model,
+        },
+        "grok": {
+            "ok": grok_ok,
+            "reason": grok_reason,
+            "model": grok_model,
+        },
+        "gemini": {
+            "ok": gemini_ok,
+            "reason": gemini_reason,
+            "model": gemini_model,
         },
         "telegram_user_api": {
             "ok": telegram_user_format,
@@ -131,5 +202,6 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
             "ok": telegram_bot_ok,
             "reason": telegram_bot_reason,
         },
-        "overall_ok": claude_ok and telegram_user_format and telegram_bot_ok,
+        "extra_model_issues": extra_model_issues,
+        "overall_ok": overall_ok,
     }

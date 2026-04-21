@@ -41,7 +41,7 @@
       <section class="mb-5 p-4 rounded-xl bg-slate-900 border border-slate-800">
         <div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
           <h2 class="font-semibold text-lg">Статус системи</h2>
-          <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs w-full md:w-auto">
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs w-full md:w-auto">
             <button id="statusChannelsCard" class="px-3 py-2 rounded bg-sky-700/60 text-left hover:bg-sky-600/70 transition" onclick="openSystemStatusModal('channels')">
               <div class="font-semibold">Канали</div>
               <div id="statusChannels">0/0</div>
@@ -57,6 +57,13 @@
             <button id="statusNowTimeCard" class="px-3 py-2 rounded bg-indigo-700/60 text-left hover:bg-indigo-600/70 transition" onclick="openSystemStatusModal('clock')">
               <div class="font-semibold">До оновлення</div>
               <div id="statusPollTimer">--:--</div>
+            </button>
+            <button id="statusAiCard" class="hidden px-3 py-2 rounded bg-amber-700/70 text-left transition col-span-2 md:col-span-1" onclick="openSystemStatusModal('ai')">
+              <div class="font-semibold flex items-center gap-1">
+                <span class="inline-block w-2 h-2 rounded-full bg-amber-300 animate-pulse"></span>
+                AI обробка
+              </div>
+              <div id="statusAiQueue">—</div>
             </button>
           </div>
         </div>
@@ -316,7 +323,7 @@
       const showMoreBtn = document.getElementById('showMoreBtn');
       const resetFiltersBtn = document.getElementById('resetFiltersBtn');
       const scrollTopBtn = document.getElementById('scrollTopBtn');
-      const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true, prevState: '' };
+      const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true, prevState: '', nextTickSeconds: null, nextTickSetAt: null, aiQueuePending: 0, aiQueueProcessing: 0 };
       const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '', maxScore: '', contentHash: '', date: '' };
       const filterOptions = { categories: [], sources: [], keywords: [] };
       let pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
@@ -762,15 +769,38 @@
 
       function updatePollCountdown() {
         const timerEl = document.getElementById('statusPollTimer');
-        if (!statusCache.collectEnabled || !statusCache.lastRunAt) {
+        const aiCard = document.getElementById('statusAiCard');
+        const aiQueue = document.getElementById('statusAiQueue');
+
+        // AI processing card
+        const aiActive = (statusCache.aiQueuePending + statusCache.aiQueueProcessing) > 0;
+        if (aiActive) {
+          aiCard.classList.remove('hidden');
+          aiQueue.textContent = `Черга: ${statusCache.aiQueuePending + statusCache.aiQueueProcessing}`;
+        } else {
+          aiCard.classList.add('hidden');
+        }
+
+        if (!statusCache.collectEnabled) {
           timerEl.textContent = '--:--';
           return;
         }
-        const next = new Date(statusCache.lastRunAt.getTime() + statusCache.intervalSeconds * 1000);
-        const diff = Math.max(0, Math.floor((next.getTime() - Date.now()) / 1000));
-        const mm = String(Math.floor(diff / 60)).padStart(2, '0');
-        const ss = String(diff % 60).padStart(2, '0');
-        timerEl.textContent = `${mm}:${ss}`;
+        // Use server-provided next tick countdown (set at fetch time, count down locally)
+        if (statusCache.nextTickSeconds !== null && statusCache.nextTickSetAt !== null) {
+          const elapsed = Math.floor((Date.now() - statusCache.nextTickSetAt) / 1000);
+          const remaining = Math.max(0, statusCache.nextTickSeconds - elapsed);
+          const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
+          const ss = String(remaining % 60).padStart(2, '0');
+          timerEl.textContent = `${mm}:${ss}`;
+        } else if (statusCache.lastRunAt) {
+          const next = new Date(statusCache.lastRunAt.getTime() + statusCache.intervalSeconds * 1000);
+          const diff = Math.max(0, Math.floor((next.getTime() - Date.now()) / 1000));
+          const mm = String(Math.floor(diff / 60)).padStart(2, '0');
+          const ss = String(diff % 60).padStart(2, '0');
+          timerEl.textContent = `${mm}:${ss}`;
+        } else {
+          timerEl.textContent = '--:--';
+        }
       }
 
       function updateCurrentTime() {
@@ -791,28 +821,30 @@
           const aiEnabled = Boolean(monitor?.ai_enabled);
           const collectEnabled = Boolean(monitor?.collect_enabled);
           const ingested = monitor?.ingested_messages || 0;
-          const prevState = statusCache.prevState;
           statusCache.prevState = monitorState;
           statusCache.collectEnabled = collectEnabled;
           statusCache.intervalSeconds = Number(monitor?.interval_seconds || 600);
-          // Reset countdown to now when cycle just completed (running → idle/done)
-          if (prevState === 'running' && monitorState !== 'running') {
-            statusCache.lastRunAt = new Date();
-          } else {
-            statusCache.lastRunAt = monitor?.last_run_at ? new Date((monitor.last_run_at || '').replace(' ', 'T') + 'Z') : null;
+          statusCache.lastRunAt = monitor?.last_run_at ? new Date((monitor.last_run_at || '').replace(' ', 'T') + 'Z') : null;
+          // Use server-provided next_tick_seconds for accurate countdown
+          if (typeof monitor?.next_tick_seconds === 'number' && monitor.next_tick_seconds > 0) {
+            statusCache.nextTickSeconds = monitor.next_tick_seconds;
+            statusCache.nextTickSetAt = Date.now();
           }
+          // AI queue stats
+          statusCache.aiQueuePending = Number(monitor?.ai_queue_pending || 0);
+          statusCache.aiQueueProcessing = Number(monitor?.ai_queue_processing || 0);
+          const aiQueueTotal = statusCache.aiQueuePending + statusCache.aiQueueProcessing;
           statusCache.telegram = `Стан: ${monitorState}. Помилка: ${monitor?.last_error || 'немає'}`;
-          statusCache.ai = `AI: ${aiEnabled ? 'увімкнено' : 'вимкнено'}. Ingested: ${ingested}`;
+          statusCache.ai = `AI: ${aiEnabled ? 'увімкнено' : 'вимкнено'}. Ingested: ${ingested}. Черга AI: ${aiQueueTotal}`;
           statusCache.channels = `Активних ${activeSources}/${totalSources}, оновлено ${monitor?.updated_sources || 0}`;
-          statusCache.clock = `Інтервал: ${statusCache.intervalSeconds} сек. Збір: ${collectEnabled ? 'увімкнено' : 'вимкнено'}`;
+          statusCache.clock = `Інтервал: ${statusCache.intervalSeconds} сек. До наступного збору: ${monitor?.next_tick_seconds ?? '?'} сек. Збір: ${collectEnabled ? 'увімкнено' : 'вимкнено'}`;
           updateCurrentTime();
           statusCache.updatedAt = `Оновлено: ${new Date().toLocaleString('uk-UA')}`;
           if (monitorState === 'running') {
-            document.getElementById('statusChannels').textContent = `Обробка... (↓${ingested})`;
+            document.getElementById('statusChannels').textContent = `Збір... (↓${ingested})`;
           } else {
             document.getElementById('statusChannels').textContent = `${activeSources}/${totalSources}`;
           }
-          document.getElementById('statusPollTimer').textContent = collectEnabled ? document.getElementById('statusPollTimer').textContent : '--:--';
           paintStatusCard('statusChannelsCard', activeSources > 0 ? true : null);
           paintStatusCard('statusClockCard', collectEnabled ? true : null);
           paintStatusCard('statusNowTimeCard', true);
@@ -831,7 +863,7 @@
       }
 
       function openSystemStatusModal(type) {
-        const titles = { channels: 'Стан каналів', clock: 'Таймер опитування', now: 'Актуальний час' };
+        const titles = { channels: 'Стан каналів', clock: 'Таймер опитування', now: 'Актуальний час', ai: 'AI обробка' };
         document.getElementById('systemStatusTitle').textContent = titles[type] || 'Статус';
         document.getElementById('systemStatusDetail').textContent = statusCache[type] || 'Немає даних';
         document.getElementById('systemStatusUpdated').textContent = statusCache.updatedAt || '';
