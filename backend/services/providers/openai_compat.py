@@ -109,6 +109,42 @@ class OpenAICompatProvider:
         return ScoreResult(score=score, category=category, matched_keyword=matched_keyword,
                            tokens_in=tok_in, tokens_out=tok_out)
 
+    def match_keywords(self, text: str, keywords: list[str]) -> str | None:
+        normalized = [k.strip() for k in keywords if k and k.strip()]
+        if not normalized:
+            return None
+        system_prompt = (
+            "Отримай текст новини та список ключових слів. "
+            "Визнач, чи є в тексті одне з ключових слів з урахуванням відмінків/словоформ. "
+            'Поверни ТІЛЬКИ JSON формату {"matched_keyword": "..."} або {"matched_keyword": null}.'
+        )
+        user_content = json.dumps({"keywords": normalized, "text": text[:2000]}, ensure_ascii=False)
+        client = self._client()
+        try:
+            response = client.chat.completions.create(
+                model=self.model,
+                max_tokens=80,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content},
+                ],
+            )
+        except Exception:
+            return None
+        payload = (response.choices[0].message.content or "").strip()
+        try:
+            parsed = json.loads(payload or "{}")
+        except json.JSONDecodeError:
+            m = re.search(r"\{.*\}", payload, flags=re.DOTALL)
+            parsed = json.loads(m.group(0)) if m else {}
+        raw = str(parsed.get("matched_keyword") or "").strip()
+        if not raw:
+            return None
+        for kw in normalized:
+            if kw.lower() == raw.lower():
+                return kw
+        return None
+
     def generate_digest(
         self,
         messages_text: str,

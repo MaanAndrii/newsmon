@@ -34,6 +34,9 @@ class ClaudeProvider:
         return ScoreResult(score=score, category=category, matched_keyword=matched_keyword,
                            tokens_in=tok_in, tokens_out=tok_out)
 
+    def match_keywords(self, text: str, keywords: list[str]) -> str | None:
+        return _call_claude_keyword_match_sync(self.api_key, self.model, text, keywords)
+
     def generate_digest(
         self,
         messages_text: str,
