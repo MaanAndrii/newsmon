@@ -3,12 +3,16 @@ from __future__ import annotations
 import asyncio
 
 from config import repo
-from services.claude import (
-    _call_claude_keyword_match_sync,
-    _prepare_ai_text,
-    _resolve_claude_model,
-)
+from services.claude import _prepare_ai_text
+from services.providers import get_provider
 from services.telegram import _send_telegram_bot_message
+
+
+def _get_monitor_provider():
+    ai_provider = (repo.get_setting("monitor.ai_provider", "claude") or "claude").strip()
+    ai_model = (repo.get_setting("monitor.ai_model", "") or "").strip() or None
+    integrations = repo.get_integrations()
+    return get_provider(ai_provider, integrations, model_override=ai_model)
 
 
 async def _process_alerts_for_message(
@@ -18,8 +22,7 @@ async def _process_alerts_for_message(
     matched_keyword: str | None = None,
     keyword_checked: bool = False,
 ) -> None:
-    integrations = repo.get_integrations()
-    bot_token = (integrations.get("telegram_bot_token") or "").strip()
+    bot_token = (repo.get_integrations().get("telegram_bot_token") or "").strip()
     if not bot_token:
         return
     message = repo.get_message_by_id(message_id)
@@ -37,8 +40,8 @@ async def _process_alerts_for_message(
     source_name = str(message.get("source_name") or "Канал")
 
     # matched_keyword is pre-resolved by the combined scoring call in monitor.py
-    # when keyword_checked=True.  Only fall back to a separate Claude call when
-    # keyword matching was NOT already performed (keyword_checked=False).
+    # when keyword_checked=True.  Fallback: run keyword matching via the current
+    # monitor AI provider when keywords were not checked during scoring.
     keyword_alerts = [a for a in alerts if a.get("alert_type") == "keyword_ai"]
     if not keyword_checked and matched_keyword is None and event_type == "ai_scored" and keyword_alerts:
         keyword_candidates = list(
@@ -48,21 +51,19 @@ async def _process_alerts_for_message(
                 if str(a.get("pattern") or "").strip()
             }
         )
-        claude_key = (integrations.get("claude_api_key") or "").strip()
-        model = _resolve_claude_model(integrations.get("claude_model"))
-        if claude_key and keyword_candidates and text.strip():
-            loop = asyncio.get_running_loop()
-            try:
-                matched_keyword = await loop.run_in_executor(
-                    None,
-                    _call_claude_keyword_match_sync,
-                    claude_key,
-                    model,
-                    _prepare_ai_text(text),
-                    keyword_candidates,
-                )
-            except Exception:
-                matched_keyword = None
+        if keyword_candidates and text.strip():
+            provider = _get_monitor_provider()
+            if provider.has_credentials():
+                loop = asyncio.get_running_loop()
+                try:
+                    matched_keyword = await loop.run_in_executor(
+                        None,
+                        provider.match_keywords,
+                        _prepare_ai_text(text),
+                        keyword_candidates,
+                    )
+                except Exception:
+                    matched_keyword = None
 
     for alert in alerts:
         alert_id = int(alert.get("id") or 0)
