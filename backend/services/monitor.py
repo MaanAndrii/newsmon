@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import time
 from datetime import datetime, timedelta, timezone
 
 from config import (
@@ -143,6 +144,7 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
     ai_prompt = (repo.get_setting("monitor.ai_prompt", "") or "").strip()
     dedup_enabled = (repo.get_setting("monitor.dedup_enabled", "1") or "1") == "1"
     ai_provider = (repo.get_setting("monitor.ai_provider", "claude") or "claude").strip()
+    ai_model = (repo.get_setting("monitor.ai_model", "") or "").strip()
     return {
         "collect_enabled": collect_enabled,
         "ai_enabled": ai_enabled,
@@ -152,6 +154,7 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
         "ai_prompt": ai_prompt,
         "dedup_enabled": dedup_enabled,
         "ai_provider": ai_provider,
+        "ai_model": ai_model,
     }
 
 
@@ -508,7 +511,8 @@ async def _process_ai_queue(limit: int = 50) -> int:
 
     integrations = repo.get_integrations()
     ai_provider_name = str(monitor_cfg.get("ai_provider") or "claude")
-    provider = get_provider(ai_provider_name, integrations)
+    ai_model_override = (monitor_cfg.get("ai_model") or "").strip() or None
+    provider = get_provider(ai_provider_name, integrations, model_override=ai_model_override)
 
     if not provider.has_credentials():
         flushed = repo.flush_ai_queue_no_ai(_get_default_category_name())
@@ -686,7 +690,20 @@ async def _monitor_loop() -> None:
             interval = int(_get_monitor_config()["interval_seconds"])
         except Exception:
             interval = MONITOR_INTERVAL_SECONDS
-        await asyncio.sleep(_seconds_until_next_tick(interval))
+        # Sleep in 10-second chunks so interval changes take effect within ~10s
+        target = time.monotonic() + _seconds_until_next_tick(interval)
+        while True:
+            remaining = target - time.monotonic()
+            if remaining <= 1.0:
+                break
+            try:
+                new_interval = int(_get_monitor_config()["interval_seconds"])
+            except Exception:
+                new_interval = interval
+            if new_interval != interval:
+                interval = new_interval
+                target = time.monotonic() + _seconds_until_next_tick(interval)
+            await asyncio.sleep(min(10.0, max(1.0, target - time.monotonic())))
 
 
 def _seconds_until_next_tick(interval: int) -> float:

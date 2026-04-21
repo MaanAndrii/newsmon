@@ -35,6 +35,7 @@ def _get_digest_config() -> dict:
         "ai_prompt": g("ai_prompt", ""),
         "keep_days": int(g("keep_days", "30")),
         "ai_provider": g("ai_provider", "claude"),
+        "ai_model": g("ai_model", ""),
         "mode": g("mode", "previous_day"),
     }
 
@@ -43,7 +44,8 @@ async def _generate_daily_digest(reference_dt: datetime | None = None) -> dict:
     cfg = _get_digest_config()
     integrations = repo.get_integrations()
 
-    provider = get_provider(cfg["ai_provider"], integrations)
+    ai_model_override = (cfg.get("ai_model") or "").strip() or None
+    provider = get_provider(cfg["ai_provider"], integrations, model_override=ai_model_override)
     if not provider.has_credentials():
         return {"ok": False, "error": f"API ключ або модель для провайдера '{cfg['ai_provider']}' не налаштовані"}
 

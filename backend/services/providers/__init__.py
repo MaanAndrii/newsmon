@@ -12,18 +12,22 @@ _PROVIDER_URLS: dict[str, str] = {
 _VALID_PROVIDERS = ("claude", "grok", "gemini")
 
 
-def get_provider(provider: str, integrations: dict) -> ClaudeProvider | OpenAICompatProvider:
+def get_provider(
+    provider: str,
+    integrations: dict,
+    model_override: str | None = None,
+) -> ClaudeProvider | OpenAICompatProvider:
     p = (provider or "claude").strip().lower()
     if p not in _VALID_PROVIDERS:
         p = "claude"
 
     if p == "claude":
         api_key = (integrations.get("claude_api_key") or "").strip()
-        model = (integrations.get("claude_model") or "").strip()
+        model = (model_override or "").strip() or (integrations.get("claude_model") or "").strip()
         return ClaudeProvider(api_key, model)
 
     api_key = (integrations.get(f"{p}_api_key") or "").strip()
-    model = (integrations.get(f"{p}_model") or "").strip()
+    model = (model_override or "").strip() or (integrations.get(f"{p}_model") or "").strip()
     base_url = _PROVIDER_URLS[p]
     return OpenAICompatProvider(api_key, model, base_url, p)
 

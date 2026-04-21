@@ -36,6 +36,27 @@
 
         <div id="apiTab" class="tab-panel space-y-4">
           <h2 class="text-lg font-semibold">API та інтеграції</h2>
+          <!-- Datalists for model ID autocomplete -->
+          <datalist id="claudeModelsList">
+            <option value="claude-haiku-4-5-20251001">Haiku 4.5 — найшвидший, економний</option>
+            <option value="claude-sonnet-4-6">Sonnet 4.6 — збалансований</option>
+            <option value="claude-opus-4-6">Opus 4.6 — найпотужніший</option>
+            <option value="claude-opus-4-7">Opus 4.7 — найновіший</option>
+          </datalist>
+          <datalist id="grokModelsList">
+            <option value="grok-3-mini">grok-3-mini — швидкий, економний</option>
+            <option value="grok-3">grok-3 — потужний</option>
+            <option value="grok-2-mini">grok-2-mini</option>
+          </datalist>
+          <datalist id="geminiModelsList">
+            <option value="gemini-2.0-flash">gemini-2.0-flash — рекомендований</option>
+            <option value="gemini-2.0-flash-lite">gemini-2.0-flash-lite — найдешевший</option>
+            <option value="gemini-1.5-pro">gemini-1.5-pro — потужний</option>
+            <option value="gemini-1.5-flash">gemini-1.5-flash — швидкий</option>
+            <option value="gemini-1.5-flash-8b">gemini-1.5-flash-8b — мінімальний</option>
+            <option value="gemini-2.5-pro-exp-03-25">gemini-2.5-pro-exp-03-25 — експериментальний</option>
+          </datalist>
+
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
             <div class="md:col-span-2">
               <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
@@ -48,11 +69,21 @@
                   <input id="claudeApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="sk-ant-..." />
                   <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
                 </label>
-                <label class="flex flex-col gap-1">
-                  <span class="text-slate-300">Claude Model ID</span>
-                  <input id="claudeModel" type="text" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="claude-haiku-4-5-20251001" />
+                <div class="flex flex-col gap-2">
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-300 text-xs">Model ID 1 (основний)</span>
+                    <input id="claudeModel" type="text" autocomplete="off" list="claudeModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="claude-haiku-4-5-20251001" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-400 text-xs">Model ID 2 (альтернативний)</span>
+                    <input id="claudeModel2" type="text" autocomplete="off" list="claudeModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="claude-sonnet-4-6" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-400 text-xs">Model ID 3 (альтернативний)</span>
+                    <input id="claudeModel3" type="text" autocomplete="off" list="claudeModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="claude-opus-4-6" />
+                  </label>
                   <span class="text-[10px] text-slate-500">Актуальний список: <a href="https://platform.claude.com/docs/en/about-claude/models/overview" target="_blank" class="underline text-sky-400 hover:text-sky-300">docs.anthropic.com → Models</a></span>
-                </label>
+                </div>
               </div>
             </div>
             <div class="md:col-span-2">
@@ -66,11 +97,21 @@
                   <input id="grokApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="xai-..." />
                   <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
                 </label>
-                <label class="flex flex-col gap-1">
-                  <span class="text-slate-300">Grok Model ID</span>
-                  <input id="grokModel" type="text" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="grok-3-mini" />
+                <div class="flex flex-col gap-2">
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-300 text-xs">Model ID 1 (основний)</span>
+                    <input id="grokModel" type="text" autocomplete="off" list="grokModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="grok-3-mini" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-400 text-xs">Model ID 2 (альтернативний)</span>
+                    <input id="grokModel2" type="text" autocomplete="off" list="grokModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="grok-3" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-400 text-xs">Model ID 3 (альтернативний)</span>
+                    <input id="grokModel3" type="text" autocomplete="off" list="grokModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="" />
+                  </label>
                   <span class="text-[10px] text-slate-500">Актуальний список: <a href="https://docs.x.ai/developers/models" target="_blank" rel="noopener" class="text-sky-400 hover:underline">docs.x.ai/developers/models</a></span>
-                </label>
+                </div>
               </div>
             </div>
             <div class="md:col-span-2">
@@ -84,10 +125,21 @@
                   <input id="geminiApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="AIza..." />
                   <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
                 </label>
-                <label class="flex flex-col gap-1">
-                  <span class="text-slate-300">Gemini Model ID</span>
-                  <input id="geminiModel" type="text" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="gemini-2.0-flash" />
-                </label>
+                <div class="flex flex-col gap-2">
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-300 text-xs">Model ID 1 (основний)</span>
+                    <input id="geminiModel" type="text" autocomplete="off" list="geminiModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="gemini-2.0-flash" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-400 text-xs">Model ID 2 (альтернативний)</span>
+                    <input id="geminiModel2" type="text" autocomplete="off" list="geminiModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="gemini-2.0-flash-lite" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-400 text-xs">Model ID 3 (альтернативний)</span>
+                    <input id="geminiModel3" type="text" autocomplete="off" list="geminiModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="" />
+                  </label>
+                  <span class="text-[10px] text-slate-500">Актуальний список: <a href="https://ai.google.dev/gemini-api/docs/models" target="_blank" rel="noopener" class="text-sky-400 hover:underline">ai.google.dev/gemini-api/docs/models</a></span>
+                </div>
               </div>
             </div>
             <div class="md:col-span-2 border-t border-slate-800 pt-3">
@@ -211,16 +263,24 @@
                 <span class="text-xs text-slate-500">міс.</span>
               </div>
             </div>
-            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
-              <div>
-                <p class="font-medium">AI-провайдер для оцінки</p>
-                <p class="text-xs text-slate-400">Який сервіс використовувати для оцінки важливості повідомлень.</p>
+            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 transition-colors hover:border-slate-700">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <p class="font-medium">AI-провайдер для оцінки</p>
+                  <p class="text-xs text-slate-400">Який сервіс та модель використовувати для оцінки важливості.</p>
+                </div>
+                <select id="monitorAiProvider" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" onchange="updateMonitorModelDropdown()">
+                  <option value="claude">Claude (Anthropic)</option>
+                  <option value="grok">Grok (xAI)</option>
+                  <option value="gemini">Gemini (Google)</option>
+                </select>
               </div>
-              <select id="monitorAiProvider" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right">
-                <option value="claude">Claude (Anthropic)</option>
-                <option value="grok">Grok (xAI)</option>
-                <option value="gemini">Gemini (Google)</option>
-              </select>
+              <div class="mt-2 flex items-center gap-2">
+                <span class="text-xs text-slate-400 shrink-0">Модель:</span>
+                <select id="monitorAiModel" class="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-1.5 text-sm">
+                  <option value="">(з налаштувань інтеграцій)</option>
+                </select>
+              </div>
             </div>
             <div class="rounded-lg border border-slate-800 p-3 md:col-span-2">
               <div class="flex items-center justify-between mb-1 gap-2">
@@ -419,10 +479,16 @@
             <p class="font-medium text-slate-200">Формат та стиль</p>
             <div>
               <label class="block text-xs text-slate-400 mb-1">AI-провайдер для дайджесту</label>
-              <select id="digestAiProvider" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm">
+              <select id="digestAiProvider" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" onchange="updateDigestModelDropdown()">
                 <option value="claude">Claude (Anthropic)</option>
                 <option value="grok">Grok (xAI)</option>
                 <option value="gemini">Gemini (Google)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Модель для дайджесту</label>
+              <select id="digestAiModel" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm">
+                <option value="">(з налаштувань інтеграцій)</option>
               </select>
             </div>
             <div>
@@ -890,11 +956,17 @@
       }
 
       function integrationPayload() {
-        const trim = (id) => document.getElementById(id).value.trim();
+        const trim = (id) => document.getElementById(id)?.value.trim() || '';
         const payload = {
           claude_model: trim('claudeModel'),
+          claude_model_2: trim('claudeModel2'),
+          claude_model_3: trim('claudeModel3'),
           grok_model: trim('grokModel'),
+          grok_model_2: trim('grokModel2'),
+          grok_model_3: trim('grokModel3'),
           gemini_model: trim('geminiModel'),
+          gemini_model_2: trim('geminiModel2'),
+          gemini_model_3: trim('geminiModel3'),
         };
         const claudeKey = trim('claudeApiKey');
         const grokKey = trim('grokApiKey');
@@ -909,6 +981,41 @@
         if (apiHash) payload.telegram_api_hash = apiHash;
         if (botToken) payload.telegram_bot_token = botToken;
         return payload;
+      }
+
+      // Build model options for a provider from saved integration models
+      let _cachedIntegrationModels = {};
+      function _getModelsForProvider(provider) {
+        const m = _cachedIntegrationModels;
+        const m1 = m[`${provider}_model`] || '';
+        const m2 = m[`${provider}_model_2`] || '';
+        const m3 = m[`${provider}_model_3`] || '';
+        return [m1, m2, m3].filter(Boolean);
+      }
+
+      function _buildModelOptions(models, selectedValue) {
+        const opts = ['<option value="">(з налаштувань інтеграцій)</option>'];
+        for (const m of models) {
+          const sel = m === selectedValue ? ' selected' : '';
+          opts.push(`<option value="${escapeHtml(m)}"${sel}>${escapeHtml(m)}</option>`);
+        }
+        return opts.join('');
+      }
+
+      function updateMonitorModelDropdown(selectedValue) {
+        const provider = document.getElementById('monitorAiProvider').value;
+        const models = _getModelsForProvider(provider);
+        const sel = document.getElementById('monitorAiModel');
+        const current = selectedValue !== undefined ? selectedValue : sel.value;
+        sel.innerHTML = _buildModelOptions(models, current);
+      }
+
+      function updateDigestModelDropdown(selectedValue) {
+        const provider = document.getElementById('digestAiProvider').value;
+        const models = _getModelsForProvider(provider);
+        const sel = document.getElementById('digestAiModel');
+        const current = selectedValue !== undefined ? selectedValue : sel.value;
+        sel.innerHTML = _buildModelOptions(models, current);
       }
 
       function setSignal(id, ok) {
@@ -947,38 +1054,63 @@
         applySecretPlaceholder('geminiApiKey', data.gemini_api_key_set, data.gemini_api_key_preview);
         applySecretPlaceholder('telegramApiHash', data.telegram_api_hash_set, data.telegram_api_hash_preview);
         applySecretPlaceholder('telegramBotToken', data.telegram_bot_token_set, data.telegram_bot_token_preview);
+        // Store cached models for dropdowns
+        _cachedIntegrationModels = {
+          claude_model: data.claude_model || '',
+          claude_model_2: data.claude_model_2 || '',
+          claude_model_3: data.claude_model_3 || '',
+          grok_model: data.grok_model || '',
+          grok_model_2: data.grok_model_2 || '',
+          grok_model_3: data.grok_model_3 || '',
+          gemini_model: data.gemini_model || '',
+          gemini_model_2: data.gemini_model_2 || '',
+          gemini_model_3: data.gemini_model_3 || '',
+        };
         document.getElementById('claudeModel').value = data.claude_model || 'claude-haiku-4-5-20251001';
+        document.getElementById('claudeModel2').value = data.claude_model_2 || '';
+        document.getElementById('claudeModel3').value = data.claude_model_3 || '';
         document.getElementById('grokModel').value = data.grok_model || '';
+        document.getElementById('grokModel2').value = data.grok_model_2 || '';
+        document.getElementById('grokModel3').value = data.grok_model_3 || '';
         document.getElementById('geminiModel').value = data.gemini_model || '';
+        document.getElementById('geminiModel2').value = data.gemini_model_2 || '';
+        document.getElementById('geminiModel3').value = data.gemini_model_3 || '';
         document.getElementById('telegramApiId').value = data.telegram_api_id || '';
         // Grok/Gemini: null=not configured, true=key+model set, false=partial
         setSignal('sigGrok',
           data.grok_api_key_set ? (data.grok_model ? true : false) : null);
         setSignal('sigGemini',
           data.gemini_api_key_set ? (data.gemini_model ? true : false) : null);
+        // Refresh model dropdowns in other tabs
+        updateMonitorModelDropdown();
+        updateDigestModelDropdown();
       }
 
       function showValidationModal(rows) {
         const existing = document.getElementById('validationModal');
         if (existing) existing.remove();
-        const allOk = rows.every(r => r.ok);
+        const definiteRows = rows.filter(r => r.ok !== null && r.ok !== undefined);
+        const allConfiguredOk = definiteRows.every(r => r.ok);
         const modal = document.createElement('div');
         modal.id = 'validationModal';
-        modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/70';
+        modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4';
         modal.innerHTML = `
-          <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 space-y-4">
+          <div class="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-6 max-w-lg w-full space-y-4">
             <div class="flex items-center justify-between">
               <h3 class="font-semibold text-base">Перевірка інтеграцій</h3>
               <button onclick="document.getElementById('validationModal').remove()" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
             </div>
             <ul class="space-y-2 text-sm">
-              ${rows.map(r => `
-                <li class="flex items-start gap-2">
-                  <span class="mt-0.5 w-2.5 h-2.5 rounded-full shrink-0 ${r.ok ? 'bg-emerald-500' : 'bg-rose-500'}"></span>
-                  <span class="${r.ok ? 'text-slate-200' : 'text-rose-300'}">${r.label}${r.detail ? ': ' + r.detail : ''}</span>
-                </li>`).join('')}
+              ${rows.map(r => {
+                const dotColor = r.ok === null || r.ok === undefined ? 'bg-slate-500' : r.ok ? 'bg-emerald-500' : 'bg-rose-500';
+                const textColor = r.ok === null || r.ok === undefined ? 'text-slate-400' : r.ok ? 'text-slate-200' : 'text-rose-300';
+                return `<li class="flex items-start gap-2">
+                  <span class="mt-0.5 w-2.5 h-2.5 rounded-full shrink-0 ${dotColor}"></span>
+                  <span class="${textColor}">${r.label}${r.detail ? ': ' + r.detail : ''}</span>
+                </li>`;
+              }).join('')}
             </ul>
-            <p class="text-xs ${allOk ? 'text-emerald-400' : 'text-rose-400'}">${allOk ? 'Усі інтеграції валідні.' : 'Є проблеми з підключенням.'}</p>
+            <p class="text-xs ${allConfiguredOk ? 'text-emerald-400' : 'text-rose-400'}">${allConfiguredOk ? 'Усі налаштовані інтеграції валідні.' : 'Є проблеми з підключенням.'}</p>
             <button onclick="document.getElementById('validationModal').remove()" class="w-full py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm">Закрити</button>
           </div>`;
         modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
@@ -1009,17 +1141,23 @@
         if (!res.ok) return;
         const data = await res.json();
         setSignal('sigClaude', data.claude.ok);
+        setSignal('sigGrok', data.grok?.ok ?? null);
+        setSignal('sigGemini', data.gemini?.ok ?? null);
         setSignal('sigTelegramUser', data.telegram_user_api.ok);
         setSignal('sigTelethon', data.telethon.ok);
         setSignal('sigTelegramBot', data.telegram_bot_api.ok);
-        // Grok/Gemini: re-evaluate from current integrations state
         await loadIntegrations();
         const rows = [
-          { ok: data.claude.ok, label: `Claude${data.claude.model ? ' (' + data.claude.model + ')' : ''}`, detail: data.claude.ok ? '' : data.claude.reason },
-          { ok: data.telegram_user_api.ok, label: 'Telegram User API', detail: data.telegram_user_api.ok ? '' : data.telegram_user_api.reason },
-          { ok: data.telethon.ok, label: 'Telethon', detail: data.telethon.ok ? '' : data.telethon.reason },
-          { ok: data.telegram_bot_api.ok, label: 'Telegram Bot API', detail: data.telegram_bot_api.ok ? '' : data.telegram_bot_api.reason },
+          { ok: data.claude.ok, label: `Claude${data.claude.model ? ' (' + data.claude.model + ')' : ''}`, detail: data.claude.ok ? null : data.claude.reason },
+          { ok: data.grok?.ok ?? null, label: `Grok${data.grok?.model ? ' (' + data.grok.model + ')' : ''}`, detail: data.grok?.reason || null },
+          { ok: data.gemini?.ok ?? null, label: `Gemini${data.gemini?.model ? ' (' + data.gemini.model + ')' : ''}`, detail: data.gemini?.reason || null },
+          { ok: data.telegram_user_api.ok, label: 'Telegram User API', detail: data.telegram_user_api.ok ? null : data.telegram_user_api.reason },
+          { ok: data.telethon.ok, label: 'Telethon', detail: data.telethon.ok ? null : data.telethon.reason },
+          { ok: data.telegram_bot_api.ok, label: 'Telegram Bot API', detail: data.telegram_bot_api.ok ? null : data.telegram_bot_api.reason },
         ];
+        if (data.extra_model_issues?.length) {
+          rows.push({ ok: false, label: 'Формат Model ID', detail: data.extra_model_issues.join(', ') });
+        }
         showValidationModal(rows);
       }
 
@@ -1067,6 +1205,7 @@
         document.getElementById('digestMinScore').value = d.min_score ?? 6;
         document.getElementById('digestMaxPerCategory').value = d.max_per_category ?? 5;
         document.getElementById('digestAiProvider').value = d.ai_provider || 'claude';
+        updateDigestModelDropdown(d.ai_model || '');
         document.getElementById('digestFormat').value = d.format || 'article';
         document.getElementById('digestPrompt').value = d.ai_prompt || '';
         document.getElementById('digestKeepDays').value = d.keep_days ?? 30;
@@ -1107,6 +1246,7 @@
           max_per_category: parseInt(document.getElementById('digestMaxPerCategory').value) || 5,
           excluded_categories: _digestExcluded,
           ai_provider: document.getElementById('digestAiProvider').value || 'claude',
+          ai_model: document.getElementById('digestAiModel').value || '',
           format: document.getElementById('digestFormat').value,
           ai_prompt: document.getElementById('digestPrompt').value.trim(),
           keep_days: parseInt(document.getElementById('digestKeepDays').value) || 30,
@@ -1334,6 +1474,7 @@
         if (document.activeElement !== promptEl) {
           promptEl.value = data.ai_prompt || '';
         }
+        updateMonitorModelDropdown(data.ai_model || '');
         updateMonitorFormState();
         updateFetchDepthHint();
         document.getElementById('monitorConfigMessage').textContent = 'Налаштування моніторингу завантажено.';
@@ -1370,6 +1511,7 @@
           retention_months: Math.max(1, Math.min(6, Number(document.getElementById('monitorRetentionMonths').value || 3))),
           ai_prompt: document.getElementById('monitorAiPrompt').value,
           ai_provider: document.getElementById('monitorAiProvider').value || 'claude',
+          ai_model: document.getElementById('monitorAiModel').value || '',
         };
         const res = await authFetch(`${apiBase}/api/monitor/config`, {
           method: 'POST',
