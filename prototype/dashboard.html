@@ -256,13 +256,13 @@
               <canvas id="chartScores" height="160"></canvas>
             </div>
             <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-              <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Активність за годиною доби</p>
+              <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Активність за годиною доби <span class="normal-case font-normal">(середня / день)</span></p>
               <canvas id="chartHours" height="160"></canvas>
             </div>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-              <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Активність за днями тижня</p>
+              <p class="text-xs text-slate-400 font-semibold uppercase tracking-wide mb-3">Активність за днями тижня <span class="normal-case font-normal">(середня / день)</span></p>
               <canvas id="chartWeekday" height="160"></canvas>
             </div>
             <div class="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
@@ -1173,19 +1173,30 @@
           options: { responsive: true, plugins: { legend: { display: false } }, scales: gridOpts('y') }
         });
 
-        // Hourly
+        // Hourly — average messages per day at this hour
         const hours = Array.from({length: 24}, (_, i) => i);
-        const hourMap = Object.fromEntries((data.hourly || []).map(d => [d.hour, d.count]));
+        const hourData = data.hourly || [];
+        const hourMap = Object.fromEntries(hourData.map(d => [d.hour, d]));
         _statCharts.hours = new Chart(document.getElementById('chartHours'), {
           type: 'bar',
           data: {
             labels: hours.map(h => `${String(h).padStart(2,'0')}:00`),
-            datasets: [{ data: hours.map(h => hourMap[h] || 0), backgroundColor: '#6366f1', borderRadius: 3 }]
+            datasets: [{ data: hours.map(h => hourMap[h]?.count || 0), backgroundColor: '#6366f1', borderRadius: 3 }]
           },
-          options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e293b' }, ticks: { maxTicksLimit: 8, maxRotation: 0 } }, y: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { precision: 0 } } } }
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: ctx => {
+                const d = hourMap[ctx.dataIndex];
+                return d ? `Середня: ${d.count} / день (всього ${d.total ?? '?'})` : `${ctx.parsed.y}`;
+              }}}
+            },
+            scales: { x: { grid: { color: '#1e293b' }, ticks: { maxTicksLimit: 8, maxRotation: 0 } }, y: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { stepSize: 0.5 } } }
+          }
         });
 
-        // Weekday
+        // Weekday — average messages per weekday occurrence
         const weekdays = data.weekday || [];
         _statCharts.weekday = new Chart(document.getElementById('chartWeekday'), {
           type: 'bar',
@@ -1193,7 +1204,17 @@
             labels: weekdays.map(d => d.name),
             datasets: [{ data: weekdays.map(d => d.count), backgroundColor: '#f59e0b', borderRadius: 4 }]
           },
-          options: { responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#1e293b' } }, y: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { precision: 0 } } } }
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: ctx => {
+                const d = weekdays[ctx.dataIndex];
+                return d ? `Середня: ${d.count} / день (${d.total ?? '?'} за ${d.days ?? '?'} тижн.)` : `${ctx.parsed.y}`;
+              }}}
+            },
+            scales: { x: { grid: { color: '#1e293b' } }, y: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { stepSize: 0.5 } } }
+          }
         });
 
         // Top categories
