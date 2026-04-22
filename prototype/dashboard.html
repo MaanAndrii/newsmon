@@ -323,7 +323,7 @@
       const showMoreBtn = document.getElementById('showMoreBtn');
       const resetFiltersBtn = document.getElementById('resetFiltersBtn');
       const scrollTopBtn = document.getElementById('scrollTopBtn');
-      const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', intervalSeconds: 600, lastRunAt: null, collectEnabled: true, prevState: '', nextTickSeconds: null, nextTickSetAt: null, aiQueuePending: 0, aiQueueProcessing: 0 };
+      const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', lastRunAt: null, collectEnabled: true, prevState: '', aiQueuePending: 0, aiQueueProcessing: 0 };
       const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '', maxScore: '', contentHash: '', date: '' };
       const filterOptions = { categories: [], sources: [], keywords: [] };
       let pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
@@ -785,22 +785,7 @@
           timerEl.textContent = '--:--';
           return;
         }
-        // Use server-provided next tick countdown (set at fetch time, count down locally)
-        if (statusCache.nextTickSeconds !== null && statusCache.nextTickSetAt !== null) {
-          const elapsed = Math.floor((Date.now() - statusCache.nextTickSetAt) / 1000);
-          const remaining = Math.max(0, statusCache.nextTickSeconds - elapsed);
-          const mm = String(Math.floor(remaining / 60)).padStart(2, '0');
-          const ss = String(remaining % 60).padStart(2, '0');
-          timerEl.textContent = `${mm}:${ss}`;
-        } else if (statusCache.lastRunAt) {
-          const next = new Date(statusCache.lastRunAt.getTime() + statusCache.intervalSeconds * 1000);
-          const diff = Math.max(0, Math.floor((next.getTime() - Date.now()) / 1000));
-          const mm = String(Math.floor(diff / 60)).padStart(2, '0');
-          const ss = String(diff % 60).padStart(2, '0');
-          timerEl.textContent = `${mm}:${ss}`;
-        } else {
-          timerEl.textContent = '--:--';
-        }
+        timerEl.textContent = '--:--';
       }
 
       function updateCurrentTime() {
@@ -823,13 +808,7 @@
           const ingested = monitor?.ingested_messages || 0;
           statusCache.prevState = monitorState;
           statusCache.collectEnabled = collectEnabled;
-          statusCache.intervalSeconds = Number(monitor?.interval_seconds || 600);
           statusCache.lastRunAt = monitor?.last_run_at ? new Date((monitor.last_run_at || '').replace(' ', 'T') + 'Z') : null;
-          // Use server-provided next_tick_seconds for accurate countdown
-          if (typeof monitor?.next_tick_seconds === 'number' && monitor.next_tick_seconds > 0) {
-            statusCache.nextTickSeconds = monitor.next_tick_seconds;
-            statusCache.nextTickSetAt = Date.now();
-          }
           // AI queue stats
           statusCache.aiQueuePending = Number(monitor?.ai_queue_pending || 0);
           statusCache.aiQueueProcessing = Number(monitor?.ai_queue_processing || 0);
@@ -837,7 +816,7 @@
           statusCache.telegram = `Стан: ${monitorState}. Помилка: ${monitor?.last_error || 'немає'}`;
           statusCache.ai = `AI: ${aiEnabled ? 'увімкнено' : 'вимкнено'}. Ingested: ${ingested}. Черга AI: ${aiQueueTotal}`;
           statusCache.channels = `Активних ${activeSources}/${totalSources}, оновлено ${monitor?.updated_sources || 0}`;
-          statusCache.clock = `Інтервал: ${statusCache.intervalSeconds} сек. До наступного збору: ${monitor?.next_tick_seconds ?? '?'} сек. Збір: ${collectEnabled ? 'увімкнено' : 'вимкнено'}`;
+          statusCache.clock = `Event-режим. Збір: ${collectEnabled ? 'увімкнено' : 'вимкнено'}`;
           updateCurrentTime();
           statusCache.updatedAt = `Оновлено: ${new Date().toLocaleString('uk-UA')}`;
           if (monitorState === 'running') {

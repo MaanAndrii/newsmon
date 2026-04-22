@@ -133,5 +133,4 @@ monitor_status: dict[str, str | int | None] = {
     "updated_sources": 0,
     "total_sources": 0,
     "ingested_messages": 0,
-    "interval_seconds": MONITOR_INTERVAL_SECONDS,
 }

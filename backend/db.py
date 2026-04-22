@@ -69,6 +69,9 @@ def init_db() -> None:
                 telegram_api_hash TEXT NULL,
                 telegram_bot_token TEXT NULL,
                 telegram_bot_chat_id TEXT NULL,
+                telegram_unknown_forward_enabled INTEGER NOT NULL DEFAULT 0,
+                telegram_unknown_forward_primary TEXT NULL,
+                telegram_unknown_forward_reserve TEXT NULL,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
@@ -216,6 +219,9 @@ def init_db() -> None:
         _ensure_column(conn, "integrations", "claude_model", "TEXT NULL DEFAULT 'claude-haiku-4-5-20251001'")
         _ensure_column(conn, "integrations", "telegram_bot_token", "TEXT NULL")
         _ensure_column(conn, "integrations", "telegram_bot_chat_id", "TEXT NULL")
+        _ensure_column(conn, "integrations", "telegram_unknown_forward_enabled", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(conn, "integrations", "telegram_unknown_forward_primary", "TEXT NULL")
+        _ensure_column(conn, "integrations", "telegram_unknown_forward_reserve", "TEXT NULL")
         _ensure_column(conn, "alerts", "alert_type", "TEXT NOT NULL DEFAULT 'new_message'")
         _ensure_column(conn, "alerts", "source_id", "INTEGER NULL REFERENCES sources(id) ON DELETE SET NULL")
         _ensure_column(conn, "alerts", "min_score", "INTEGER NULL CHECK(min_score BETWEEN 0 AND 10)")
@@ -680,7 +686,11 @@ class Repository:
                        grok_api_key, grok_model, grok_model_2, grok_model_3,
                        gemini_api_key, gemini_model, gemini_model_2, gemini_model_3,
                        telegram_api_id, telegram_api_hash,
-                       telegram_bot_token, telegram_bot_chat_id, updated_at
+                       telegram_bot_token, telegram_bot_chat_id,
+                       telegram_unknown_forward_enabled,
+                       telegram_unknown_forward_primary,
+                       telegram_unknown_forward_reserve,
+                       updated_at
                 FROM integrations WHERE id = 1
                 """
             ).fetchone()
@@ -692,7 +702,11 @@ class Repository:
                            grok_api_key, grok_model, grok_model_2, grok_model_3,
                            gemini_api_key, gemini_model, gemini_model_2, gemini_model_3,
                            telegram_api_id, telegram_api_hash,
-                           telegram_bot_token, telegram_bot_chat_id, updated_at
+                           telegram_bot_token, telegram_bot_chat_id,
+                           telegram_unknown_forward_enabled,
+                           telegram_unknown_forward_primary,
+                           telegram_unknown_forward_reserve,
+                           updated_at
                     FROM integrations WHERE id = 1
                     """
                 ).fetchone()
@@ -730,9 +744,13 @@ class Repository:
                     grok_api_key, grok_model, grok_model_2, grok_model_3,
                     gemini_api_key, gemini_model, gemini_model_2, gemini_model_3,
                     telegram_api_id, telegram_api_hash,
-                    telegram_bot_token, telegram_bot_chat_id, updated_at
+                    telegram_bot_token, telegram_bot_chat_id,
+                    telegram_unknown_forward_enabled,
+                    telegram_unknown_forward_primary,
+                    telegram_unknown_forward_reserve,
+                    updated_at
                 )
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(id) DO UPDATE SET
                     claude_api_key=excluded.claude_api_key,
                     claude_model=excluded.claude_model,
@@ -750,6 +768,9 @@ class Repository:
                     telegram_api_hash=excluded.telegram_api_hash,
                     telegram_bot_token=excluded.telegram_bot_token,
                     telegram_bot_chat_id=excluded.telegram_bot_chat_id,
+                    telegram_unknown_forward_enabled=excluded.telegram_unknown_forward_enabled,
+                    telegram_unknown_forward_primary=excluded.telegram_unknown_forward_primary,
+                    telegram_unknown_forward_reserve=excluded.telegram_unknown_forward_reserve,
                     updated_at=datetime('now')
                 """,
                 (
@@ -769,6 +790,9 @@ class Repository:
                     payload.get("telegram_api_hash"),
                     payload.get("telegram_bot_token"),
                     payload.get("telegram_bot_chat_id"),
+                    int(bool(payload.get("telegram_unknown_forward_enabled"))),
+                    payload.get("telegram_unknown_forward_primary"),
+                    payload.get("telegram_unknown_forward_reserve"),
                 ),
             )
             row = conn.execute(
@@ -777,7 +801,11 @@ class Repository:
                        grok_api_key, grok_model, grok_model_2, grok_model_3,
                        gemini_api_key, gemini_model, gemini_model_2, gemini_model_3,
                        telegram_api_id, telegram_api_hash,
-                       telegram_bot_token, telegram_bot_chat_id, updated_at
+                       telegram_bot_token, telegram_bot_chat_id,
+                       telegram_unknown_forward_enabled,
+                       telegram_unknown_forward_primary,
+                       telegram_unknown_forward_reserve,
+                       updated_at
                 FROM integrations WHERE id = 1
                 """
             ).fetchone()
