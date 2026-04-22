@@ -16,11 +16,6 @@ from config import (
     repo,
 )
 
-DEFAULT_TELEGRAM_DEVICE_MODEL = "iPhone 13 Pro"
-DEFAULT_TELEGRAM_SYSTEM_VERSION = "iOS 16.6"
-DEFAULT_TELEGRAM_APP_VERSION = "8.8.1"
-
-
 def _telethon_session_base() -> Path:
     return ROOT_DIR / "backend" / "telegram_user"
 
@@ -106,11 +101,10 @@ def _telethon_client_config() -> tuple[int, str]:
 
 
 def _telethon_client_kwargs() -> dict[str, str]:
-    return {
-        "device_model": DEFAULT_TELEGRAM_DEVICE_MODEL,
-        "system_version": DEFAULT_TELEGRAM_SYSTEM_VERSION,
-        "app_version": DEFAULT_TELEGRAM_APP_VERSION,
-    }
+    # Keep Telethon defaults instead of spoofing a mobile device/app signature.
+    # This avoids suspicious client fingerprinting and keeps session behavior
+    # consistent with the runtime environment.
+    return {}
 
 
 def _chmod_session_files(quiet: bool = True) -> None:
