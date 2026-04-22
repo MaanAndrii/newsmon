@@ -19,6 +19,11 @@ SECRET_INTEGRATION_FIELDS = (
     "telegram_bot_token",
 )
 PUBLIC_INTEGRATION_FIELDS = ("telegram_api_id",)
+BOOL_INTEGRATION_FIELDS = ("telegram_unknown_forward_enabled",)
+TEXT_INTEGRATION_FIELDS = (
+    "telegram_unknown_forward_primary",
+    "telegram_unknown_forward_reserve",
+)
 
 _EXTRA_MODEL_FIELDS = (
     "claude_model_2", "claude_model_3",
@@ -34,6 +39,10 @@ def _integrations_public_view(data: dict) -> dict:
         result[f"{key}_set"] = bool(raw)
         result[f"{key}_preview"] = _mask_secret(raw)
     for key in PUBLIC_INTEGRATION_FIELDS:
+        result[key] = (data.get(key) or "").strip()
+    for key in BOOL_INTEGRATION_FIELDS:
+        result[key] = bool(int(data.get(key) or 0))
+    for key in TEXT_INTEGRATION_FIELDS:
         result[key] = (data.get(key) or "").strip()
     result["claude_model"] = _resolve_claude_model(data.get("claude_model"))
     result["grok_model"] = (data.get("grok_model") or "").strip()
@@ -61,6 +70,19 @@ def save_integrations(payload: IntegrationsPayload) -> dict:
         )
         merged[key] = new_value or (existing.get(key) or "").strip()
     for key in PUBLIC_INTEGRATION_FIELDS:
+        new_value = (
+            (incoming.get(key) or "").strip()
+            if isinstance(incoming.get(key), str)
+            else ""
+        )
+        merged[key] = new_value or (existing.get(key) or "").strip()
+    for key in BOOL_INTEGRATION_FIELDS:
+        incoming_value = incoming.get(key)
+        if incoming_value is None:
+            merged[key] = bool(int(existing.get(key) or 0))
+        else:
+            merged[key] = bool(incoming_value)
+    for key in TEXT_INTEGRATION_FIELDS:
         new_value = (
             (incoming.get(key) or "").strip()
             if isinstance(incoming.get(key), str)
@@ -97,6 +119,8 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
     telegram_api_id = _pick("telegram_api_id")
     telegram_api_hash = _pick("telegram_api_hash")
     telegram_bot_token = _pick("telegram_bot_token")
+    unknown_forward_primary = _pick("telegram_unknown_forward_primary")
+    unknown_forward_reserve = _pick("telegram_unknown_forward_reserve")
 
     # --- Claude ---
     claude_key_format = bool(
@@ -165,10 +189,28 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
         None if telegram_bot_ok else "Bot token не відповідає формату Telegram"
     )
 
+    # Unknown forward destinations: allow @username, numeric id, +phone
+    destination_pattern = r"(@[A-Za-z0-9_]{5,32}|-?\d{6,20}|\+\d{10,15})"
+    unknown_primary_ok = (
+        True if not unknown_forward_primary
+        else bool(re.fullmatch(destination_pattern, unknown_forward_primary))
+    )
+    unknown_reserve_ok = (
+        True if not unknown_forward_reserve
+        else bool(re.fullmatch(destination_pattern, unknown_forward_reserve))
+    )
+    unknown_forward_ok = unknown_primary_ok and unknown_reserve_ok
+    unknown_forward_reason = None
+    if not unknown_forward_ok:
+        unknown_forward_reason = (
+            "Адреси пересилання мають бути у форматі @username, chat id або +телефон"
+        )
+
     overall_ok = (
         claude_ok
         and telegram_user_format
         and telegram_bot_ok
+        and unknown_forward_ok
         and not extra_model_issues
     )
 
@@ -201,6 +243,10 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
         "telegram_bot_api": {
             "ok": telegram_bot_ok,
             "reason": telegram_bot_reason,
+        },
+        "telegram_unknown_forward": {
+            "ok": unknown_forward_ok,
+            "reason": unknown_forward_reason,
         },
         "extra_model_issues": extra_model_issues,
         "overall_ok": overall_ok,

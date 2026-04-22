@@ -58,12 +58,15 @@
           </datalist>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <div class="md:col-span-2">
-              <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <span id="sigClaude" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
-                Claude (Anthropic)
-              </p>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <details class="md:col-span-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+              <summary class="cursor-pointer list-none flex items-center justify-between">
+                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <span id="sigClaude" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
+                  Claude (Anthropic)
+                </p>
+                <span class="text-slate-400">+</span>
+              </summary>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                 <label class="flex flex-col gap-1">
                   <span class="text-slate-300">Claude API Key</span>
                   <input id="claudeApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="sk-ant-..." />
@@ -85,13 +88,16 @@
                   <span class="text-[10px] text-slate-500">Актуальний список: <a href="https://platform.claude.com/docs/en/about-claude/models/overview" target="_blank" class="underline text-sky-400 hover:text-sky-300">docs.anthropic.com → Models</a></span>
                 </div>
               </div>
-            </div>
-            <div class="md:col-span-2">
-              <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <span id="sigGrok" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
-                Grok (xAI)
-              </p>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            </details>
+            <details class="md:col-span-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+              <summary class="cursor-pointer list-none flex items-center justify-between">
+                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <span id="sigGrok" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
+                  Grok (xAI)
+                </p>
+                <span class="text-slate-400">+</span>
+              </summary>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                 <label class="flex flex-col gap-1">
                   <span class="text-slate-300">Grok API Key</span>
                   <input id="grokApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="xai-..." />
@@ -113,13 +119,16 @@
                   <span class="text-[10px] text-slate-500">Актуальний список: <a href="https://docs.x.ai/developers/models" target="_blank" rel="noopener" class="text-sky-400 hover:underline">docs.x.ai/developers/models</a></span>
                 </div>
               </div>
-            </div>
-            <div class="md:col-span-2">
-              <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <span id="sigGemini" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
-                Gemini (Google)
-              </p>
-              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            </details>
+            <details class="md:col-span-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+              <summary class="cursor-pointer list-none flex items-center justify-between">
+                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <span id="sigGemini" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
+                  Gemini (Google)
+                </p>
+                <span class="text-slate-400">+</span>
+              </summary>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
                 <label class="flex flex-col gap-1">
                   <span class="text-slate-300">Gemini API Key</span>
                   <input id="geminiApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="AIza..." />
@@ -141,7 +150,7 @@
                   <span class="text-[10px] text-slate-500">Актуальний список: <a href="https://ai.google.dev/gemini-api/docs/models" target="_blank" rel="noopener" class="text-sky-400 hover:underline">ai.google.dev/gemini-api/docs/models</a></span>
                 </div>
               </div>
-            </div>
+            </details>
             <div class="md:col-span-2 border-t border-slate-800 pt-3">
               <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <span id="sigTelegramUser" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
@@ -164,6 +173,24 @@
                   </span>
                   <input id="telegramBotToken" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456:AA...mock_token" />
                   <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
+                </label>
+                <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700 md:col-span-2">
+                  <div>
+                    <p class="font-medium text-slate-200">Пересилати unknown-повідомлення</p>
+                    <p class="text-xs text-slate-400">Якщо джерело не в моніторингу — переслати на основний/резервний маршрут.</p>
+                  </div>
+                  <label class="inline-flex items-center cursor-pointer">
+                    <input id="telegramUnknownForwardEnabled" type="checkbox" class="sr-only peer" />
+                    <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
+                  </label>
+                </div>
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">Unknown forward: Primary</span>
+                  <input id="telegramUnknownForwardPrimary" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="@channel_or_chat або -100... або +380..." />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">Unknown forward: Reserve</span>
+                  <input id="telegramUnknownForwardReserve" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="@backup_or_chat або -100... або +380..." />
                 </label>
               </div>
             </div>
@@ -228,21 +255,6 @@
                 <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
               </label>
             </div>
-            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
-              <div>
-                <p class="font-medium">Базовий інтервал <span class="text-slate-500 font-normal">(запасний)</span></p>
-                <p class="text-xs text-slate-400">Використовується коли жоден слот розкладу не активний.</p>
-              </div>
-              <select id="monitorIntervalSeconds" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right">
-                <option value="300">5 хв</option>
-                <option value="600" selected>10 хв</option>
-                <option value="900">15 хв</option>
-                <option value="1200">20 хв</option>
-                <option value="1800">30 хв</option>
-                <option value="3600">60 хв</option>
-                <option value="7200">120 хв</option>
-              </select>
-            </div>
             <div id="monitorFetchDepthCard" class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 transition-colors hover:border-slate-700">
               <div class="flex items-center justify-between gap-3">
                 <div>
@@ -282,31 +294,6 @@
                 </select>
               </div>
             </div>
-            <!-- Schedule editor -->
-            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 md:col-span-2">
-              <div class="flex items-center justify-between mb-2 gap-2">
-                <div>
-                  <p class="font-medium">Розклад збору за часом доби</p>
-                  <p class="text-xs text-slate-400">Якщо поточний час входить у слот — використовується його інтервал. Інакше — базовий.</p>
-                </div>
-                <button onclick="addScheduleSlot()" class="shrink-0 text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600">+ Додати слот</button>
-              </div>
-              <div id="scheduleSlots" class="space-y-2"></div>
-              <p id="scheduleEmpty" class="text-xs text-slate-500 mt-1">Розклад не налаштовано — використовується базовий інтервал.</p>
-            </div>
-
-            <!-- Adaptive backoff toggle -->
-            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between gap-3 md:col-span-2 transition-colors hover:border-slate-700">
-              <div>
-                <p class="font-medium">Адаптивний режим збору</p>
-                <p class="text-xs text-slate-400">Якщо канал не надсилав повідомлень 2 цикли поспіль — інтервал його перевірки подвоюється (макс. 120 хв). При появі нових повідомлень — канал повертається до розкладу.</p>
-              </div>
-              <label class="inline-flex items-center cursor-pointer shrink-0">
-                <input id="monitorAdaptiveEnabled" type="checkbox" class="sr-only peer" />
-                <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
-              </label>
-            </div>
-
             <div class="rounded-lg border border-slate-800 p-3 md:col-span-2">
               <div class="flex items-center justify-between mb-1 gap-2">
                 <p class="font-medium">Промт для оцінки важливості</p>
@@ -321,8 +308,6 @@
           </div>
           <div class="flex gap-2">
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveMonitorConfig()">Зберегти налаштування моніторингу</button>
-            <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-sm" onclick="runMonitorOnce()">Отримати повідомлення зараз</button>
-            <button class="px-3 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-sm" onclick="clearEmptyMessages()">Видалити пусті повідомлення</button>
           </div>
           <p id="monitorConfigMessage" class="text-xs text-slate-400"></p>
         </div>
@@ -597,50 +582,9 @@
             </div>
           </div>
 
-          <!-- AI queue status -->
-          <div class="rounded-lg border border-slate-800 p-3 text-sm">
-            <p class="font-medium mb-2">AI черга</p>
-            <div class="flex flex-wrap gap-5 text-xs">
-              <span class="text-slate-400">Очікує: <span id="dbgAiPending" class="text-slate-200 font-mono font-bold">—</span></span>
-              <span class="text-slate-400">Обробляється: <span id="dbgAiProcessing" class="text-amber-300 font-mono font-bold">—</span></span>
-              <span class="text-slate-400">Готово: <span id="dbgAiDone" class="text-emerald-400 font-mono font-bold">—</span></span>
-              <span class="text-slate-400">Помилки: <span id="dbgAiError" class="text-rose-400 font-mono font-bold">—</span></span>
-            </div>
-          </div>
-
-          <!-- Deduplication stats -->
-          <div class="rounded-lg border border-slate-800 p-3 text-sm">
-            <p class="font-medium mb-2">Дедублікація</p>
-            <div class="flex flex-wrap gap-5 text-xs">
-              <span class="text-slate-400">Всього дублікатів: <span id="dbgDedupTotal" class="text-amber-300 font-mono font-bold">—</span></span>
-              <span class="text-slate-400">За 24 год: <span id="dbgDedup24h" class="text-amber-300 font-mono font-bold">—</span></span>
-            </div>
-          </div>
-
-          <!-- Last 10 collect cycles -->
-          <div>
-            <h3 class="text-sm font-medium mb-2">Останні 10 циклів збору</h3>
-            <div class="overflow-x-auto rounded-lg border border-slate-800">
-              <table class="min-w-full text-xs">
-                <thead class="bg-slate-800 text-slate-300">
-                  <tr>
-                    <th class="text-left p-2 whitespace-nowrap">Час (локальний)</th>
-                    <th class="text-left p-2">Джерел</th>
-                    <th class="text-left p-2">Отримано</th>
-                    <th class="text-left p-2">AI оброблено</th>
-                    <th class="text-left p-2">Стан</th>
-                  </tr>
-                </thead>
-                <tbody id="runHistoryBody">
-                  <tr><td colspan="5" class="p-2 text-slate-500">Завантаження...</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
           <!-- Event log -->
           <div>
-            <h3 class="text-sm font-medium mb-2">Журнал подій (50 останніх)</h3>
+            <h3 class="text-sm font-medium mb-2">Журнал подій (100 останніх)</h3>
             <div class="rounded-lg border border-slate-800 overflow-auto" style="max-height:20rem">
               <table class="min-w-full text-xs">
                 <thead class="bg-slate-800 text-slate-300 sticky top-0">
@@ -999,12 +943,18 @@
         const apiId = trim('telegramApiId');
         const apiHash = trim('telegramApiHash');
         const botToken = trim('telegramBotToken');
+        const unknownForwardEnabled = document.getElementById('telegramUnknownForwardEnabled')?.checked || false;
+        const unknownForwardPrimary = trim('telegramUnknownForwardPrimary');
+        const unknownForwardReserve = trim('telegramUnknownForwardReserve');
         if (claudeKey) payload.claude_api_key = claudeKey;
         if (grokKey) payload.grok_api_key = grokKey;
         if (geminiKey) payload.gemini_api_key = geminiKey;
         if (apiId) payload.telegram_api_id = apiId;
         if (apiHash) payload.telegram_api_hash = apiHash;
         if (botToken) payload.telegram_bot_token = botToken;
+        payload.telegram_unknown_forward_enabled = unknownForwardEnabled;
+        payload.telegram_unknown_forward_primary = unknownForwardPrimary;
+        payload.telegram_unknown_forward_reserve = unknownForwardReserve;
         return payload;
       }
 
@@ -1101,6 +1051,9 @@
         document.getElementById('geminiModel2').value = data.gemini_model_2 || '';
         document.getElementById('geminiModel3').value = data.gemini_model_3 || '';
         document.getElementById('telegramApiId').value = data.telegram_api_id || '';
+        document.getElementById('telegramUnknownForwardEnabled').checked = !!data.telegram_unknown_forward_enabled;
+        document.getElementById('telegramUnknownForwardPrimary').value = data.telegram_unknown_forward_primary || '';
+        document.getElementById('telegramUnknownForwardReserve').value = data.telegram_unknown_forward_reserve || '';
         // Grok/Gemini: null=not configured, true=key+model set, false=partial
         setSignal('sigGrok',
           data.grok_api_key_set ? (data.grok_model ? true : false) : null);
@@ -1179,6 +1132,7 @@
           { ok: data.telegram_user_api.ok, label: 'Telegram User API', detail: data.telegram_user_api.ok ? null : data.telegram_user_api.reason },
           { ok: data.telethon.ok, label: 'Telethon', detail: data.telethon.ok ? null : data.telethon.reason },
           { ok: data.telegram_bot_api.ok, label: 'Telegram Bot API', detail: data.telegram_bot_api.ok ? null : data.telegram_bot_api.reason },
+          { ok: data.telegram_unknown_forward?.ok ?? true, label: 'Telegram unknown-forward', detail: data.telegram_unknown_forward?.reason || null },
         ];
         if (data.extra_model_issues?.length) {
           rows.push({ ok: false, label: 'Формат Model ID', detail: data.extra_model_issues.join(', ') });
@@ -1414,34 +1368,6 @@
         document.getElementById('dbgTg24h').textContent = `Запитів: ${data.telegram_requests_24h ?? 0}`;
         document.getElementById('dbgTg60m').textContent = `Запитів: ${data.telegram_requests_60m ?? 0}`;
         document.getElementById('dbgTotalMessages').textContent = `Кількість: ${data.total_messages ?? 0}`;
-        document.getElementById('dbgAiPending').textContent = data.ai_queue_pending ?? 0;
-        document.getElementById('dbgAiProcessing').textContent = data.ai_queue_processing ?? 0;
-        document.getElementById('dbgAiDone').textContent = data.ai_queue_done ?? 0;
-        document.getElementById('dbgAiError').textContent = data.ai_queue_error ?? 0;
-        document.getElementById('dbgDedupTotal').textContent = data.dedup_total ?? 0;
-        document.getElementById('dbgDedup24h').textContent = data.dedup_24h ?? 0;
-      }
-
-      async function loadRunHistory() {
-        const res = await authFetch(`${apiBase}/api/debug/run-history`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const tbody = document.getElementById('runHistoryBody');
-        if (!data.runs || !data.runs.length) {
-          tbody.innerHTML = '<tr><td colspan="5" class="p-2 text-slate-500">Немає даних (моніторинг ще не запускався)</td></tr>';
-          return;
-        }
-        tbody.innerHTML = data.runs.map(r => {
-          const stateClass = r.state === 'ok' ? 'text-emerald-400' : r.state === 'warning' ? 'text-amber-400' : 'text-rose-400';
-          const stateText = r.error ? `${escapeHtml(r.state)}: ${escapeHtml(r.error)}` : escapeHtml(r.state);
-          return `<tr class="border-t border-slate-800">
-            <td class="p-2 text-slate-400 whitespace-nowrap">${escapeHtml(formatLocalDateTime(r.at))}</td>
-            <td class="p-2">${r.updated ?? 0}/${r.total ?? 0}</td>
-            <td class="p-2 font-mono">${r.ingested ?? 0}</td>
-            <td class="p-2 font-mono">${r.ai_processed ?? 0}</td>
-            <td class="p-2 ${stateClass}">${stateText}</td>
-          </tr>`;
-        }).join('');
       }
 
       const _eventTypeStyle = {
@@ -1459,6 +1385,8 @@
         ai_reset_stale:  'text-amber-200',
         ai_reset_retry:  'text-amber-200',
         dedup_hit:       'text-amber-400',
+        event_ingest:    'text-emerald-300',
+        empty_message_deleted: 'text-amber-300',
       };
 
       async function loadEventLog() {
@@ -1481,56 +1409,8 @@
       }
 
       async function loadDebugAll() {
-        await Promise.all([loadDebugStats(), loadRunHistory(), loadEventLog(), loadDashboardUsers()]);
+        await Promise.all([loadDebugStats(), loadEventLog(), loadDashboardUsers()]);
       }
-
-      // ── Schedule editor helpers ─────────────────────────────────────────────
-      const _INTERVAL_OPTIONS = [
-        [300,'5 хв'],[600,'10 хв'],[900,'15 хв'],[1200,'20 хв'],
-        [1800,'30 хв'],[3600,'60 хв'],[7200,'120 хв'],
-      ];
-
-      function _intervalSelect(selected, cls) {
-        return `<select class="${cls} bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm">
-          ${_INTERVAL_OPTIONS.map(([v,l]) => `<option value="${v}"${v==selected?' selected':''}>${l}</option>`).join('')}
-        </select>`;
-      }
-
-      function addScheduleSlot(slot) {
-        const from = slot?.from || '06:00';
-        const to   = slot?.to   || '22:00';
-        const iv   = slot?.interval_seconds || 600;
-        const div = document.createElement('div');
-        div.className = 'schedule-slot flex items-center gap-2 flex-wrap';
-        div.innerHTML = `
-          <input type="time" class="slot-from bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm w-28" value="${from}" />
-          <span class="text-slate-500 shrink-0">—</span>
-          <input type="time" class="slot-to bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm w-28" value="${to}" />
-          ${_intervalSelect(iv, 'slot-interval flex-1 min-w-[90px]')}
-          <button onclick="this.closest('.schedule-slot').remove(); _updateScheduleEmpty()" class="text-rose-400 hover:text-rose-300 text-xs px-1.5 py-1 rounded hover:bg-rose-900/30 shrink-0">✕</button>`;
-        document.getElementById('scheduleSlots').appendChild(div);
-        _updateScheduleEmpty();
-      }
-
-      function _updateScheduleEmpty() {
-        const hasSlots = document.querySelectorAll('.schedule-slot').length > 0;
-        document.getElementById('scheduleEmpty').classList.toggle('hidden', hasSlots);
-      }
-
-      function _getSchedule() {
-        return Array.from(document.querySelectorAll('.schedule-slot')).map(s => ({
-          from: s.querySelector('.slot-from').value,
-          to:   s.querySelector('.slot-to').value,
-          interval_seconds: Number(s.querySelector('.slot-interval').value),
-        }));
-      }
-
-      function _loadSchedule(schedule) {
-        document.getElementById('scheduleSlots').innerHTML = '';
-        (schedule || []).forEach(s => addScheduleSlot(s));
-        _updateScheduleEmpty();
-      }
-      // ───────────────────────────────────────────────────────────────────────
 
       async function loadMonitorConfig() {
         const res = await authFetch(`${apiBase}/api/monitor/config`);
@@ -1539,12 +1419,9 @@
         document.getElementById('monitorAiEnabled').checked = !!data.ai_enabled;
         document.getElementById('monitorCollectEnabled').checked = !!data.collect_enabled;
         document.getElementById('monitorDedupEnabled').checked = data.dedup_enabled !== false;
-        document.getElementById('monitorIntervalSeconds').value = Number(data.interval_seconds || 600);
         document.getElementById('monitorFetchDepth').value = Number(data.fetch_depth || 3);
         document.getElementById('monitorRetentionMonths').value = Number(data.retention_months || 3);
         document.getElementById('monitorAiProvider').value = data.ai_provider || 'claude';
-        document.getElementById('monitorAdaptiveEnabled').checked = !!data.adaptive_enabled;
-        _loadSchedule(data.schedule || []);
         const promptEl = document.getElementById('monitorAiPrompt');
         if (document.activeElement !== promptEl) {
           promptEl.value = data.ai_prompt || '';
@@ -1557,12 +1434,9 @@
 
       function updateMonitorFormState() {
         const collectEnabled = document.getElementById('monitorCollectEnabled').checked;
-        const intervalInput = document.getElementById('monitorIntervalSeconds');
         const fetchDepthInput = document.getElementById('monitorFetchDepth');
         const fetchDepthCard = document.getElementById('monitorFetchDepthCard');
-        intervalInput.disabled = !collectEnabled;
         fetchDepthInput.disabled = !collectEnabled;
-        intervalInput.classList.toggle('opacity-50', !collectEnabled);
         fetchDepthInput.classList.toggle('opacity-50', !collectEnabled);
         fetchDepthCard.classList.toggle('opacity-70', !collectEnabled);
       }
@@ -1581,14 +1455,11 @@
           ai_enabled: document.getElementById('monitorAiEnabled').checked,
           collect_enabled: document.getElementById('monitorCollectEnabled').checked,
           dedup_enabled: document.getElementById('monitorDedupEnabled').checked,
-          interval_seconds: Number(document.getElementById('monitorIntervalSeconds').value || 600),
           fetch_depth: Math.max(1, Math.min(10, Number(document.getElementById('monitorFetchDepth').value || 3))),
           retention_months: Math.max(1, Math.min(6, Number(document.getElementById('monitorRetentionMonths').value || 3))),
           ai_prompt: document.getElementById('monitorAiPrompt').value,
           ai_provider: document.getElementById('monitorAiProvider').value || 'claude',
           ai_model: document.getElementById('monitorAiModel').value || '',
-          schedule: _getSchedule(),
-          adaptive_enabled: document.getElementById('monitorAdaptiveEnabled').checked,
         };
         const res = await authFetch(`${apiBase}/api/monitor/config`, {
           method: 'POST',
@@ -1596,24 +1467,9 @@
           body: JSON.stringify(payload),
         });
         const data = await parseApiBody(res);
-        const schedInfo = (data.schedule || []).length
-          ? `, слотів: ${data.schedule.length}`
-          : '';
-        const adaptInfo = data.adaptive_enabled ? ', адаптив: увімк.' : '';
         document.getElementById('monitorConfigMessage').textContent = res.ok
-          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, базовий інтервал: ${data.interval_seconds} сек.${schedInfo}${adaptInfo}`
+          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}`
           : (data.detail || 'Не вдалося зберегти налаштування моніторингу.');
-      }
-
-      async function runMonitorOnce() {
-        const res = await authFetch(`${apiBase}/api/monitor/run-once`, { method: 'POST' });
-        const data = await parseApiBody(res);
-        document.getElementById('monitorConfigMessage').textContent = res.ok
-          ? `Ручний запуск завершено. Оновлено джерел: ${data.updated_sources}/${data.total_sources}, нових повідомлень: ${data.ingested_messages}.`
-          : (data.detail || 'Не вдалося виконати ручний запуск.');
-        await loadMonitorStatus();
-        await loadSources();
-        await loadMonitorConfig();
       }
 
       async function clearAllMessages() {
@@ -1670,19 +1526,6 @@
         clearTimeout(_promptTokenDebounce);
         _promptTokenDebounce = setTimeout(countPromptTokens, 1800);
       });
-
-      async function clearEmptyMessages() {
-        const ok = window.confirm('Видалити всі повідомлення без тексту (медіа без підпису)?');
-        if (!ok) return;
-        const res = await authFetch(`${apiBase}/api/messages/clear-empty`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-        });
-        const data = await parseApiBody(res);
-        document.getElementById('monitorConfigMessage').textContent = res.ok
-          ? `Видалено пустих повідомлень: ${data.deleted_messages}.`
-          : (data.detail || 'Не вдалося видалити пусті повідомлення.');
-      }
 
       async function loadTelethonAuthStatus() {
         try {
