@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -9,7 +8,7 @@ from config import claude_call_events, event_log, monitor_run_history, monitor_s
 from models import DashboardHeartbeatPayload, MonitorConfigPayload, PromptTokensPayload
 from security import _rate_limit_hit, require_admin
 from services.claude import _resolve_claude_model
-from services.monitor import _get_monitor_config, _process_ai_queue, _seconds_until_next_tick, _sync_sources_last_messages
+from services.monitor import _get_monitor_config
 from utils import _resolve_client_ip
 
 router = APIRouter()
@@ -20,18 +19,12 @@ def get_monitor_status() -> dict:
     public = {k: v for k, v in monitor_status.items() if k != "last_error"}
     cfg = _get_monitor_config()
     try:
-        interval = int(cfg["interval_seconds"])
-        next_tick_seconds = round(_seconds_until_next_tick(interval))
-    except Exception:
-        next_tick_seconds = 0
-    try:
         ai_stats = repo.get_ai_queue_stats()
     except Exception:
         ai_stats = {}
     return {
         **public,
         **cfg,
-        "next_tick_seconds": next_tick_seconds,
         "ai_queue_pending": ai_stats.get("pending", 0),
         "ai_queue_processing": ai_stats.get("processing", 0),
     }
@@ -47,43 +40,12 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.collect_enabled", "1" if payload.collect_enabled else "0")
     repo.set_setting("monitor.ai_enabled", "1" if payload.ai_enabled else "0")
     repo.set_setting("monitor.dedup_enabled", "1" if payload.dedup_enabled else "0")
-    repo.set_setting("monitor.interval_seconds", str(payload.interval_seconds))
     repo.set_setting("monitor.fetch_depth", str(payload.fetch_depth))
     repo.set_setting("monitor.retention_months", str(payload.retention_months))
     repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
     repo.set_setting("monitor.ai_provider", payload.ai_provider)
     repo.set_setting("monitor.ai_model", (payload.ai_model or "").strip())
-    repo.set_setting("monitor.schedule", json.dumps(payload.schedule or []))
-    repo.set_setting("monitor.adaptive_enabled", "1" if payload.adaptive_enabled else "0")
     return _get_monitor_config()
-
-
-@router.post("/api/monitor/run-once", dependencies=[Depends(require_admin)])
-async def run_monitor_once() -> dict:
-    updated, total, ingested, err = await _sync_sources_last_messages()
-    monitor_status["last_run_at"] = datetime.now(timezone.utc).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
-    monitor_status["updated_sources"] = updated
-    monitor_status["total_sources"] = total
-    monitor_status["ingested_messages"] = ingested
-    if err:
-        monitor_status["state"] = "warning"
-        monitor_status["last_error"] = err
-    else:
-        await _process_ai_queue()
-        monitor_status["state"] = "ok"
-        monitor_status["last_error"] = None
-        monitor_status["last_success_at"] = datetime.now(timezone.utc).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-    return {
-        "ok": err is None,
-        "updated_sources": updated,
-        "total_sources": total,
-        "ingested_messages": ingested,
-        "detail": err,
-    }
 
 
 @router.post("/api/monitor/count-prompt-tokens", dependencies=[Depends(require_admin)])
@@ -223,7 +185,7 @@ def get_run_history() -> dict:
 
 @router.get("/api/debug/log", dependencies=[Depends(require_admin)])
 def get_debug_log() -> dict:
-    """Return the last 50 event-log entries, newest first."""
+    """Return the last 100 event-log entries, newest first."""
     return {"events": list(reversed(list(event_log)))}
 
 
