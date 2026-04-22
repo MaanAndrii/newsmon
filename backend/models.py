@@ -58,6 +58,9 @@ class IntegrationsPayload(BaseModel):
     telegram_api_id: str | None = None
     telegram_api_hash: str | None = None
     telegram_bot_token: str | None = None
+    telegram_unknown_forward_enabled: bool | None = None
+    telegram_unknown_forward_primary: str | None = None
+    telegram_unknown_forward_reserve: str | None = None
 
 
 class TelethonCodeRequest(BaseModel):
@@ -87,9 +90,6 @@ class MonitorConfigPayload(BaseModel):
     dedup_enabled: bool = True
     ai_provider: str = Field(default="claude", pattern=r"^(claude|grok|gemini)$")
     ai_model: str | None = None
-    unknown_forward_enabled: bool = False
-    forward_primary: str | None = Field(default=None, max_length=128)
-    forward_reserve: str | None = Field(default=None, max_length=128)
 
 
 class ClearMessagesPayload(BaseModel):

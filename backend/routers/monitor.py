@@ -45,12 +45,6 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
     repo.set_setting("monitor.ai_provider", payload.ai_provider)
     repo.set_setting("monitor.ai_model", (payload.ai_model or "").strip())
-    repo.set_setting(
-        "telegram.forward_unknown_enabled",
-        "1" if payload.unknown_forward_enabled else "0",
-    )
-    repo.set_setting("telegram.forward_primary", (payload.forward_primary or "").strip())
-    repo.set_setting("telegram.forward_reserve", (payload.forward_reserve or "").strip())
     return _get_monitor_config()
 
 

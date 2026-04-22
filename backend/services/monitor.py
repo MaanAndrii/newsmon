@@ -135,11 +135,6 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
     dedup_enabled = (repo.get_setting("monitor.dedup_enabled", "1") or "1") == "1"
     ai_provider = (repo.get_setting("monitor.ai_provider", "claude") or "claude").strip()
     ai_model = (repo.get_setting("monitor.ai_model", "") or "").strip()
-    unknown_forward_enabled = (
-        repo.get_setting("telegram.forward_unknown_enabled", "0") or "0"
-    ) == "1"
-    forward_primary = (repo.get_setting("telegram.forward_primary", "") or "").strip()
-    forward_reserve = (repo.get_setting("telegram.forward_reserve", "") or "").strip()
     return {
         "collect_enabled": collect_enabled,
         "ai_enabled": ai_enabled,
@@ -149,9 +144,6 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
         "dedup_enabled": dedup_enabled,
         "ai_provider": ai_provider,
         "ai_model": ai_model,
-        "unknown_forward_enabled": unknown_forward_enabled,
-        "forward_primary": forward_primary,
-        "forward_reserve": forward_reserve,
     }
 
 
@@ -647,12 +639,12 @@ def _build_source_indexes() -> tuple[dict[int, dict], dict[str, dict]]:
 
 
 async def _forward_unknown_message(client: object, event: object) -> None:
-    monitor_cfg = _get_monitor_config()
-    if not monitor_cfg.get("unknown_forward_enabled"):
+    integrations = repo.get_integrations()
+    if not bool(int(integrations.get("telegram_unknown_forward_enabled") or 0)):
         return
     targets = [
-        str(monitor_cfg.get("forward_primary") or "").strip(),
-        str(monitor_cfg.get("forward_reserve") or "").strip(),
+        str(integrations.get("telegram_unknown_forward_primary") or "").strip(),
+        str(integrations.get("telegram_unknown_forward_reserve") or "").strip(),
     ]
     targets = [t for t in targets if t]
     if not targets:
