@@ -26,6 +26,7 @@ from services.telethon import (
     _quarantine_telethon_session,
     _telethon_client_config,
     _telethon_client_init_data,
+    _telethon_client_kwargs,
     _telethon_session_base,
     _telethon_session_file,
 )
@@ -63,7 +64,12 @@ async def telethon_auth_status() -> dict:
                 if mode == "string"
                 else str(session_path)
             )
-            client = TelegramClient(session_obj, parsed_api_id, parsed_api_hash)
+            client = TelegramClient(
+                session_obj,
+                parsed_api_id,
+                parsed_api_hash,
+                **_telethon_client_kwargs(),
+            )
             try:
                 await client.connect()
                 authorized = await client.is_user_authorized()
@@ -71,11 +77,24 @@ async def telethon_auth_status() -> dict:
             finally:
                 await client.disconnect()
         except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
-            _quarantine_telethon_session(str(exc))
+            # Do not quarantine on transient lock/busy errors.
+            # Quarantine only on likely-corrupted session storage.
+            msg = str(exc).lower()
+            is_transient_lock = any(x in msg for x in ("locked", "busy", "readonly"))
+            is_likely_corrupt = any(
+                x in msg
+                for x in ("malformed", "not a database", "database disk image is malformed")
+            )
+            if is_likely_corrupt and not is_transient_lock:
+                _quarantine_telethon_session(str(exc))
             result = {
                 "authorized": False,
                 "session": session_name,
-                "detail": f"Telethon session file пошкоджений або заблокований: {exc}",
+                "detail": (
+                    f"Telethon session file недоступний: {exc}"
+                    if is_transient_lock
+                    else f"Telethon session file пошкоджений або заблокований: {exc}"
+                ),
             }
             _telethon_status_cache["value"] = dict(result)
             _telethon_status_cache["at"] = time.monotonic()
@@ -167,7 +186,12 @@ async def telethon_session_health() -> dict:
                     if mode == "string"
                     else str(_telethon_session_base())
                 )
-                client = TelegramClient(session_obj, parsed_api_id, parsed_api_hash)
+                client = TelegramClient(
+                    session_obj,
+                    parsed_api_id,
+                    parsed_api_hash,
+                    **_telethon_client_kwargs(),
+                )
                 try:
                     await client.connect()
                     await client.is_user_authorized()
@@ -222,7 +246,12 @@ async def telethon_request_code(
             for attempt in range(3):
                 try:
                     login_session = StringSession()
-                    client = TelegramClient(login_session, api_id, api_hash)
+                    client = TelegramClient(
+                        login_session,
+                        api_id,
+                        api_hash,
+                        **_telethon_client_kwargs(),
+                    )
                     try:
                         await client.connect()
                         if await client.is_user_authorized():
@@ -347,7 +376,12 @@ async def telethon_verify_code(
     async with telethon_client_lock:
         try:
             session_obj = StringSession(login_session)
-            client = TelegramClient(session_obj, api_id, api_hash)
+            client = TelegramClient(
+                session_obj,
+                api_id,
+                api_hash,
+                **_telethon_client_kwargs(),
+            )
             try:
                 await client.connect()
                 try:
