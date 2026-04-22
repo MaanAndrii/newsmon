@@ -77,11 +77,24 @@ async def telethon_auth_status() -> dict:
             finally:
                 await client.disconnect()
         except (EOFError, sqlite3.DatabaseError, sqlite3.OperationalError) as exc:
-            _quarantine_telethon_session(str(exc))
+            # Do not quarantine on transient lock/busy errors.
+            # Quarantine only on likely-corrupted session storage.
+            msg = str(exc).lower()
+            is_transient_lock = any(x in msg for x in ("locked", "busy", "readonly"))
+            is_likely_corrupt = any(
+                x in msg
+                for x in ("malformed", "not a database", "database disk image is malformed")
+            )
+            if is_likely_corrupt and not is_transient_lock:
+                _quarantine_telethon_session(str(exc))
             result = {
                 "authorized": False,
                 "session": session_name,
-                "detail": f"Telethon session file пошкоджений або заблокований: {exc}",
+                "detail": (
+                    f"Telethon session file недоступний: {exc}"
+                    if is_transient_lock
+                    else f"Telethon session file пошкоджений або заблокований: {exc}"
+                ),
             }
             _telethon_status_cache["value"] = dict(result)
             _telethon_status_cache["at"] = time.monotonic()

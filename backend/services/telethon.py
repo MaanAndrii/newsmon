@@ -47,18 +47,22 @@ def _is_telethon_auth_error(exc: Exception) -> bool:
     """Return True for auth/session-invalid errors that require re-login."""
     text = str(exc).lower()
     name = type(exc).__name__.lower()
-    markers = (
+    name_markers = (
         "authkeyunregistered",
         "sessionrevoked",
+        "authkeyduplicated",
+        "unauthorizederror",
+    )
+    text_markers = (
         "auth key is not registered",
         "key is not registered in the system",
-        "session password needed",
-        "unauthorized",
-        "not authorized",
+        "session revoked",
+        "telethon-сесія не авторизована",
+        "session is not authorized",
     )
-    if any(marker in text for marker in markers):
+    if any(marker in name for marker in name_markers):
         return True
-    return "auth" in name and ("unregistered" in name or "unauthorized" in name)
+    return any(marker in text for marker in text_markers)
 
 
 def _reset_telethon_session_for_reauth(reason: str) -> None:

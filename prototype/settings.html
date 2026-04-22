@@ -207,7 +207,7 @@
               <div class="flex gap-2">
                 <button id="telethonCodeBtn" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs" onclick="requestTelethonCode()">Запросити код</button>
                 <button id="telethonVerifyBtn" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs" onclick="verifyTelethonCode()">Підтвердити</button>
-                <button id="telethonLogoutBtn" class="px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-xs" onclick="logoutTelethon()">Вийти з Telethon</button>
+                <button id="telethonLogoutBtn" class="hidden px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-xs" onclick="logoutTelethon()">Вийти з Telethon</button>
               </div>
             </div>
             <p id="telethonAuthMessage" class="text-xs text-slate-400">Статус авторизації: невідомо</p>
@@ -1497,6 +1497,7 @@
       });
 
       async function loadTelethonAuthStatus() {
+        const logoutBtn = document.getElementById('telethonLogoutBtn');
         try {
           const [res, healthRes] = await Promise.all([
             authFetch(`${apiBase}/api/telethon/auth/status`),
@@ -1505,15 +1506,19 @@
           const data = await parseApiBody(res);
           const health = await parseApiBody(healthRes);
           if (!res.ok) {
+            logoutBtn.classList.add('hidden');
             document.getElementById('telethonAuthMessage').textContent = `${data.detail || 'Не вдалося перевірити Telethon статус'} • Health: ${health.detail || 'немає даних'}`;
             return;
           }
           setSignal('sigTelethon', Boolean(data.authorized) && Boolean(health.ok));
+          if (data.authorized) logoutBtn.classList.remove('hidden');
+          else logoutBtn.classList.add('hidden');
           document.getElementById('telethonAuthMessage').textContent =
             data.authorized
               ? `Telethon авторизовано (session: ${data.session}). Health: ${health.detail || 'OK'}`
               : `Telethon НЕ авторизовано (session: ${data.session}). Health: ${health.detail || 'OK'}`;
         } catch (err) {
+          logoutBtn.classList.add('hidden');
           document.getElementById('telethonAuthMessage').textContent = `Помилка запиту статусу: ${err}`;
         }
       }
