@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -9,7 +8,7 @@ from config import claude_call_events, event_log, monitor_run_history, monitor_s
 from models import DashboardHeartbeatPayload, MonitorConfigPayload, PromptTokensPayload
 from security import _rate_limit_hit, require_admin
 from services.claude import _resolve_claude_model
-from services.monitor import _get_monitor_config, _process_ai_queue, _seconds_until_next_tick, _sync_sources_last_messages
+from services.monitor import _get_monitor_config, _process_ai_queue, _sync_sources_last_messages
 from utils import _resolve_client_ip
 
 router = APIRouter()
@@ -20,18 +19,12 @@ def get_monitor_status() -> dict:
     public = {k: v for k, v in monitor_status.items() if k != "last_error"}
     cfg = _get_monitor_config()
     try:
-        interval = int(cfg["interval_seconds"])
-        next_tick_seconds = round(_seconds_until_next_tick(interval))
-    except Exception:
-        next_tick_seconds = 0
-    try:
         ai_stats = repo.get_ai_queue_stats()
     except Exception:
         ai_stats = {}
     return {
         **public,
         **cfg,
-        "next_tick_seconds": next_tick_seconds,
         "ai_queue_pending": ai_stats.get("pending", 0),
         "ai_queue_processing": ai_stats.get("processing", 0),
     }
@@ -47,14 +40,17 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.collect_enabled", "1" if payload.collect_enabled else "0")
     repo.set_setting("monitor.ai_enabled", "1" if payload.ai_enabled else "0")
     repo.set_setting("monitor.dedup_enabled", "1" if payload.dedup_enabled else "0")
-    repo.set_setting("monitor.interval_seconds", str(payload.interval_seconds))
     repo.set_setting("monitor.fetch_depth", str(payload.fetch_depth))
     repo.set_setting("monitor.retention_months", str(payload.retention_months))
     repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
     repo.set_setting("monitor.ai_provider", payload.ai_provider)
     repo.set_setting("monitor.ai_model", (payload.ai_model or "").strip())
-    repo.set_setting("monitor.schedule", json.dumps(payload.schedule or []))
-    repo.set_setting("monitor.adaptive_enabled", "1" if payload.adaptive_enabled else "0")
+    repo.set_setting(
+        "telegram.forward_unknown_enabled",
+        "1" if payload.unknown_forward_enabled else "0",
+    )
+    repo.set_setting("telegram.forward_primary", (payload.forward_primary or "").strip())
+    repo.set_setting("telegram.forward_reserve", (payload.forward_reserve or "").strip())
     return _get_monitor_config()
 
 

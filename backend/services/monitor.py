@@ -5,19 +5,15 @@ import hashlib
 import json
 import re
 import sqlite3
-import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from config import (
     DEFAULT_MONITOR_DEPTH,
     DEFAULT_RETENTION_MONTHS,
     MAX_MONITOR_DEPTH,
-    MAX_MONITOR_INTERVAL_SECONDS,
     MAX_RETENTION_MONTHS,
     MIN_MONITOR_DEPTH,
-    MIN_MONITOR_INTERVAL_SECONDS,
     MIN_RETENTION_MONTHS,
-    MONITOR_INTERVAL_SECONDS,
     _ai_counters,
     ai_processing_lock,
     broadcast_sse,
@@ -33,19 +29,15 @@ from services.providers import get_provider
 from services.providers.claude import ClaudeProvider
 from services.providers.openai_compat import OpenAICompatProvider
 from services.telegram import _extract_telegram_username, _record_telegram_call
-from services.telethon import _get_saved_string_session, _telethon_client_init_data, _telethon_session_base
+from services.telethon import (
+    _get_saved_string_session,
+    _telethon_client_init_data,
+    _telethon_client_kwargs,
+    _telethon_session_base,
+)
 
 # Maximum concurrent Telethon channel fetches per monitor cycle
 _CHANNEL_CONCURRENCY = 3
-
-try:
-    from zoneinfo import ZoneInfo as _ZoneInfo
-    _MONITOR_TZ = _ZoneInfo("Europe/Kyiv")
-except Exception:
-    _MONITOR_TZ = timezone.utc
-
-# Per-source adaptive state: {source_id: {empty_streak, interval, skip_until}}
-_source_adaptive: dict[int, dict] = {}
 
 # Maximum concurrent Claude API calls per AI queue flush
 _AI_CONCURRENCY = 4
@@ -116,91 +108,9 @@ def _detect_media_type(message: object) -> str | None:
     return "media"
 
 
-def _parse_schedule(raw: str) -> list[dict]:
-    try:
-        data = json.loads(raw or "[]")
-        if not isinstance(data, list):
-            return []
-        result = []
-        for slot in data:
-            if not isinstance(slot, dict):
-                continue
-            if not (slot.get("from") and slot.get("to") and slot.get("interval_seconds")):
-                continue
-            result.append({
-                "from": str(slot["from"]),
-                "to": str(slot["to"]),
-                "interval_seconds": int(slot["interval_seconds"]),
-            })
-        return result
-    except Exception:
-        return []
-
-
-def _get_current_interval(cfg: dict) -> int:
-    """Return interval_seconds for current Kyiv local time based on schedule.
-
-    Falls back to cfg["interval_seconds"] when no schedule slot matches.
-    """
-    schedule = cfg.get("schedule") or []
-    fallback = int(cfg.get("interval_seconds", MONITOR_INTERVAL_SECONDS))
-    if not schedule:
-        return fallback
-
-    now = datetime.now(timezone.utc).astimezone(_MONITOR_TZ)
-    now_min = now.hour * 60 + now.minute
-
-    for slot in schedule:
-        try:
-            fh, fm = map(int, str(slot["from"]).split(":"))
-            th, tm = map(int, str(slot["to"]).split(":"))
-            from_min = fh * 60 + fm
-            to_min = th * 60 + tm
-            slot_secs = int(slot["interval_seconds"])
-        except (KeyError, ValueError, TypeError):
-            continue
-        in_slot = (
-            (from_min <= now_min < to_min)
-            if from_min < to_min
-            else (now_min >= from_min or now_min < to_min)
-        )
-        if in_slot:
-            return max(MIN_MONITOR_INTERVAL_SECONDS, min(MAX_MONITOR_INTERVAL_SECONDS, slot_secs))
-
-    return fallback
-
-
-def _update_source_adaptive(source_id: int, ingested: int, base_interval: int) -> None:
-    """Update per-source adaptive state after a collection attempt."""
-    state = _source_adaptive.setdefault(source_id, {
-        "empty_streak": 0, "interval": base_interval, "skip_until": 0.0,
-    })
-    if ingested > 0:
-        state["empty_streak"] = 0
-        state["interval"] = base_interval
-        state["skip_until"] = 0.0
-    else:
-        state["empty_streak"] = state.get("empty_streak", 0) + 1
-        if state["empty_streak"] >= 2:
-            new_interval = min(state.get("interval", base_interval) * 2, 7200)
-            state["interval"] = new_interval
-            state["skip_until"] = time.monotonic() + new_interval
-
-
 def _get_monitor_config() -> dict[str, bool | int | str]:
     collect_enabled = (repo.get_setting("monitor.collect_enabled", "1") or "1") == "1"
     ai_enabled = (repo.get_setting("monitor.ai_enabled", "1") or "1") == "1"
-    interval_raw = (
-        repo.get_setting("monitor.interval_seconds", str(MONITOR_INTERVAL_SECONDS))
-        or str(MONITOR_INTERVAL_SECONDS)
-    )
-    try:
-        interval_seconds = int(interval_raw)
-    except ValueError:
-        interval_seconds = MONITOR_INTERVAL_SECONDS
-    interval_seconds = max(
-        MIN_MONITOR_INTERVAL_SECONDS, min(MAX_MONITOR_INTERVAL_SECONDS, interval_seconds)
-    )
     depth_raw = (
         repo.get_setting("monitor.fetch_depth", str(DEFAULT_MONITOR_DEPTH))
         or str(DEFAULT_MONITOR_DEPTH)
@@ -225,20 +135,23 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
     dedup_enabled = (repo.get_setting("monitor.dedup_enabled", "1") or "1") == "1"
     ai_provider = (repo.get_setting("monitor.ai_provider", "claude") or "claude").strip()
     ai_model = (repo.get_setting("monitor.ai_model", "") or "").strip()
-    schedule = _parse_schedule(repo.get_setting("monitor.schedule", "[]") or "[]")
-    adaptive_enabled = (repo.get_setting("monitor.adaptive_enabled", "0") or "0") == "1"
+    unknown_forward_enabled = (
+        repo.get_setting("telegram.forward_unknown_enabled", "0") or "0"
+    ) == "1"
+    forward_primary = (repo.get_setting("telegram.forward_primary", "") or "").strip()
+    forward_reserve = (repo.get_setting("telegram.forward_reserve", "") or "").strip()
     return {
         "collect_enabled": collect_enabled,
         "ai_enabled": ai_enabled,
-        "interval_seconds": interval_seconds,
         "fetch_depth": fetch_depth,
         "retention_months": retention_months,
         "ai_prompt": ai_prompt,
         "dedup_enabled": dedup_enabled,
         "ai_provider": ai_provider,
         "ai_model": ai_model,
-        "schedule": schedule,
-        "adaptive_enabled": adaptive_enabled,
+        "unknown_forward_enabled": unknown_forward_enabled,
+        "forward_primary": forward_primary,
+        "forward_reserve": forward_reserve,
     }
 
 
@@ -333,61 +246,14 @@ async def _fetch_one_source(
 
             src_ingested = 0
             for message in reversed(candidates):
-                message_id = int(getattr(message, "id", 0))
-                msg_date = getattr(message, "date", None)
-                if message_id <= 0 or msg_date is None:
-                    continue
-                msg_date_utc = msg_date.astimezone(timezone.utc)
-                text = (
-                    getattr(message, "message", None)
-                    or getattr(message, "raw_text", None)
-                    or getattr(message, "text", None)
-                    or ""
+                ingested_now = await _ingest_channel_message(
+                    source=source,
+                    username=username,
+                    message=message,
+                    ai_enabled=ai_enabled,
+                    dedup_enabled=dedup_enabled,
                 )
-                # Only send to AI queue when source has AI enabled AND the
-                # message actually contains text — media-only posts are
-                # marked done immediately to avoid an infinite error loop.
-                has_text = bool(text.strip())
-                should_ai = ai_enabled and bool(source.get("ai_enabled")) and has_text
-
-                # Dedup check: if content hash already scored recently, copy result.
-                content_hash = _compute_content_hash(text) if has_text else None
-                dedup_original: dict | None = None
-                if dedup_enabled and content_hash and should_ai:
-                    dedup_original = repo.find_scored_message_by_hash(content_hash, hours=6)
-
-                new_message_id = repo.upsert_message(
-                    source_id=int(source["id"]),
-                    tg_message_id=message_id,
-                    published_at=msg_date_utc.strftime("%Y-%m-%d %H:%M:%S"),
-                    text=text,
-                    media_type=_detect_media_type(message),
-                    telegram_url=f"https://t.me/{username}/{message_id}",
-                    raw_json=json.dumps(
-                        message.to_dict(),
-                        ensure_ascii=False,
-                        default=str,
-                    ),
-                    enqueue_ai=should_ai and dedup_original is None,
-                    content_hash=content_hash,
-                )
-                if dedup_original is not None:
-                    repo.mark_message_dedup(
-                        new_message_id,
-                        int(dedup_original["ai_score"]),
-                        dedup_original.get("ai_category"),
-                    )
-                    _log_event(
-                        "dedup_hit",
-                        f"@{username} msg#{message_id}: дублікат msg#{dedup_original['id']}",
-                        username=username,
-                        message_id=new_message_id,
-                        original_id=dedup_original["id"],
-                    )
-                elif not should_ai:
-                    repo.mark_message_no_ai(new_message_id, _get_default_category_name())
-                src_ingested += 1
-                await _process_alerts_for_message(new_message_id, "new_message")
+                src_ingested += ingested_now
 
             if src_ingested > 0:
                 _log_event(
@@ -405,6 +271,68 @@ async def _fetch_one_source(
                 username=username,
             )
             return 0, 0
+
+
+async def _ingest_channel_message(
+    source: dict,
+    username: str,
+    message: object,
+    ai_enabled: bool,
+    dedup_enabled: bool = True,
+) -> int:
+    message_id = int(getattr(message, "id", 0))
+    msg_date = getattr(message, "date", None)
+    if message_id <= 0 or msg_date is None:
+        return 0
+    msg_date_utc = msg_date.astimezone(timezone.utc)
+    text = (
+        getattr(message, "message", None)
+        or getattr(message, "raw_text", None)
+        or getattr(message, "text", None)
+        or ""
+    )
+    has_text = bool(text.strip())
+    should_ai = ai_enabled and bool(source.get("ai_enabled")) and has_text
+    content_hash = _compute_content_hash(text) if has_text else None
+    dedup_original: dict | None = None
+    if dedup_enabled and content_hash and should_ai:
+        dedup_original = repo.find_scored_message_by_hash(content_hash, hours=6)
+    new_message_id = repo.upsert_message(
+        source_id=int(source["id"]),
+        tg_message_id=message_id,
+        published_at=msg_date_utc.strftime("%Y-%m-%d %H:%M:%S"),
+        text=text,
+        media_type=_detect_media_type(message),
+        telegram_url=f"https://t.me/{username}/{message_id}",
+        raw_json=json.dumps(
+            message.to_dict(),
+            ensure_ascii=False,
+            default=str,
+        ),
+        enqueue_ai=should_ai and dedup_original is None,
+        content_hash=content_hash,
+    )
+    repo.update_source_last_message(
+        int(source["id"]),
+        msg_date_utc.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    if dedup_original is not None:
+        repo.mark_message_dedup(
+            new_message_id,
+            int(dedup_original["ai_score"]),
+            dedup_original.get("ai_category"),
+        )
+        _log_event(
+            "dedup_hit",
+            f"@{username} msg#{message_id}: дублікат msg#{dedup_original['id']}",
+            username=username,
+            message_id=new_message_id,
+            original_id=dedup_original["id"],
+        )
+    elif not should_ai:
+        repo.mark_message_no_ai(new_message_id, _get_default_category_name())
+    await _process_alerts_for_message(new_message_id, "new_message")
+    return 1
 
 
 async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
@@ -434,8 +362,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
 
     sources = repo.list_sources(sort_by="alpha")
     session_path = _telethon_session_base()
-    current_interval = _get_current_interval(monitor_cfg)
-    window_start = datetime.now(timezone.utc) - timedelta(seconds=current_interval)
+    window_start = datetime.now(timezone.utc)
 
     async with telethon_client_lock:
         try:
@@ -447,7 +374,12 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                 if client_mode == "string"
                 else str(session_path)
             )
-            client = TelegramClient(session_obj, parsed_api_id, parsed_api_hash)
+            client = TelegramClient(
+                session_obj,
+                parsed_api_id,
+                parsed_api_hash,
+                **_telethon_client_kwargs(),
+            )
             try:
                 await client.connect()
                 if not await client.is_user_authorized():
@@ -460,17 +392,9 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                     )
                 _record_telegram_call()
 
-                all_active = [
+                active_sources = [
                     s for s in sources
                     if s.get("is_active") and _extract_telegram_username(s["url"] or "")
-                ]
-                # Adaptive: skip sources whose backoff window hasn't expired
-                adaptive_on = bool(monitor_cfg.get("adaptive_enabled"))
-                now_mono = time.monotonic()
-                active_sources = [
-                    s for s in all_active
-                    if not adaptive_on
-                    or now_mono >= _source_adaptive.get(int(s["id"]), {}).get("skip_until", 0.0)
                 ]
 
                 semaphore = asyncio.Semaphore(_CHANNEL_CONCURRENCY)
@@ -493,8 +417,6 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                         src_updated, src_ingested = result
                         updated += src_updated
                         ingested += src_ingested
-                        if adaptive_on:
-                            _update_source_adaptive(int(src["id"]), src_ingested, current_interval)
 
                 repo.enforce_retention_months(int(monitor_cfg["retention_months"]))
             finally:
@@ -704,117 +626,156 @@ async def _process_ai_queue(limit: int = 50) -> int:
 # Background loops
 # ---------------------------------------------------------------------------
 
+def _build_source_indexes() -> tuple[dict[int, dict], dict[str, dict]]:
+    tracked_by_chat: dict[int, dict] = {}
+    tracked_by_username: dict[str, dict] = {}
+    for src in repo.list_sources(sort_by="alpha"):
+        if not src.get("is_active"):
+            continue
+        username = (_extract_telegram_username(src.get("url") or "") or "").lower()
+        if not username:
+            continue
+        tracked_by_username[username] = src
+        peer_id = src.get("tg_peer_id")
+        if peer_id is None:
+            continue
+        try:
+            tracked_by_chat[int(peer_id)] = src
+        except (TypeError, ValueError):
+            continue
+    return tracked_by_chat, tracked_by_username
+
+
+async def _forward_unknown_message(client: object, event: object) -> None:
+    monitor_cfg = _get_monitor_config()
+    if not monitor_cfg.get("unknown_forward_enabled"):
+        return
+    targets = [
+        str(monitor_cfg.get("forward_primary") or "").strip(),
+        str(monitor_cfg.get("forward_reserve") or "").strip(),
+    ]
+    targets = [t for t in targets if t]
+    if not targets:
+        return
+    for target in targets:
+        try:
+            await client.forward_messages(entity=target, messages=event.message)
+            _record_telegram_call()
+        except Exception as exc:
+            _log_event(
+                "forward_unknown_error",
+                f"Не вдалося переслати невідстежене повідомлення в {target}: {type(exc).__name__}",
+            )
+
+
 async def _monitor_loop() -> None:
+    reconnect_delay = 3.0
+    max_reconnect_delay = 120.0
     while True:
         try:
             monitor_cfg = _get_monitor_config()
-            monitor_status["interval_seconds"] = int(monitor_cfg["interval_seconds"])
-            monitor_status["state"] = "running"
-            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-            monitor_status["last_run_at"] = now_str
-            _log_event("collect_start", "Запуск циклу збору")
-
+            if not monitor_cfg["collect_enabled"]:
+                monitor_status["state"] = "paused"
+                await asyncio.sleep(5)
+                continue
             updated, total, ingested, err = await _sync_sources_last_messages()
+            if err:
+                raise RuntimeError(err)
             monitor_status["updated_sources"] = updated
             monitor_status["total_sources"] = total
             monitor_status["ingested_messages"] = ingested
+            monitor_status["state"] = "running"
+            monitor_status["last_error"] = None
 
-            # Snapshot and reset the AI counter that accumulated since last cycle
-            ai_since_last = _ai_counters["processed_since_last_collect"]
-            _ai_counters["processed_since_last_collect"] = 0
+            from telethon import TelegramClient, events
+            from telethon.sessions import StringSession
 
-            if err:
-                monitor_status["state"] = "warning"
-                monitor_status["last_error"] = err
-                _log_event(
-                    "collect_warning", err,
-                    updated=updated, total=total, ingested=ingested,
-                )
-                monitor_run_history.append(
-                    {
-                        "at": now_str,
-                        "updated": updated,
-                        "total": total,
-                        "ingested": ingested,
-                        "ai_processed": ai_since_last,
-                        "state": "warning",
-                        "error": err,
-                    }
-                )
+            integrations = repo.get_integrations()
+            api_id_raw = (integrations.get("telegram_api_id") or "").strip()
+            api_hash = (integrations.get("telegram_api_hash") or "").strip()
+            if not re.fullmatch(r"\d{5,12}", api_id_raw) or not re.fullmatch(r"[a-fA-F0-9]{32}", api_hash):
+                raise RuntimeError("Telegram User API ID/Hash не заповнені або некоректні")
+            api_id = int(api_id_raw)
+            client_mode, parsed_api_id, parsed_api_hash = _telethon_client_init_data(api_id, api_hash)
+            session_obj = (
+                StringSession(_get_saved_string_session())
+                if client_mode == "string"
+                else str(_telethon_session_base())
+            )
+            client = TelegramClient(
+                session_obj,
+                parsed_api_id,
+                parsed_api_hash,
+                **_telethon_client_kwargs(),
+            )
+            tracked_by_chat, tracked_by_username = _build_source_indexes()
+
+            @client.on(events.NewMessage(incoming=True))
+            async def _on_new_message(event: object) -> None:
+                nonlocal tracked_by_chat, tracked_by_username
                 try:
-                    repo.log_run(now_str, updated, total, ingested, ai_since_last, "warning", err)
-                except Exception:
-                    pass
-                broadcast_sse("monitor_status", {k: v for k, v in monitor_status.items() if k != "last_error"})
-            else:
-                monitor_status["state"] = "ok"
-                monitor_status["last_error"] = None
-                monitor_status["last_success_at"] = datetime.now(timezone.utc).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-                _log_event(
-                    "collect_done",
-                    f"Оновлено: {updated}/{total} джерел, нових: {ingested}",
-                    updated=updated, total=total, ingested=ingested,
-                )
-                monitor_run_history.append(
-                    {
-                        "at": now_str,
-                        "updated": updated,
-                        "total": total,
-                        "ingested": ingested,
-                        "ai_processed": ai_since_last,
-                        "state": "ok",
-                        "error": None,
-                    }
-                )
-                try:
-                    repo.log_run(now_str, updated, total, ingested, ai_since_last, "ok", None)
-                except Exception:
-                    pass
-                broadcast_sse("monitor_status", {k: v for k, v in monitor_status.items() if k != "last_error"})
+                    monitor_status["last_run_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                    source: dict | None = None
+                    chat = await event.get_chat()
+                    chat_id_raw = getattr(chat, "id", None)
+                    if chat_id_raw is not None:
+                        try:
+                            source = tracked_by_chat.get(int(chat_id_raw))
+                        except (TypeError, ValueError):
+                            source = None
+                    if source is None:
+                        username = (getattr(chat, "username", None) or "").lower()
+                        source = tracked_by_username.get(username)
+                        if source is not None and chat_id_raw is not None:
+                            try:
+                                tracked_by_chat[int(chat_id_raw)] = source
+                                repo.update_source_tg_peer(int(source["id"]), int(chat_id_raw), 0)
+                            except Exception:
+                                pass
+                    if source is None:
+                        await _forward_unknown_message(client, event)
+                        return
+                    current_cfg = _get_monitor_config()
+                    username = _extract_telegram_username(source.get("url") or "") or (getattr(chat, "username", None) or "")
+                    ingested_now = await _ingest_channel_message(
+                        source=source,
+                        username=username,
+                        message=event.message,
+                        ai_enabled=bool(current_cfg["ai_enabled"]),
+                        dedup_enabled=bool(current_cfg["dedup_enabled"]),
+                    )
+                    if ingested_now:
+                        monitor_status["ingested_messages"] = int(monitor_status.get("ingested_messages") or 0) + ingested_now
+                        monitor_status["last_success_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                        _log_event("event_ingest", f"@{username}: +{ingested_now} повідомлень (event)")
+                        broadcast_sse("monitor_status", {k: v for k, v in monitor_status.items() if k != "last_error"})
+                except Exception as exc:
+                    _log_event(
+                        "event_ingest_error",
+                        f"Помилка event-обробки: {type(exc).__name__}: {str(exc)[:200]}",
+                    )
+
+            await client.connect()
+            if not await client.is_user_authorized():
+                _record_telegram_call()
+                raise RuntimeError("Telethon-сесія не авторизована (потрібен login)")
+            _record_telegram_call()
+            _log_event("collect_start", "Event listener запущено, очікуємо повідомлення")
+            try:
+                await client.run_until_disconnected()
+            finally:
+                await client.disconnect()
         except Exception as exc:
-            monitor_status["state"] = "error"
-            monitor_status["last_error"] = "Непередбачена помилка моніторингу"
+            monitor_status["state"] = "warning"
+            monitor_status["last_error"] = str(exc)
             _log_event(
                 "collect_error",
-                f"Непередбачена помилка: {type(exc).__name__}: {str(exc)[:200]}",
+                f"Помилка event-listener: {type(exc).__name__}: {str(exc)[:200]}",
             )
-        try:
-            interval = _get_current_interval(_get_monitor_config())
-        except Exception:
-            interval = MONITOR_INTERVAL_SECONDS
-        # Sleep in 10-second chunks so interval/schedule changes take effect within ~10s
-        target = time.monotonic() + _seconds_until_next_tick(interval)
-        while True:
-            remaining = target - time.monotonic()
-            if remaining <= 1.0:
-                break
-            try:
-                new_interval = _get_current_interval(_get_monitor_config())
-            except Exception:
-                new_interval = interval
-            if new_interval != interval:
-                interval = new_interval
-                target = time.monotonic() + _seconds_until_next_tick(interval)
-            await asyncio.sleep(min(10.0, max(1.0, target - time.monotonic())))
-
-
-def _seconds_until_next_tick(interval: int) -> float:
-    """Return seconds to sleep until the next grid-aligned tick.
-
-    Ticks are anchored to 00:00:00 UTC and repeat every *interval* seconds.
-    Example: interval=1200 (20 min) → ticks at 00:00, 00:20, 00:40, 01:00 …
-    The first tick after startup may be less than a full interval away.
-    Minimum sleep is 1 second to avoid busy-looping on clock edge.
-    """
-    now = datetime.now(timezone.utc)
-    seconds_since_midnight = (
-        now.hour * 3600 + now.minute * 60 + now.second + now.microsecond / 1_000_000
-    )
-    remainder = seconds_since_midnight % interval
-    wait = interval - remainder if remainder > 0 else interval
-    return max(1.0, wait)
+            await asyncio.sleep(reconnect_delay)
+            reconnect_delay = min(max_reconnect_delay, reconnect_delay * 2)
+        else:
+            reconnect_delay = 3.0
 
 
 async def _ai_loop() -> None:
