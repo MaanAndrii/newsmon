@@ -61,7 +61,7 @@
             <details class="md:col-span-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
               <summary class="cursor-pointer list-none flex items-center justify-between">
                 <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <span id="sigClaude" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
+                  <span id="sigClaude" class="hidden w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
                   Claude (Anthropic)
                 </p>
                 <span class="text-slate-400">+</span>
@@ -92,7 +92,7 @@
             <details class="md:col-span-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
               <summary class="cursor-pointer list-none flex items-center justify-between">
                 <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <span id="sigGrok" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
+                  <span id="sigGrok" class="hidden w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
                   Grok (xAI)
                 </p>
                 <span class="text-slate-400">+</span>
@@ -123,7 +123,7 @@
             <details class="md:col-span-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
               <summary class="cursor-pointer list-none flex items-center justify-between">
                 <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <span id="sigGemini" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
+                  <span id="sigGemini" class="hidden w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
                   Gemini (Google)
                 </p>
                 <span class="text-slate-400">+</span>
@@ -153,7 +153,7 @@
             </details>
             <div class="md:col-span-2 border-t border-slate-800 pt-3">
               <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <span id="sigTelegramUser" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
+                <span id="sigTelegramUser" class="hidden w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
                 Telegram
               </p>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -168,7 +168,7 @@
                 </label>
                 <label class="flex flex-col gap-1">
                   <span class="text-slate-300 flex items-center gap-1.5">
-                    <span id="sigTelegramBot" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
+                    <span id="sigTelegramBot" class="hidden w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
                     Telegram Bot Token
                   </span>
                   <input id="telegramBotToken" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="123456:AA...mock_token" />
@@ -197,7 +197,7 @@
           </div>
           <div class="rounded-lg border border-slate-800 p-3 space-y-2">
             <h3 class="text-sm font-semibold flex items-center gap-1.5">
-              <span id="sigTelethon" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
+              <span id="sigTelethon" class="hidden w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
               Telethon авторизація користувача
             </h3>
             <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
@@ -219,11 +219,7 @@
         </div>
 
         <div id="monitoringTab" class="tab-panel hidden space-y-4">
-          <h2 class="text-lg font-semibold flex items-center gap-2">
-            <span id="sigMonitor" class="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
-            Моніторинг
-            <span id="monitorText" class="text-sm font-normal text-slate-400">стан невідомий</span>
-          </h2>
+          <h2 class="text-lg font-semibold">Моніторинг</h2>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
             <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
               <div>
@@ -309,7 +305,6 @@
           <div class="flex gap-2">
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveMonitorConfig()">Зберегти налаштування моніторингу</button>
           </div>
-          <p id="monitorConfigMessage" class="text-xs text-slate-400"></p>
         </div>
 
         <div id="taxonomyTab" class="tab-panel hidden space-y-6">
@@ -526,19 +521,21 @@
             </div>
           </div>
 
-          <!-- Status + history -->
-          <div class="rounded-lg border border-slate-800 p-4 space-y-3 text-sm">
-            <div class="flex items-center justify-between">
+          <details class="rounded-lg border border-slate-800 p-4 text-sm" open>
+            <summary class="cursor-pointer list-none flex items-center justify-between">
               <p class="font-medium text-slate-200">Останні дайджести</p>
+              <span class="text-slate-400">+</span>
+            </summary>
+            <div class="mt-3 space-y-3">
               <div class="flex gap-2">
                 <button onclick="loadDigestHistory()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">↻ Оновити</button>
                 <button onclick="generateDigestNow()" id="digestGenerateBtn" class="text-xs px-3 py-1.5 rounded-lg bg-violet-700 hover:bg-violet-600 text-white">⚡ Згенерувати зараз</button>
               </div>
+              <div id="digestHistoryList" class="space-y-2">
+                <p class="text-xs text-slate-500">Завантаження...</p>
+              </div>
             </div>
-            <div id="digestHistoryList" class="space-y-2">
-              <p class="text-xs text-slate-500">Завантаження...</p>
-            </div>
-          </div>
+          </details>
         </div>
 
         <div id="debugTab" class="tab-panel hidden space-y-4">
@@ -862,10 +859,8 @@
         loadAlerts();
         loadDigestConfig();
         loadDigestHistory();
-        loadMonitorStatus();
         loadTelethonAuthStatus();
         loadDebugAll();
-        setInterval(loadMonitorStatus, 10000);
         setInterval(loadMonitorConfig, 15000);
         setInterval(loadTelethonAuthStatus, 30000);
         setInterval(() => {
@@ -917,7 +912,6 @@
         if (tabId === 'apiTab') loadTelethonAuthStatus();
         if (tabId === 'monitoringTab') {
           loadMonitorConfig();
-          loadMonitorStatus();
         }
         if (tabId === 'alertsTab') loadAlerts();
         if (tabId === 'digestTab') { loadDigestConfig(); loadDigestHistory(); }
@@ -1138,24 +1132,6 @@
           rows.push({ ok: false, label: 'Формат Model ID', detail: data.extra_model_issues.join(', ') });
         }
         showValidationModal(rows);
-      }
-
-      function setMonitorSignal(state, text) {
-        const dot = document.getElementById('sigMonitor');
-        dot.classList.remove('bg-slate-500', 'bg-emerald-500', 'bg-amber-400', 'bg-rose-500');
-        if (state === 'ok') dot.classList.add('bg-emerald-500');
-        else if (state === 'warning' || state === 'running') dot.classList.add('bg-amber-400');
-        else if (state === 'error') dot.classList.add('bg-rose-500');
-        else dot.classList.add('bg-slate-500');
-        document.getElementById('monitorText').textContent = text;
-      }
-
-      async function loadMonitorStatus() {
-        const res = await fetch(`${apiBase}/api/monitor/status`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const info = `Моніторинг: ${data.state} • Оновлено: ${data.updated_sources}/${data.total_sources} • Ingested: ${data.ingested_messages || 0}`;
-        setMonitorSignal(data.state, info);
       }
 
       // ─── Digest ────────────────────────────────────────────────────────────
@@ -1429,7 +1405,6 @@
         updateMonitorModelDropdown(data.ai_model || '');
         updateMonitorFormState();
         updateFetchDepthHint();
-        document.getElementById('monitorConfigMessage').textContent = 'Налаштування моніторингу завантажено.';
       }
 
       function updateMonitorFormState() {
@@ -1466,10 +1441,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
-        const data = await parseApiBody(res);
-        document.getElementById('monitorConfigMessage').textContent = res.ok
-          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}`
-          : (data.detail || 'Не вдалося зберегти налаштування моніторингу.');
+        await parseApiBody(res);
       }
 
       async function clearAllMessages() {
@@ -1480,10 +1452,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ confirm: true }),
         });
-        const data = await parseApiBody(res);
-        document.getElementById('monitorConfigMessage').textContent = res.ok
-          ? `Видалено повідомлень: ${data.deleted_messages}.`
-          : (data.detail || 'Не вдалося очистити повідомлення.');
+        await parseApiBody(res);
       }
 
       let _promptTokenDebounce = null;

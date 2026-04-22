@@ -38,31 +38,11 @@
     </header>
 
     <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
-      <section class="mb-5 p-4 rounded-xl bg-slate-900 border border-slate-800">
-        <div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-          <h2 class="font-semibold text-lg">Статус системи</h2>
-          <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs w-full md:w-auto md:ml-auto">
-            <button id="statusChannelsCard" class="px-3 py-2 rounded bg-sky-700/60 text-left hover:bg-sky-600/70 transition" onclick="openSystemStatusModal('channels')">
-              <div class="font-semibold">Канали</div>
-              <div id="statusChannels">0/0</div>
-            </button>
-            <button id="statusFilterCard" class="hidden px-3 py-2 rounded bg-rose-700/80 text-left transition">
-              <div class="font-semibold" id="statusFilterLabel">Фільтр</div>
-              <div id="statusFilterCount"></div>
-            </button>
-            <button id="statusClockCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="openSystemStatusModal('now')">
-              <div class="font-semibold">Актуальний час</div>
-              <div id="statusCurrentTime">--:--:--</div>
-            </button>
-            <button id="statusAiCard" class="hidden px-3 py-2 rounded bg-amber-700/70 text-left transition col-span-2 md:col-span-1" onclick="openSystemStatusModal('ai')">
-              <div class="font-semibold flex items-center gap-1">
-                <span class="inline-block w-2 h-2 rounded-full bg-amber-300 animate-pulse"></span>
-                AI обробка
-              </div>
-              <div id="statusAiQueue">—</div>
-            </button>
-          </div>
-        </div>
+      <section class="mb-4 flex justify-end">
+        <button id="statusFilterCard" class="hidden px-3 py-2 rounded bg-rose-700/80 text-left text-xs transition max-w-full">
+          <div class="font-semibold truncate" id="statusFilterLabel">Статус</div>
+          <div id="statusFilterCount"></div>
+        </button>
       </section>
 
       <section id="messagesGrid" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -130,19 +110,6 @@
             <button class="px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="copyModalMessage()" title="Копіювати повідомлення">📋</button>
             <a id="modalTelegramLink" href="#" target="_blank" class="px-3 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-sm" title="Перейти в Telegram">↗️</a>
           </div>
-        </div>
-      </div>
-    </div>
-    <div id="systemStatusModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
-      <div class="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
-        <div class="flex items-center justify-between px-4 py-3 border-b border-slate-800">
-          <h3 class="font-semibold text-lg">Деталі статусу</h3>
-          <button class="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-sm" onclick="closeSystemStatusModal()">Закрити</button>
-        </div>
-        <div class="p-4 space-y-3">
-          <p id="systemStatusTitle" class="text-sm font-semibold text-slate-100"></p>
-          <p id="systemStatusDetail" class="text-sm leading-relaxed text-slate-300"></p>
-          <p id="systemStatusUpdated" class="text-xs text-slate-500"></p>
         </div>
       </div>
     </div>
@@ -305,7 +272,6 @@
     </style>
     <script>
       const modal = document.getElementById('messageModal');
-      const systemStatusModal = document.getElementById('systemStatusModal');
       const modalMeta = document.getElementById('modalMeta');
       const modalChannel = document.getElementById('modalChannel');
       const modalScore = document.getElementById('modalScore');
@@ -319,7 +285,6 @@
       const showMoreBtn = document.getElementById('showMoreBtn');
       const resetFiltersBtn = document.getElementById('resetFiltersBtn');
       const scrollTopBtn = document.getElementById('scrollTopBtn');
-      const statusCache = { telegram: '', ai: '', channels: '', clock: '', now: '', updatedAt: '', lastRunAt: null, collectEnabled: true, prevState: '', aiQueuePending: 0, aiQueueProcessing: 0 };
       const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '', maxScore: '', contentHash: '', date: '' };
       const filterOptions = { categories: [], sources: [], keywords: [] };
       let pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
@@ -424,12 +389,10 @@
       }
 
       function updateFilterCard() {
-        const channelsCard = document.getElementById('statusChannelsCard');
         const filterCard = document.getElementById('statusFilterCard');
         const filterLabel = document.getElementById('statusFilterLabel');
         const filterCount = document.getElementById('statusFilterCount');
         if (!hasActiveFilters()) {
-          channelsCard.classList.remove('hidden');
           filterCard.classList.add('hidden');
           return;
         }
@@ -447,7 +410,6 @@
         if (queryStateCache.date) parts.push(`📅 ${queryStateCache.date}`);
         filterLabel.textContent = parts.join(' • ');
         filterCount.textContent = `Показано: ${latestItems.length}`;
-        channelsCard.classList.add('hidden');
         filterCard.classList.remove('hidden');
       }
 
@@ -536,22 +498,10 @@
       // ─── SSE ─────────────────────────────────────────────────────────────
       let _sseReconnectTimer = null;
       let _sseMsgDebounce = null;
-      let _sseStatusEl = null;
 
       function _initSSE() {
-        if (_sseStatusEl === null) {
-          _sseStatusEl = document.createElement('span');
-          _sseStatusEl.id = 'sseIndicator';
-          _sseStatusEl.style.cssText = 'width:8px;height:8px;border-radius:50%;display:inline-block;background:#475569;margin-right:4px;flex-shrink:0';
-          _sseStatusEl.title = 'SSE: підключення...';
-          const clockCard = document.getElementById('statusClockCard');
-          if (clockCard) clockCard.prepend(_sseStatusEl);
-        }
         const es = new EventSource('/api/events');
-        es.onopen = () => {
-          _sseStatusEl.style.background = '#22c55e';
-          _sseStatusEl.title = 'SSE: підключено (реальний час)';
-        };
+        es.onopen = () => {};
         es.onmessage = (e) => {
           try {
             const msg = JSON.parse(e.data);
@@ -559,7 +509,7 @@
               clearTimeout(_sseMsgDebounce);
               _sseMsgDebounce = setTimeout(loadMessages, 800);
             } else if (msg.type === 'monitor_status') {
-              loadSystemStatus();
+              updateFilterCard();
             } else if (msg.type === 'digest_ready') {
               const sel = document.getElementById('digestDateSelect');
               if (sel) loadDigestList();
@@ -567,8 +517,6 @@
           } catch (_) {}
         };
         es.onerror = () => {
-          _sseStatusEl.style.background = '#f59e0b';
-          _sseStatusEl.title = 'SSE: перепідключення...';
           es.close();
           clearTimeout(_sseReconnectTimer);
           _sseReconnectTimer = setTimeout(_initSSE, 5000);
@@ -755,89 +703,6 @@
         loadMessages();
       }
 
-      function paintStatusCard(cardId, isOk) {
-        const card = document.getElementById(cardId);
-        card.classList.remove('bg-emerald-700/60', 'bg-amber-700/60', 'bg-rose-700/60');
-        if (isOk === true) card.classList.add('bg-emerald-700/60');
-        else if (isOk === false) card.classList.add('bg-rose-700/60');
-        else card.classList.add('bg-amber-700/60');
-      }
-
-      function updatePollCountdown() {
-        const aiCard = document.getElementById('statusAiCard');
-        const aiQueue = document.getElementById('statusAiQueue');
-
-        // AI processing card
-        const aiActive = (statusCache.aiQueuePending + statusCache.aiQueueProcessing) > 0;
-        if (aiActive) {
-          aiCard.classList.remove('hidden');
-          aiQueue.textContent = `Черга: ${statusCache.aiQueuePending + statusCache.aiQueueProcessing}`;
-        } else {
-          aiCard.classList.add('hidden');
-        }
-
-        if (!statusCache.collectEnabled) return;
-      }
-
-      function updateCurrentTime() {
-        const now = new Date();
-        const nowText = now.toLocaleTimeString('uk-UA');
-        document.getElementById('statusCurrentTime').textContent = nowText;
-        statusCache.now = `Поточний час: ${now.toLocaleString('uk-UA')}`;
-      }
-
-      async function loadSystemStatus() {
-        try {
-          const [monitorRes, sourcesRes] = await Promise.all([fetch('/api/monitor/status'), fetch('/api/sources')]);
-          const monitor = monitorRes.ok ? await monitorRes.json() : null;
-          const sources = sourcesRes.ok ? await sourcesRes.json() : [];
-          const activeSources = sources.filter((s) => s.is_active).length;
-          const totalSources = sources.length;
-          const monitorState = monitor?.state || 'unknown';
-          const aiEnabled = Boolean(monitor?.ai_enabled);
-          const collectEnabled = Boolean(monitor?.collect_enabled);
-          const ingested = monitor?.ingested_messages || 0;
-          statusCache.prevState = monitorState;
-          statusCache.collectEnabled = collectEnabled;
-          statusCache.lastRunAt = monitor?.last_run_at ? new Date((monitor.last_run_at || '').replace(' ', 'T') + 'Z') : null;
-          // AI queue stats
-          statusCache.aiQueuePending = Number(monitor?.ai_queue_pending || 0);
-          statusCache.aiQueueProcessing = Number(monitor?.ai_queue_processing || 0);
-          const aiQueueTotal = statusCache.aiQueuePending + statusCache.aiQueueProcessing;
-          statusCache.telegram = `Стан: ${monitorState}. Помилка: ${monitor?.last_error || 'немає'}`;
-          statusCache.ai = `AI: ${aiEnabled ? 'увімкнено' : 'вимкнено'}. Ingested: ${ingested}. Черга AI: ${aiQueueTotal}`;
-          statusCache.channels = `Активних ${activeSources}/${totalSources}, оновлено ${monitor?.updated_sources || 0}`;
-          statusCache.clock = `Event-режим. Збір: ${collectEnabled ? 'увімкнено' : 'вимкнено'}`;
-          updateCurrentTime();
-          statusCache.updatedAt = `Оновлено: ${new Date().toLocaleString('uk-UA')}`;
-          if (monitorState === 'running') {
-            document.getElementById('statusChannels').textContent = `Збір... (↓${ingested})`;
-          } else {
-            document.getElementById('statusChannels').textContent = `${activeSources}/${totalSources}`;
-          }
-          paintStatusCard('statusChannelsCard', activeSources > 0 ? true : null);
-          paintStatusCard('statusClockCard', collectEnabled ? true : null);
-          updatePollCountdown();
-        } catch (error) {
-          document.getElementById('statusChannels').textContent = 'помилка';
-          paintStatusCard('statusChannelsCard', false);
-        }
-      }
-
-      function openSystemStatusModal(type) {
-        const titles = { channels: 'Стан каналів', clock: 'Таймер опитування', now: 'Актуальний час', ai: 'AI обробка' };
-        document.getElementById('systemStatusTitle').textContent = titles[type] || 'Статус';
-        document.getElementById('systemStatusDetail').textContent = statusCache[type] || 'Немає даних';
-        document.getElementById('systemStatusUpdated').textContent = statusCache.updatedAt || '';
-        systemStatusModal.classList.remove('hidden');
-        systemStatusModal.classList.add('flex');
-      }
-
-      function closeSystemStatusModal() {
-        systemStatusModal.classList.add('hidden');
-        systemStatusModal.classList.remove('flex');
-      }
-
       function applySearch() {
         queryStateCache.search = searchInput.value.trim();
         visibleCount = PAGE_SIZE;
@@ -949,14 +814,10 @@
       loadFilterOptions();
       updateResetButtonState();
       loadMessages();
-      loadSystemStatus();
       sendDashboardHeartbeat();
       setInterval(sendDashboardHeartbeat, 30000);
-      setInterval(updatePollCountdown, 1000);
-      setInterval(updateCurrentTime, 1000);
       // Fallback polls in case SSE disconnects
       setInterval(loadMessages, 60000);
-      setInterval(loadSystemStatus, 60000);
       _initSSE();
       window.addEventListener('beforeunload', () => {
         sendDashboardHeartbeat();
