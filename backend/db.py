@@ -500,17 +500,10 @@ class Repository:
             conn.execute("DELETE FROM messages")
         return deleted
 
-    def delete_empty_messages(self) -> int:
+    def delete_message_by_id(self, message_id: int) -> bool:
         with get_connection() as conn:
-            row = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM messages WHERE text IS NULL OR TRIM(text) = ''"
-            ).fetchone()
-            deleted = int(row["cnt"] or 0)
-            if deleted:
-                conn.execute(
-                    "DELETE FROM messages WHERE text IS NULL OR TRIM(text) = ''"
-                )
-        return deleted
+            cur = conn.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+        return cur.rowcount > 0
 
     def list_sources(self, sort_by: str = "created_desc") -> list[dict[str, Any]]:
         order_by = {
@@ -1219,7 +1212,7 @@ class Repository:
                 "(SELECT id FROM debug_event_log ORDER BY id DESC LIMIT 200)"
             )
 
-    def load_event_log(self, limit: int = 50) -> list[dict[str, Any]]:
+    def load_event_log(self, limit: int = 100) -> list[dict[str, Any]]:
         with get_connection() as conn:
             rows = conn.execute(
                 "SELECT logged_at AS at, event_type AS type, detail FROM debug_event_log "

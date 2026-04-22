@@ -8,7 +8,7 @@ from config import claude_call_events, event_log, monitor_run_history, monitor_s
 from models import DashboardHeartbeatPayload, MonitorConfigPayload, PromptTokensPayload
 from security import _rate_limit_hit, require_admin
 from services.claude import _resolve_claude_model
-from services.monitor import _get_monitor_config, _process_ai_queue, _sync_sources_last_messages
+from services.monitor import _get_monitor_config
 from utils import _resolve_client_ip
 
 router = APIRouter()
@@ -46,34 +46,6 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.ai_provider", payload.ai_provider)
     repo.set_setting("monitor.ai_model", (payload.ai_model or "").strip())
     return _get_monitor_config()
-
-
-@router.post("/api/monitor/run-once", dependencies=[Depends(require_admin)])
-async def run_monitor_once() -> dict:
-    updated, total, ingested, err = await _sync_sources_last_messages()
-    monitor_status["last_run_at"] = datetime.now(timezone.utc).strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
-    monitor_status["updated_sources"] = updated
-    monitor_status["total_sources"] = total
-    monitor_status["ingested_messages"] = ingested
-    if err:
-        monitor_status["state"] = "warning"
-        monitor_status["last_error"] = err
-    else:
-        await _process_ai_queue()
-        monitor_status["state"] = "ok"
-        monitor_status["last_error"] = None
-        monitor_status["last_success_at"] = datetime.now(timezone.utc).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-    return {
-        "ok": err is None,
-        "updated_sources": updated,
-        "total_sources": total,
-        "ingested_messages": ingested,
-        "detail": err,
-    }
 
 
 @router.post("/api/monitor/count-prompt-tokens", dependencies=[Depends(require_admin)])
@@ -213,7 +185,7 @@ def get_run_history() -> dict:
 
 @router.get("/api/debug/log", dependencies=[Depends(require_admin)])
 def get_debug_log() -> dict:
-    """Return the last 50 event-log entries, newest first."""
+    """Return the last 100 event-log entries, newest first."""
     return {"events": list(reversed(list(event_log)))}
 
 

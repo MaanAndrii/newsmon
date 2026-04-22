@@ -69,7 +69,7 @@ def _compute_content_hash(text: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 def _log_event(event_type: str, detail: str, **extra: object) -> None:
-    """Append an entry to the in-memory event log (last 50 entries)."""
+    """Append an entry to the in-memory event log (last 100 entries)."""
     event_log.append(
         {
             "at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
@@ -308,6 +308,16 @@ async def _ingest_channel_message(
         int(source["id"]),
         msg_date_utc.strftime("%Y-%m-%d %H:%M:%S"),
     )
+    if not has_text:
+        removed = repo.delete_message_by_id(new_message_id)
+        if removed:
+            _log_event(
+                "empty_message_deleted",
+                f"@{username} msg#{message_id}: видалено порожнє повідомлення",
+                username=username,
+                message_id=new_message_id,
+            )
+        return 0
     if dedup_original is not None:
         repo.mark_message_dedup(
             new_message_id,

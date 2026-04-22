@@ -80,8 +80,8 @@ ai_processing_lock = asyncio.Lock()
 claude_call_events: deque[dict[str, int | datetime]] = deque(maxlen=5000)
 telegram_call_events: deque[datetime] = deque(maxlen=10000)
 
-# In-memory event log (last 50 entries) and collect-cycle history (last 10)
-event_log: deque[dict] = deque(maxlen=50)
+# In-memory event log (last 100 entries) and collect-cycle history (last 10)
+event_log: deque[dict] = deque(maxlen=100)
 monitor_run_history: deque[dict] = deque(maxlen=10)
 
 # ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ try:
             })
         except Exception:
             pass
-    for _row in repo.load_event_log(limit=50):
+    for _row in repo.load_event_log(limit=100):
         event_log.append(_row)
     for _row in repo.load_run_history(limit=10):
         monitor_run_history.append(_row)

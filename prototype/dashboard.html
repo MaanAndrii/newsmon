@@ -41,7 +41,7 @@
       <section class="mb-5 p-4 rounded-xl bg-slate-900 border border-slate-800">
         <div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
           <h2 class="font-semibold text-lg">Статус системи</h2>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs w-full md:w-auto">
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs w-full md:w-auto md:ml-auto">
             <button id="statusChannelsCard" class="px-3 py-2 rounded bg-sky-700/60 text-left hover:bg-sky-600/70 transition" onclick="openSystemStatusModal('channels')">
               <div class="font-semibold">Канали</div>
               <div id="statusChannels">0/0</div>
@@ -53,10 +53,6 @@
             <button id="statusClockCard" class="px-3 py-2 rounded bg-violet-700/60 text-left hover:bg-violet-600/70 transition" onclick="openSystemStatusModal('now')">
               <div class="font-semibold">Актуальний час</div>
               <div id="statusCurrentTime">--:--:--</div>
-            </button>
-            <button id="statusNowTimeCard" class="px-3 py-2 rounded bg-indigo-700/60 text-left hover:bg-indigo-600/70 transition" onclick="openSystemStatusModal('clock')">
-              <div class="font-semibold">До оновлення</div>
-              <div id="statusPollTimer">--:--</div>
             </button>
             <button id="statusAiCard" class="hidden px-3 py-2 rounded bg-amber-700/70 text-left transition col-span-2 md:col-span-1" onclick="openSystemStatusModal('ai')">
               <div class="font-semibold flex items-center gap-1">
@@ -548,8 +544,8 @@
           _sseStatusEl.id = 'sseIndicator';
           _sseStatusEl.style.cssText = 'width:8px;height:8px;border-radius:50%;display:inline-block;background:#475569;margin-right:4px;flex-shrink:0';
           _sseStatusEl.title = 'SSE: підключення...';
-          const timer = document.getElementById('statusPollTimer');
-          if (timer) timer.parentElement.prepend(_sseStatusEl);
+          const clockCard = document.getElementById('statusClockCard');
+          if (clockCard) clockCard.prepend(_sseStatusEl);
         }
         const es = new EventSource('/api/events');
         es.onopen = () => {
@@ -768,7 +764,6 @@
       }
 
       function updatePollCountdown() {
-        const timerEl = document.getElementById('statusPollTimer');
         const aiCard = document.getElementById('statusAiCard');
         const aiQueue = document.getElementById('statusAiQueue');
 
@@ -781,11 +776,7 @@
           aiCard.classList.add('hidden');
         }
 
-        if (!statusCache.collectEnabled) {
-          timerEl.textContent = '--:--';
-          return;
-        }
-        timerEl.textContent = '--:--';
+        if (!statusCache.collectEnabled) return;
       }
 
       function updateCurrentTime() {
@@ -826,18 +817,10 @@
           }
           paintStatusCard('statusChannelsCard', activeSources > 0 ? true : null);
           paintStatusCard('statusClockCard', collectEnabled ? true : null);
-          paintStatusCard('statusNowTimeCard', true);
           updatePollCountdown();
         } catch (error) {
           document.getElementById('statusChannels').textContent = 'помилка';
           paintStatusCard('statusChannelsCard', false);
-        }
-      }
-
-      async function runMonitorOnce() {
-        const res = await fetch('/api/monitor/run-once', { method: 'POST' });
-        if (res.ok) {
-          await Promise.all([loadSystemStatus(), loadMessages()]);
         }
       }
 
