@@ -43,6 +43,34 @@ def _quarantine_telethon_session(reason: str) -> None:
     monitor_status["last_error"] = f"Telethon session reset: {reason}"
 
 
+def _is_telethon_auth_error(exc: Exception) -> bool:
+    """Return True for auth/session-invalid errors that require re-login."""
+    text = str(exc).lower()
+    name = type(exc).__name__.lower()
+    markers = (
+        "authkeyunregistered",
+        "sessionrevoked",
+        "auth key is not registered",
+        "key is not registered in the system",
+        "session password needed",
+        "unauthorized",
+        "not authorized",
+    )
+    if any(marker in text for marker in markers):
+        return True
+    return "auth" in name and ("unregistered" in name or "unauthorized" in name)
+
+
+def _reset_telethon_session_for_reauth(reason: str) -> None:
+    """Clear both file and string sessions so a clean login can be performed."""
+    try:
+        repo.set_setting("telethon.string_session", "")
+    except Exception:
+        pass
+    _quarantine_telethon_session(reason)
+    _invalidate_telethon_status_caches()
+
+
 def _get_saved_string_session() -> str | None:
     value = repo.get_setting("telethon.string_session", None)
     if not value:

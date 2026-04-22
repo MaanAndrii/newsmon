@@ -31,6 +31,8 @@ from services.providers.openai_compat import OpenAICompatProvider
 from services.telegram import _extract_telegram_username, _record_telegram_call
 from services.telethon import (
     _get_saved_string_session,
+    _is_telethon_auth_error,
+    _reset_telethon_session_for_reauth,
     _telethon_client_init_data,
     _telethon_client_kwargs,
     _telethon_session_base,
@@ -711,10 +713,11 @@ async def _monitor_loop() -> None:
                 **_telethon_client_kwargs(),
             )
             tracked_by_chat, tracked_by_username = _build_source_indexes()
+            auth_error_seen = False
 
             @client.on(events.NewMessage(incoming=True))
             async def _on_new_message(event: object) -> None:
-                nonlocal tracked_by_chat, tracked_by_username
+                nonlocal tracked_by_chat, tracked_by_username, auth_error_seen
                 try:
                     monitor_status["last_run_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                     source: dict | None = None
@@ -752,6 +755,23 @@ async def _monitor_loop() -> None:
                         _log_event("event_ingest", f"@{username}: +{ingested_now} повідомлень (event)")
                         broadcast_sse("monitor_status", {k: v for k, v in monitor_status.items() if k != "last_error"})
                 except Exception as exc:
+                    if _is_telethon_auth_error(exc):
+                        if not auth_error_seen:
+                            auth_error_seen = True
+                            _reset_telethon_session_for_reauth(
+                                f"{type(exc).__name__}: {str(exc)[:200]}"
+                            )
+                            monitor_status["state"] = "paused"
+                            monitor_status["last_error"] = (
+                                "Telethon-сесія втратила авторизацію. "
+                                "Потрібен повторний login."
+                            )
+                            _log_event(
+                                "collect_auth_required",
+                                "Telethon-сесія втратила авторизацію. Виконай login у вкладці Integrations.",
+                            )
+                        await client.disconnect()
+                        return
                     _log_event(
                         "event_ingest_error",
                         f"Помилка event-обробки: {type(exc).__name__}: {str(exc)[:200]}",
@@ -768,6 +788,19 @@ async def _monitor_loop() -> None:
             finally:
                 await client.disconnect()
         except Exception as exc:
+            if _is_telethon_auth_error(exc) or "не авторизована" in str(exc).lower():
+                _reset_telethon_session_for_reauth(f"{type(exc).__name__}: {str(exc)[:200]}")
+                monitor_status["state"] = "paused"
+                monitor_status["last_error"] = (
+                    "Telethon-сесія не авторизована. Потрібен login у вкладці Integrations."
+                )
+                _log_event(
+                    "collect_auth_required",
+                    "Telethon-сесію скинуто. Потрібен повторний login у Integrations.",
+                )
+                await asyncio.sleep(30.0)
+                reconnect_delay = 3.0
+                continue
             monitor_status["state"] = "warning"
             monitor_status["last_error"] = str(exc)
             _log_event(
