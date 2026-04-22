@@ -6,9 +6,6 @@ from config import (
     DEFAULT_CLAUDE_MODEL,
     DEFAULT_MONITOR_DEPTH,
     DEFAULT_RETENTION_MONTHS,
-    MIN_MONITOR_INTERVAL_SECONDS,
-    MAX_MONITOR_INTERVAL_SECONDS,
-    MONITOR_INTERVAL_SECONDS,
     MIN_MONITOR_DEPTH,
     MAX_MONITOR_DEPTH,
     MIN_RETENTION_MONTHS,
@@ -61,6 +58,9 @@ class IntegrationsPayload(BaseModel):
     telegram_api_id: str | None = None
     telegram_api_hash: str | None = None
     telegram_bot_token: str | None = None
+    telegram_unknown_forward_enabled: bool | None = None
+    telegram_unknown_forward_primary: str | None = None
+    telegram_unknown_forward_reserve: str | None = None
 
 
 class TelethonCodeRequest(BaseModel):
@@ -76,11 +76,6 @@ class TelethonCodeVerify(BaseModel):
 class MonitorConfigPayload(BaseModel):
     collect_enabled: bool
     ai_enabled: bool
-    interval_seconds: int = Field(
-        default=MONITOR_INTERVAL_SECONDS,
-        ge=MIN_MONITOR_INTERVAL_SECONDS,
-        le=MAX_MONITOR_INTERVAL_SECONDS,
-    )
     fetch_depth: int = Field(
         default=DEFAULT_MONITOR_DEPTH,
         ge=MIN_MONITOR_DEPTH,
@@ -95,8 +90,6 @@ class MonitorConfigPayload(BaseModel):
     dedup_enabled: bool = True
     ai_provider: str = Field(default="claude", pattern=r"^(claude|grok|gemini)$")
     ai_model: str | None = None
-    schedule: list[dict] = []
-    adaptive_enabled: bool = False
 
 
 class ClearMessagesPayload(BaseModel):

@@ -16,6 +16,10 @@ from config import (
     repo,
 )
 
+DEFAULT_TELEGRAM_DEVICE_MODEL = "iPhone 13 Pro"
+DEFAULT_TELEGRAM_SYSTEM_VERSION = "iOS 16.6"
+DEFAULT_TELEGRAM_APP_VERSION = "8.8.1"
+
 
 def _telethon_session_base() -> Path:
     return ROOT_DIR / "backend" / "telegram_user"
@@ -37,6 +41,34 @@ def _quarantine_telethon_session(reason: str) -> None:
             except Exception:
                 continue
     monitor_status["last_error"] = f"Telethon session reset: {reason}"
+
+
+def _is_telethon_auth_error(exc: Exception) -> bool:
+    """Return True for auth/session-invalid errors that require re-login."""
+    text = str(exc).lower()
+    name = type(exc).__name__.lower()
+    markers = (
+        "authkeyunregistered",
+        "sessionrevoked",
+        "auth key is not registered",
+        "key is not registered in the system",
+        "session password needed",
+        "unauthorized",
+        "not authorized",
+    )
+    if any(marker in text for marker in markers):
+        return True
+    return "auth" in name and ("unregistered" in name or "unauthorized" in name)
+
+
+def _reset_telethon_session_for_reauth(reason: str) -> None:
+    """Clear both file and string sessions so a clean login can be performed."""
+    try:
+        repo.set_setting("telethon.string_session", "")
+    except Exception:
+        pass
+    _quarantine_telethon_session(reason)
+    _invalidate_telethon_status_caches()
 
 
 def _get_saved_string_session() -> str | None:
@@ -67,6 +99,14 @@ def _telethon_client_config() -> tuple[int, str]:
             detail="Вкажіть коректні Telegram API ID/Hash у вкладці інтеграцій",
         )
     return int(api_id), api_hash
+
+
+def _telethon_client_kwargs() -> dict[str, str]:
+    return {
+        "device_model": DEFAULT_TELEGRAM_DEVICE_MODEL,
+        "system_version": DEFAULT_TELEGRAM_SYSTEM_VERSION,
+        "app_version": DEFAULT_TELEGRAM_APP_VERSION,
+    }
 
 
 def _chmod_session_files(quiet: bool = True) -> None:
