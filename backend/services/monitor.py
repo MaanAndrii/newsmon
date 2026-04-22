@@ -38,6 +38,15 @@ from services.telethon import _get_saved_string_session, _telethon_client_init_d
 # Maximum concurrent Telethon channel fetches per monitor cycle
 _CHANNEL_CONCURRENCY = 3
 
+try:
+    from zoneinfo import ZoneInfo as _ZoneInfo
+    _MONITOR_TZ = _ZoneInfo("Europe/Kyiv")
+except Exception:
+    _MONITOR_TZ = timezone.utc
+
+# Per-source adaptive state: {source_id: {empty_streak, interval, skip_until}}
+_source_adaptive: dict[int, dict] = {}
+
 # Maximum concurrent Claude API calls per AI queue flush
 _AI_CONCURRENCY = 4
 
@@ -107,6 +116,77 @@ def _detect_media_type(message: object) -> str | None:
     return "media"
 
 
+def _parse_schedule(raw: str) -> list[dict]:
+    try:
+        data = json.loads(raw or "[]")
+        if not isinstance(data, list):
+            return []
+        result = []
+        for slot in data:
+            if not isinstance(slot, dict):
+                continue
+            if not (slot.get("from") and slot.get("to") and slot.get("interval_seconds")):
+                continue
+            result.append({
+                "from": str(slot["from"]),
+                "to": str(slot["to"]),
+                "interval_seconds": int(slot["interval_seconds"]),
+            })
+        return result
+    except Exception:
+        return []
+
+
+def _get_current_interval(cfg: dict) -> int:
+    """Return interval_seconds for current Kyiv local time based on schedule.
+
+    Falls back to cfg["interval_seconds"] when no schedule slot matches.
+    """
+    schedule = cfg.get("schedule") or []
+    fallback = int(cfg.get("interval_seconds", MONITOR_INTERVAL_SECONDS))
+    if not schedule:
+        return fallback
+
+    now = datetime.now(timezone.utc).astimezone(_MONITOR_TZ)
+    now_min = now.hour * 60 + now.minute
+
+    for slot in schedule:
+        try:
+            fh, fm = map(int, str(slot["from"]).split(":"))
+            th, tm = map(int, str(slot["to"]).split(":"))
+            from_min = fh * 60 + fm
+            to_min = th * 60 + tm
+            slot_secs = int(slot["interval_seconds"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        in_slot = (
+            (from_min <= now_min < to_min)
+            if from_min < to_min
+            else (now_min >= from_min or now_min < to_min)
+        )
+        if in_slot:
+            return max(MIN_MONITOR_INTERVAL_SECONDS, min(MAX_MONITOR_INTERVAL_SECONDS, slot_secs))
+
+    return fallback
+
+
+def _update_source_adaptive(source_id: int, ingested: int, base_interval: int) -> None:
+    """Update per-source adaptive state after a collection attempt."""
+    state = _source_adaptive.setdefault(source_id, {
+        "empty_streak": 0, "interval": base_interval, "skip_until": 0.0,
+    })
+    if ingested > 0:
+        state["empty_streak"] = 0
+        state["interval"] = base_interval
+        state["skip_until"] = 0.0
+    else:
+        state["empty_streak"] = state.get("empty_streak", 0) + 1
+        if state["empty_streak"] >= 2:
+            new_interval = min(state.get("interval", base_interval) * 2, 7200)
+            state["interval"] = new_interval
+            state["skip_until"] = time.monotonic() + new_interval
+
+
 def _get_monitor_config() -> dict[str, bool | int | str]:
     collect_enabled = (repo.get_setting("monitor.collect_enabled", "1") or "1") == "1"
     ai_enabled = (repo.get_setting("monitor.ai_enabled", "1") or "1") == "1"
@@ -145,6 +225,8 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
     dedup_enabled = (repo.get_setting("monitor.dedup_enabled", "1") or "1") == "1"
     ai_provider = (repo.get_setting("monitor.ai_provider", "claude") or "claude").strip()
     ai_model = (repo.get_setting("monitor.ai_model", "") or "").strip()
+    schedule = _parse_schedule(repo.get_setting("monitor.schedule", "[]") or "[]")
+    adaptive_enabled = (repo.get_setting("monitor.adaptive_enabled", "0") or "0") == "1"
     return {
         "collect_enabled": collect_enabled,
         "ai_enabled": ai_enabled,
@@ -155,6 +237,8 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
         "dedup_enabled": dedup_enabled,
         "ai_provider": ai_provider,
         "ai_model": ai_model,
+        "schedule": schedule,
+        "adaptive_enabled": adaptive_enabled,
     }
 
 
@@ -350,9 +434,8 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
 
     sources = repo.list_sources(sort_by="alpha")
     session_path = _telethon_session_base()
-    window_start = datetime.now(timezone.utc) - timedelta(
-        seconds=int(monitor_cfg["interval_seconds"])
-    )
+    current_interval = _get_current_interval(monitor_cfg)
+    window_start = datetime.now(timezone.utc) - timedelta(seconds=current_interval)
 
     async with telethon_client_lock:
         try:
@@ -377,10 +460,19 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
                     )
                 _record_telegram_call()
 
-                active_sources = [
+                all_active = [
                     s for s in sources
                     if s.get("is_active") and _extract_telegram_username(s["url"] or "")
                 ]
+                # Adaptive: skip sources whose backoff window hasn't expired
+                adaptive_on = bool(monitor_cfg.get("adaptive_enabled"))
+                now_mono = time.monotonic()
+                active_sources = [
+                    s for s in all_active
+                    if not adaptive_on
+                    or now_mono >= _source_adaptive.get(int(s["id"]), {}).get("skip_until", 0.0)
+                ]
+
                 semaphore = asyncio.Semaphore(_CHANNEL_CONCURRENCY)
                 results = await asyncio.gather(
                     *[
@@ -396,11 +488,13 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
 
                 updated = 0
                 ingested = 0
-                for result in results:
+                for src, result in zip(active_sources, results):
                     if isinstance(result, tuple):
                         src_updated, src_ingested = result
                         updated += src_updated
                         ingested += src_ingested
+                        if adaptive_on:
+                            _update_source_adaptive(int(src["id"]), src_ingested, current_interval)
 
                 repo.enforce_retention_months(int(monitor_cfg["retention_months"]))
             finally:
@@ -687,17 +781,17 @@ async def _monitor_loop() -> None:
                 f"Непередбачена помилка: {type(exc).__name__}: {str(exc)[:200]}",
             )
         try:
-            interval = int(_get_monitor_config()["interval_seconds"])
+            interval = _get_current_interval(_get_monitor_config())
         except Exception:
             interval = MONITOR_INTERVAL_SECONDS
-        # Sleep in 10-second chunks so interval changes take effect within ~10s
+        # Sleep in 10-second chunks so interval/schedule changes take effect within ~10s
         target = time.monotonic() + _seconds_until_next_tick(interval)
         while True:
             remaining = target - time.monotonic()
             if remaining <= 1.0:
                 break
             try:
-                new_interval = int(_get_monitor_config()["interval_seconds"])
+                new_interval = _get_current_interval(_get_monitor_config())
             except Exception:
                 new_interval = interval
             if new_interval != interval:

@@ -95,6 +95,8 @@ class MonitorConfigPayload(BaseModel):
     dedup_enabled: bool = True
     ai_provider: str = Field(default="claude", pattern=r"^(claude|grok|gemini)$")
     ai_model: str | None = None
+    schedule: list[dict] = []
+    adaptive_enabled: bool = False
 
 
 class ClearMessagesPayload(BaseModel):
