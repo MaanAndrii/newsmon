@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -52,6 +53,8 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
     repo.set_setting("monitor.ai_provider", payload.ai_provider)
     repo.set_setting("monitor.ai_model", (payload.ai_model or "").strip())
+    repo.set_setting("monitor.schedule", json.dumps(payload.schedule or []))
+    repo.set_setting("monitor.adaptive_enabled", "1" if payload.adaptive_enabled else "0")
     return _get_monitor_config()
 
 

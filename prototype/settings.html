@@ -230,8 +230,8 @@
             </div>
             <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
               <div>
-                <p class="font-medium">Інтервал авто-отримання</p>
-                <p class="text-xs text-slate-400">Збір запускається на початку кожного інтервалу.</p>
+                <p class="font-medium">Базовий інтервал <span class="text-slate-500 font-normal">(запасний)</span></p>
+                <p class="text-xs text-slate-400">Використовується коли жоден слот розкладу не активний.</p>
               </div>
               <select id="monitorIntervalSeconds" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right">
                 <option value="300">5 хв</option>
@@ -282,6 +282,31 @@
                 </select>
               </div>
             </div>
+            <!-- Schedule editor -->
+            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 md:col-span-2">
+              <div class="flex items-center justify-between mb-2 gap-2">
+                <div>
+                  <p class="font-medium">Розклад збору за часом доби</p>
+                  <p class="text-xs text-slate-400">Якщо поточний час входить у слот — використовується його інтервал. Інакше — базовий.</p>
+                </div>
+                <button onclick="addScheduleSlot()" class="shrink-0 text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600">+ Додати слот</button>
+              </div>
+              <div id="scheduleSlots" class="space-y-2"></div>
+              <p id="scheduleEmpty" class="text-xs text-slate-500 mt-1">Розклад не налаштовано — використовується базовий інтервал.</p>
+            </div>
+
+            <!-- Adaptive backoff toggle -->
+            <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between gap-3 md:col-span-2 transition-colors hover:border-slate-700">
+              <div>
+                <p class="font-medium">Адаптивний режим збору</p>
+                <p class="text-xs text-slate-400">Якщо канал не надсилав повідомлень 2 цикли поспіль — інтервал його перевірки подвоюється (макс. 120 хв). При появі нових повідомлень — канал повертається до розкладу.</p>
+              </div>
+              <label class="inline-flex items-center cursor-pointer shrink-0">
+                <input id="monitorAdaptiveEnabled" type="checkbox" class="sr-only peer" />
+                <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
+              </label>
+            </div>
+
             <div class="rounded-lg border border-slate-800 p-3 md:col-span-2">
               <div class="flex items-center justify-between mb-1 gap-2">
                 <p class="font-medium">Промт для оцінки важливості</p>
@@ -1459,6 +1484,54 @@
         await Promise.all([loadDebugStats(), loadRunHistory(), loadEventLog(), loadDashboardUsers()]);
       }
 
+      // ── Schedule editor helpers ─────────────────────────────────────────────
+      const _INTERVAL_OPTIONS = [
+        [300,'5 хв'],[600,'10 хв'],[900,'15 хв'],[1200,'20 хв'],
+        [1800,'30 хв'],[3600,'60 хв'],[7200,'120 хв'],
+      ];
+
+      function _intervalSelect(selected, cls) {
+        return `<select class="${cls} bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm">
+          ${_INTERVAL_OPTIONS.map(([v,l]) => `<option value="${v}"${v==selected?' selected':''}>${l}</option>`).join('')}
+        </select>`;
+      }
+
+      function addScheduleSlot(slot) {
+        const from = slot?.from || '06:00';
+        const to   = slot?.to   || '22:00';
+        const iv   = slot?.interval_seconds || 600;
+        const div = document.createElement('div');
+        div.className = 'schedule-slot flex items-center gap-2 flex-wrap';
+        div.innerHTML = `
+          <input type="time" class="slot-from bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm w-28" value="${from}" />
+          <span class="text-slate-500 shrink-0">—</span>
+          <input type="time" class="slot-to bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm w-28" value="${to}" />
+          ${_intervalSelect(iv, 'slot-interval flex-1 min-w-[90px]')}
+          <button onclick="this.closest('.schedule-slot').remove(); _updateScheduleEmpty()" class="text-rose-400 hover:text-rose-300 text-xs px-1.5 py-1 rounded hover:bg-rose-900/30 shrink-0">✕</button>`;
+        document.getElementById('scheduleSlots').appendChild(div);
+        _updateScheduleEmpty();
+      }
+
+      function _updateScheduleEmpty() {
+        const hasSlots = document.querySelectorAll('.schedule-slot').length > 0;
+        document.getElementById('scheduleEmpty').classList.toggle('hidden', hasSlots);
+      }
+
+      function _getSchedule() {
+        return Array.from(document.querySelectorAll('.schedule-slot')).map(s => ({
+          from: s.querySelector('.slot-from').value,
+          to:   s.querySelector('.slot-to').value,
+          interval_seconds: Number(s.querySelector('.slot-interval').value),
+        }));
+      }
+
+      function _loadSchedule(schedule) {
+        document.getElementById('scheduleSlots').innerHTML = '';
+        (schedule || []).forEach(s => addScheduleSlot(s));
+        _updateScheduleEmpty();
+      }
+      // ───────────────────────────────────────────────────────────────────────
+
       async function loadMonitorConfig() {
         const res = await authFetch(`${apiBase}/api/monitor/config`);
         if (!res.ok) return;
@@ -1470,6 +1543,8 @@
         document.getElementById('monitorFetchDepth').value = Number(data.fetch_depth || 3);
         document.getElementById('monitorRetentionMonths').value = Number(data.retention_months || 3);
         document.getElementById('monitorAiProvider').value = data.ai_provider || 'claude';
+        document.getElementById('monitorAdaptiveEnabled').checked = !!data.adaptive_enabled;
+        _loadSchedule(data.schedule || []);
         const promptEl = document.getElementById('monitorAiPrompt');
         if (document.activeElement !== promptEl) {
           promptEl.value = data.ai_prompt || '';
@@ -1512,6 +1587,8 @@
           ai_prompt: document.getElementById('monitorAiPrompt').value,
           ai_provider: document.getElementById('monitorAiProvider').value || 'claude',
           ai_model: document.getElementById('monitorAiModel').value || '',
+          schedule: _getSchedule(),
+          adaptive_enabled: document.getElementById('monitorAdaptiveEnabled').checked,
         };
         const res = await authFetch(`${apiBase}/api/monitor/config`, {
           method: 'POST',
@@ -1519,8 +1596,12 @@
           body: JSON.stringify(payload),
         });
         const data = await parseApiBody(res);
+        const schedInfo = (data.schedule || []).length
+          ? `, слотів: ${data.schedule.length}`
+          : '';
+        const adaptInfo = data.adaptive_enabled ? ', адаптив: увімк.' : '';
         document.getElementById('monitorConfigMessage').textContent = res.ok
-          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, дедуп: ${data.dedup_enabled ? 'увімкнено' : 'вимкнено'}, інтервал: ${data.interval_seconds} сек., зберігання: ${data.retention_months} міс.`
+          ? `Збережено. Збір: ${data.collect_enabled ? 'увімкнено' : 'вимкнено'}, ШІ: ${data.ai_enabled ? 'увімкнено' : 'вимкнено'}, базовий інтервал: ${data.interval_seconds} сек.${schedInfo}${adaptInfo}`
           : (data.detail || 'Не вдалося зберегти налаштування моніторингу.');
       }
 
