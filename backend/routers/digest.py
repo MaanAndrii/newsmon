@@ -25,7 +25,6 @@ def save_digest_config(payload: DigestConfigPayload) -> dict:
     repo.set_setting("digest.min_score", str(payload.min_score))
     repo.set_setting("digest.max_per_category", str(payload.max_per_category))
     repo.set_setting("digest.excluded_categories", json.dumps(payload.excluded_categories))
-    repo.set_setting("digest.format", payload.format)
     repo.set_setting("digest.ai_prompt", (payload.ai_prompt or "").strip())
     repo.set_setting("digest.keep_days", str(payload.keep_days))
     repo.set_setting("digest.ai_provider", payload.ai_provider)
@@ -61,3 +60,11 @@ def get_digest(digest_date: str) -> dict:
     if not digest:
         raise HTTPException(status_code=404, detail="Дайджест не знайдено")
     return digest
+
+
+@router.get("/api/digest/{digest_date}/stats", dependencies=[Depends(require_admin)])
+def get_digest_stats(digest_date: str) -> dict:
+    stats = repo.get_digest_stats(digest_date)
+    if not stats:
+        raise HTTPException(status_code=404, detail="Дайджест не знайдено")
+    return stats
