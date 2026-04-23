@@ -127,7 +127,6 @@ class DigestConfigPayload(BaseModel):
     min_score: int = Field(default=6, ge=1, le=10)
     max_per_category: int = Field(default=5, ge=1, le=20)
     excluded_categories: list[str] = []
-    format: str = Field(default="article", pattern=r"^(article|bullets|summary)$")
     ai_prompt: str = Field(default="", max_length=2000)
     keep_days: int = Field(default=30, ge=1, le=365)
     ai_provider: str = Field(default="claude", pattern=r"^(claude|grok|gemini)$")

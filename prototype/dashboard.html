@@ -30,7 +30,6 @@
             </button>
           </div>
           <button id="filterBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">Фільтр</button>
-          <button id="resetFiltersBtn" class="px-3 py-2 rounded-lg bg-slate-700 text-slate-300 cursor-not-allowed" disabled>Скинути</button>
           <button id="digestBtn" class="px-3 py-2 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white whitespace-nowrap">Дайджест</button>
           <button id="statsBtn" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-white whitespace-nowrap">Статистика</button>
         </nav>
@@ -39,10 +38,13 @@
 
     <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
       <section class="mb-4 flex justify-end">
-        <button id="statusFilterCard" class="hidden px-3 py-2 rounded bg-rose-700/80 text-left text-xs transition max-w-full">
+        <div id="statusFilterCard" class="hidden px-3 py-2 rounded bg-rose-700/80 text-left text-xs transition max-w-full">
           <div class="font-semibold truncate" id="statusFilterLabel">Статус</div>
-          <div id="statusFilterCount"></div>
-        </button>
+          <div class="flex items-center gap-2 mt-0.5">
+            <div id="statusFilterCount"></div>
+            <button id="statusFilterReset" class="underline decoration-dotted hover:text-white">/ Скинути /</button>
+          </div>
+        </div>
       </section>
 
       <section id="messagesGrid" class="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -283,7 +285,7 @@
       const searchInput = document.getElementById('searchInput');
       const searchBtn = document.getElementById('searchBtn');
       const showMoreBtn = document.getElementById('showMoreBtn');
-      const resetFiltersBtn = document.getElementById('resetFiltersBtn');
+      const statusFilterReset = document.getElementById('statusFilterReset');
       const scrollTopBtn = document.getElementById('scrollTopBtn');
       const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '', maxScore: '', contentHash: '', date: '' };
       const filterOptions = { categories: [], sources: [], keywords: [] };
@@ -427,15 +429,35 @@
       }
 
       function updateResetButtonState() {
-        const active = hasActiveFilters();
-        resetFiltersBtn.disabled = !active;
-        if (active) {
-          resetFiltersBtn.classList.remove('bg-slate-700', 'text-slate-300', 'cursor-not-allowed');
-          resetFiltersBtn.classList.add('bg-rose-700', 'hover:bg-rose-600', 'text-white');
-        } else {
-          resetFiltersBtn.classList.remove('bg-rose-700', 'hover:bg-rose-600', 'text-white');
-          resetFiltersBtn.classList.add('bg-slate-700', 'text-slate-300', 'cursor-not-allowed');
+        if (statusFilterReset) {
+          statusFilterReset.disabled = !hasActiveFilters();
         }
+      }
+
+      function resetAllFilters() {
+        if (!hasActiveFilters()) return;
+        queryStateCache.search = '';
+        queryStateCache.category = '';
+        queryStateCache.sourceId = '';
+        queryStateCache.sourceName = '';
+        queryStateCache.keyword = '';
+        queryStateCache.minScore = '';
+        queryStateCache.maxScore = '';
+        queryStateCache.contentHash = '';
+        queryStateCache.date = '';
+        searchInput.value = '';
+        const dateEl = document.getElementById('filterDate');
+        if (dateEl) dateEl.value = '';
+        pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
+        const catBtn = document.getElementById('filterCategoryBtn');
+        const srcBtn = document.getElementById('filterSourceBtn');
+        const kwBtn = document.getElementById('filterKeywordBtn');
+        if (catBtn) catBtn.textContent = 'Всі категорії';
+        if (srcBtn) srcBtn.textContent = 'Всі канали';
+        if (kwBtn) kwBtn.textContent = 'Всі ключові слова';
+        visibleCount = PAGE_SIZE;
+        updateResetButtonState();
+        loadMessages();
       }
 
       function renderVisibleMessages() {
@@ -763,30 +785,9 @@
         event.currentTarget.setAttribute('aria-expanded', expanded ? 'false' : 'true');
         menu.classList.toggle('hidden');
       });
-      resetFiltersBtn.addEventListener('click', () => {
-        if (!hasActiveFilters()) return;
-        queryStateCache.search = '';
-        queryStateCache.category = '';
-        queryStateCache.sourceId = '';
-        queryStateCache.sourceName = '';
-        queryStateCache.keyword = '';
-        queryStateCache.minScore = '';
-        queryStateCache.maxScore = '';
-        queryStateCache.contentHash = '';
-        queryStateCache.date = '';
-        searchInput.value = '';
-        const dateEl = document.getElementById('filterDate');
-        if (dateEl) dateEl.value = '';
-        pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
-        const catBtn = document.getElementById('filterCategoryBtn');
-        const srcBtn = document.getElementById('filterSourceBtn');
-        const kwBtn = document.getElementById('filterKeywordBtn');
-        if (catBtn) catBtn.textContent = 'Всі категорії';
-        if (srcBtn) srcBtn.textContent = 'Всі канали';
-        if (kwBtn) kwBtn.textContent = 'Всі ключові слова';
-        visibleCount = PAGE_SIZE;
-        updateResetButtonState();
-        loadMessages();
+      statusFilterReset?.addEventListener('click', (event) => {
+        event.preventDefault();
+        resetAllFilters();
       });
       showMoreBtn.addEventListener('click', () => {
         visibleCount += PAGE_SIZE;
@@ -1033,7 +1034,7 @@
               legend: { display: false },
               tooltip: { callbacks: { label: ctx => {
                 const d = weekdays[ctx.dataIndex];
-                return d ? `Середня: ${d.count} / день (${d.total ?? '?'} за ${d.days ?? '?'} тижн.)` : `${ctx.parsed.y}`;
+                return d ? `Середня: ${d.count} / день (${d.total ?? '?'} за ${d.days ?? '?'} дн.)` : `${ctx.parsed.y}`;
               }}}
             },
             scales: { x: { grid: { color: '#1e293b' } }, y: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { stepSize: 0.5 } } }

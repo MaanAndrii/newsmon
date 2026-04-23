@@ -194,7 +194,7 @@ class OpenAICompatProvider:
         usage = getattr(response, "usage", None)
         tok_in = int(getattr(usage, "prompt_tokens", 0) or 0)
         tok_out = int(getattr(usage, "completion_tokens", 0) or 0)
-        _record_claude_call(tok_in, tok_out)
+        _record_claude_call(tok_in, tok_out, provider=self.provider_name)
 
         content = (response.choices[0].message.content or "").strip()
         return DigestResult(content=content, tokens_in=tok_in, tokens_out=tok_out)
