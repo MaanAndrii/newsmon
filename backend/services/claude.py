@@ -30,7 +30,7 @@ def _record_claude_call(input_tokens: int, output_tokens: int, provider: str = "
         }
     )
     try:
-        repo.log_api_call("claude", int(input_tokens), int(output_tokens))
+        repo.log_api_call("ai", int(input_tokens), int(output_tokens), provider=provider)
     except Exception:
         pass
 

@@ -55,6 +55,6 @@ Detailed Raspberry Pi deployment guide: `../INSTALL.md`.
 ## Telethon troubleshooting
 
 - Use `GET /api/telethon/session/health` to verify both SQLite integrity and whether a string session is configured.
-- Monitor config supports `fetch_depth` (1..10), and `retention_months` (1..6).
+- Monitor config supports `retention_months` (1..6).
 - Monitor config supports custom `ai_prompt` for Claude scoring.
 - Integrations support `claude_model` (`claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`).

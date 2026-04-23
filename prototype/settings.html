@@ -251,16 +251,6 @@
                 <span class="w-11 h-6 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-5 after:h-5 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
               </label>
             </div>
-            <div id="monitorFetchDepthCard" class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 transition-colors hover:border-slate-700">
-              <div class="flex items-center justify-between gap-3">
-                <div>
-                  <p class="font-medium">Глибина дозавантаження</p>
-                  <p class="text-xs text-slate-400">Ліміт <span class="text-slate-300">останніх</span> повідомлень з кожного каналу за цикл (1..10). Потрібно, коли моніторинг був вимкнений і треба наздогнати нові пости.</p>
-                </div>
-                <input id="monitorFetchDepth" type="number" min="1" max="10" step="1" class="w-20 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" value="3" />
-              </div>
-              <p id="monitorFetchDepthHint" class="text-[11px] text-slate-500 mt-2">До 3 повідомлень/канал за цикл</p>
-            </div>
             <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 flex items-center justify-between transition-colors hover:border-slate-700">
               <div>
                 <p class="font-medium">Термін зберігання повідомлень</p>
@@ -497,15 +487,7 @@
               </select>
             </div>
             <div>
-              <label class="block text-xs text-slate-400 mb-1">Формат виводу</label>
-              <select id="digestFormat" class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm">
-                <option value="article">Журналістська стаття (з підзаголовками)</option>
-                <option value="bullets">Маркований список (по категоріях)</option>
-                <option value="summary">Executive summary (до 200 слів)</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs text-slate-400 mb-1">Власний промпт (необов'язково)</label>
+              <label class="block text-xs text-slate-400 mb-1">Промпт для дайджесту (необов'язково)</label>
               <textarea id="digestPrompt" rows="4" placeholder="Залиш порожнім для промпту за замовчуванням..."
                 class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm font-mono resize-y"></textarea>
             </div>
@@ -521,7 +503,7 @@
             </div>
           </div>
 
-          <details class="rounded-lg border border-slate-800 p-4 text-sm" open>
+          <details class="rounded-lg border border-slate-800 p-4 text-sm">
             <summary class="cursor-pointer list-none flex items-center justify-between">
               <p class="font-medium text-slate-200">Останні дайджести</p>
               <span class="text-slate-400">+</span>
@@ -541,7 +523,6 @@
         <div id="debugTab" class="tab-panel hidden space-y-4">
           <div class="flex items-center justify-between">
             <h2 class="text-lg font-semibold">Debug</h2>
-            <button onclick="loadDebugAll()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">↻ Оновити</button>
           </div>
 
           <!-- API counters -->
@@ -1161,7 +1142,6 @@
         document.getElementById('digestMaxPerCategory').value = d.max_per_category ?? 5;
         document.getElementById('digestAiProvider').value = d.ai_provider || 'claude';
         updateDigestModelDropdown(d.ai_model || '');
-        document.getElementById('digestFormat').value = d.format || 'article';
         document.getElementById('digestPrompt').value = d.ai_prompt || '';
         document.getElementById('digestKeepDays').value = d.keep_days ?? 30;
         document.getElementById('digestMode').value = d.mode || 'previous_day';
@@ -1202,7 +1182,6 @@
           excluded_categories: _digestExcluded,
           ai_provider: document.getElementById('digestAiProvider').value || 'claude',
           ai_model: document.getElementById('digestAiModel').value || '',
-          format: document.getElementById('digestFormat').value,
           ai_prompt: document.getElementById('digestPrompt').value.trim(),
           keep_days: parseInt(document.getElementById('digestKeepDays').value) || 30,
           mode: document.getElementById('digestMode').value || 'previous_day',
@@ -1395,7 +1374,6 @@
         document.getElementById('monitorAiEnabled').checked = !!data.ai_enabled;
         document.getElementById('monitorCollectEnabled').checked = !!data.collect_enabled;
         document.getElementById('monitorDedupEnabled').checked = data.dedup_enabled !== false;
-        document.getElementById('monitorFetchDepth').value = Number(data.fetch_depth || 3);
         document.getElementById('monitorRetentionMonths').value = Number(data.retention_months || 3);
         document.getElementById('monitorAiProvider').value = data.ai_provider || 'claude';
         const promptEl = document.getElementById('monitorAiPrompt');
@@ -1404,25 +1382,13 @@
         }
         updateMonitorModelDropdown(data.ai_model || '');
         updateMonitorFormState();
-        updateFetchDepthHint();
       }
 
       function updateMonitorFormState() {
         const collectEnabled = document.getElementById('monitorCollectEnabled').checked;
-        const fetchDepthInput = document.getElementById('monitorFetchDepth');
-        const fetchDepthCard = document.getElementById('monitorFetchDepthCard');
-        fetchDepthInput.disabled = !collectEnabled;
-        fetchDepthInput.classList.toggle('opacity-50', !collectEnabled);
-        fetchDepthCard.classList.toggle('opacity-70', !collectEnabled);
-      }
-
-      function updateFetchDepthHint() {
-        const input = document.getElementById('monitorFetchDepth');
-        const hint = document.getElementById('monitorFetchDepthHint');
-        const parsed = Number(input.value || 3);
-        const clamped = Math.max(1, Math.min(10, Number.isFinite(parsed) ? parsed : 3));
-        input.value = clamped;
-        hint.textContent = `До ${clamped} повідомлень/канал за цикл`;
+        const dedupInput = document.getElementById('monitorDedupEnabled');
+        dedupInput.disabled = !collectEnabled;
+        dedupInput.closest('.rounded-lg')?.classList.toggle('opacity-70', !collectEnabled);
       }
 
       async function saveMonitorConfig() {
@@ -1430,7 +1396,6 @@
           ai_enabled: document.getElementById('monitorAiEnabled').checked,
           collect_enabled: document.getElementById('monitorCollectEnabled').checked,
           dedup_enabled: document.getElementById('monitorDedupEnabled').checked,
-          fetch_depth: Math.max(1, Math.min(10, Number(document.getElementById('monitorFetchDepth').value || 3))),
           retention_months: Math.max(1, Math.min(6, Number(document.getElementById('monitorRetentionMonths').value || 3))),
           ai_prompt: document.getElementById('monitorAiPrompt').value,
           ai_provider: document.getElementById('monitorAiProvider').value || 'claude',
@@ -1484,8 +1449,6 @@
         detail.textContent = parts.join(' • ');
         detail.classList.remove('hidden');
       }
-
-      document.getElementById('monitorFetchDepth').addEventListener('input', updateFetchDepthHint);
 
       document.getElementById('monitorAiPrompt').addEventListener('input', () => {
         const badge = document.getElementById('promptTokenBadge');

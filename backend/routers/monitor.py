@@ -40,7 +40,6 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.collect_enabled", "1" if payload.collect_enabled else "0")
     repo.set_setting("monitor.ai_enabled", "1" if payload.ai_enabled else "0")
     repo.set_setting("monitor.dedup_enabled", "1" if payload.dedup_enabled else "0")
-    repo.set_setting("monitor.fetch_depth", str(payload.fetch_depth))
     repo.set_setting("monitor.retention_months", str(payload.retention_months))
     repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
     repo.set_setting("monitor.ai_provider", payload.ai_provider)
@@ -142,7 +141,7 @@ def get_debug_stats() -> dict:
         for e in claude_call_events
         if isinstance(e.get("at"), datetime) and e["at"] >= day_ago
     ]
-    claude_24h = [e for e in all_ai_24h if (e.get("provider") or "claude") == "claude"]
+    claude_24h = [e for e in all_ai_24h if e.get("provider") == "claude"]
     grok_24h = [e for e in all_ai_24h if e.get("provider") == "grok"]
     gemini_24h = [e for e in all_ai_24h if e.get("provider") == "gemini"]
     telegram_24h = [t for t in telegram_call_events if t >= day_ago]

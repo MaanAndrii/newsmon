@@ -30,7 +30,6 @@
             </button>
           </div>
           <button id="filterBtn" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700">Фільтр</button>
-          <button id="resetFiltersBtn" class="px-3 py-2 rounded-lg bg-slate-700 text-slate-300 cursor-not-allowed" disabled>Скинути</button>
           <button id="digestBtn" class="px-3 py-2 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white whitespace-nowrap">Дайджест</button>
           <button id="statsBtn" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-white whitespace-nowrap">Статистика</button>
         </nav>
@@ -39,9 +38,9 @@
 
     <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-6">
       <section class="mb-4 flex justify-end">
-        <button id="statusFilterCard" class="hidden px-3 py-2 rounded bg-rose-700/80 text-left text-xs transition max-w-full">
+        <button id="statusFilterCard" class="hidden px-3 py-2 rounded bg-rose-700/80 text-left text-xs transition max-w-full hover:bg-rose-700">
           <div class="font-semibold truncate" id="statusFilterLabel">Статус</div>
-          <div id="statusFilterCount"></div>
+          <div id="statusFilterCount" class="mt-0.5"></div>
         </button>
       </section>
 
@@ -247,7 +246,13 @@
 
     <footer class="border-t border-slate-800 bg-slate-900">
       <div class="max-w-7xl mx-auto px-4 py-3 text-xs text-slate-400 flex justify-between items-center gap-3">
-        <span>© 2026 NewsMon Prototype</span>
+        <div class="flex items-center gap-3 flex-wrap">
+          <span>© 2026 NewsMon Prototype</span>
+          <span id="monitorHealthBadge" class="inline-flex items-center gap-1.5 px-2 py-1 rounded-full border border-slate-700 text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-slate-500"></span>
+            <span id="monitorHealthText">Моніторинг: перевірка...</span>
+          </span>
+        </div>
         <div class="flex items-center gap-3">
           <a href="settings.html" class="text-slate-300 hover:text-white underline underline-offset-2">Налаштування</a>
           <span>Автор: Andrii Maryniuk</span>
@@ -283,7 +288,9 @@
       const searchInput = document.getElementById('searchInput');
       const searchBtn = document.getElementById('searchBtn');
       const showMoreBtn = document.getElementById('showMoreBtn');
-      const resetFiltersBtn = document.getElementById('resetFiltersBtn');
+      const statusFilterCard = document.getElementById('statusFilterCard');
+      const monitorHealthBadge = document.getElementById('monitorHealthBadge');
+      const monitorHealthText = document.getElementById('monitorHealthText');
       const scrollTopBtn = document.getElementById('scrollTopBtn');
       const queryStateCache = { search: '', category: '', sourceId: '', sourceName: '', keyword: '', minScore: '', maxScore: '', contentHash: '', date: '' };
       const filterOptions = { categories: [], sources: [], keywords: [] };
@@ -409,7 +416,7 @@
         if (queryStateCache.contentHash) parts.push('🔁 Дублікати повідомлення');
         if (queryStateCache.date) parts.push(`📅 ${queryStateCache.date}`);
         filterLabel.textContent = parts.join(' • ');
-        filterCount.textContent = `Показано: ${latestItems.length}`;
+        filterCount.textContent = `Показано: ${latestItems.length} · Натисніть, щоб скинути фільтри`;
         filterCard.classList.remove('hidden');
       }
 
@@ -427,15 +434,35 @@
       }
 
       function updateResetButtonState() {
-        const active = hasActiveFilters();
-        resetFiltersBtn.disabled = !active;
-        if (active) {
-          resetFiltersBtn.classList.remove('bg-slate-700', 'text-slate-300', 'cursor-not-allowed');
-          resetFiltersBtn.classList.add('bg-rose-700', 'hover:bg-rose-600', 'text-white');
-        } else {
-          resetFiltersBtn.classList.remove('bg-rose-700', 'hover:bg-rose-600', 'text-white');
-          resetFiltersBtn.classList.add('bg-slate-700', 'text-slate-300', 'cursor-not-allowed');
+        if (statusFilterCard) {
+          statusFilterCard.disabled = !hasActiveFilters();
         }
+      }
+
+      function resetAllFilters() {
+        if (!hasActiveFilters()) return;
+        queryStateCache.search = '';
+        queryStateCache.category = '';
+        queryStateCache.sourceId = '';
+        queryStateCache.sourceName = '';
+        queryStateCache.keyword = '';
+        queryStateCache.minScore = '';
+        queryStateCache.maxScore = '';
+        queryStateCache.contentHash = '';
+        queryStateCache.date = '';
+        searchInput.value = '';
+        const dateEl = document.getElementById('filterDate');
+        if (dateEl) dateEl.value = '';
+        pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
+        const catBtn = document.getElementById('filterCategoryBtn');
+        const srcBtn = document.getElementById('filterSourceBtn');
+        const kwBtn = document.getElementById('filterKeywordBtn');
+        if (catBtn) catBtn.textContent = 'Всі категорії';
+        if (srcBtn) srcBtn.textContent = 'Всі канали';
+        if (kwBtn) kwBtn.textContent = 'Всі ключові слова';
+        visibleCount = PAGE_SIZE;
+        updateResetButtonState();
+        loadMessages();
       }
 
       function renderVisibleMessages() {
@@ -510,6 +537,7 @@
               _sseMsgDebounce = setTimeout(loadMessages, 800);
             } else if (msg.type === 'monitor_status') {
               updateFilterCard();
+              applyMonitorHealth(msg);
             } else if (msg.type === 'digest_ready') {
               const sel = document.getElementById('digestDateSelect');
               if (sel) loadDigestList();
@@ -731,6 +759,41 @@
         }
       }
 
+      async function refreshMonitorHealth() {
+        try {
+          const res = await fetch('/api/monitor/status');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          applyMonitorHealth(data);
+        } catch (_) {
+          applyMonitorHealth({ state: 'unknown' });
+        }
+      }
+
+      function applyMonitorHealth(status) {
+        if (!monitorHealthBadge) return;
+        const state = String(status?.state || 'unknown').toLowerCase();
+        const dot = monitorHealthBadge.querySelector('span');
+        monitorHealthBadge.className = 'inline-flex items-center gap-1.5 px-2 py-1 rounded-full border text-slate-200';
+        if (state === 'running') {
+          monitorHealthBadge.classList.add('border-emerald-700/70', 'bg-emerald-950/40');
+          if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+          if (monitorHealthText) monitorHealthText.textContent = 'Моніторинг: працює';
+        } else if (state === 'paused' || state === 'stopped') {
+          monitorHealthBadge.classList.add('border-amber-700/70', 'bg-amber-950/40');
+          if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-400';
+          if (monitorHealthText) monitorHealthText.textContent = 'Моніторинг: призупинено';
+        } else if (state === 'warning' || state === 'error') {
+          monitorHealthBadge.classList.add('border-rose-700/70', 'bg-rose-950/40');
+          if (dot) dot.className = 'w-2 h-2 rounded-full bg-rose-400';
+          if (monitorHealthText) monitorHealthText.textContent = 'Моніторинг: помилка';
+        } else {
+          monitorHealthBadge.classList.add('border-slate-700', 'bg-slate-900/60');
+          if (dot) dot.className = 'w-2 h-2 rounded-full bg-slate-500';
+          if (monitorHealthText) monitorHealthText.textContent = 'Моніторинг: невідомо';
+        }
+      }
+
       modal.addEventListener('touchstart', (e) => { _touchStartX = e.changedTouches[0].clientX; }, { passive: true });
       modal.addEventListener('touchend', (e) => {
         const dx = e.changedTouches[0].clientX - _touchStartX;
@@ -763,30 +826,9 @@
         event.currentTarget.setAttribute('aria-expanded', expanded ? 'false' : 'true');
         menu.classList.toggle('hidden');
       });
-      resetFiltersBtn.addEventListener('click', () => {
-        if (!hasActiveFilters()) return;
-        queryStateCache.search = '';
-        queryStateCache.category = '';
-        queryStateCache.sourceId = '';
-        queryStateCache.sourceName = '';
-        queryStateCache.keyword = '';
-        queryStateCache.minScore = '';
-        queryStateCache.maxScore = '';
-        queryStateCache.contentHash = '';
-        queryStateCache.date = '';
-        searchInput.value = '';
-        const dateEl = document.getElementById('filterDate');
-        if (dateEl) dateEl.value = '';
-        pendingFilters = { category: '', sourceId: '', sourceName: '', keyword: '', minScore: '1', maxScore: '10' };
-        const catBtn = document.getElementById('filterCategoryBtn');
-        const srcBtn = document.getElementById('filterSourceBtn');
-        const kwBtn = document.getElementById('filterKeywordBtn');
-        if (catBtn) catBtn.textContent = 'Всі категорії';
-        if (srcBtn) srcBtn.textContent = 'Всі канали';
-        if (kwBtn) kwBtn.textContent = 'Всі ключові слова';
-        visibleCount = PAGE_SIZE;
-        updateResetButtonState();
-        loadMessages();
+      statusFilterCard?.addEventListener('click', (event) => {
+        event.preventDefault();
+        resetAllFilters();
       });
       showMoreBtn.addEventListener('click', () => {
         visibleCount += PAGE_SIZE;
@@ -814,8 +856,10 @@
       loadFilterOptions();
       updateResetButtonState();
       loadMessages();
+      refreshMonitorHealth();
       sendDashboardHeartbeat();
       setInterval(sendDashboardHeartbeat, 30000);
+      setInterval(refreshMonitorHealth, 30000);
       // Fallback polls in case SSE disconnects
       setInterval(loadMessages, 60000);
       _initSSE();
@@ -1033,7 +1077,7 @@
               legend: { display: false },
               tooltip: { callbacks: { label: ctx => {
                 const d = weekdays[ctx.dataIndex];
-                return d ? `Середня: ${d.count} / день (${d.total ?? '?'} за ${d.days ?? '?'} тижн.)` : `${ctx.parsed.y}`;
+                return d ? `Середня: ${d.count} / день (${d.total ?? '?'} за ${d.days ?? '?'} дн.)` : `${ctx.parsed.y}`;
               }}}
             },
             scales: { x: { grid: { color: '#1e293b' } }, y: { grid: { color: '#1e293b' }, beginAtZero: true, ticks: { stepSize: 0.5 } } }
