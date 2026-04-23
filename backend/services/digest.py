@@ -88,6 +88,7 @@ async def _generate_daily_digest(reference_dt: datetime | None = None) -> dict:
 
     if not messages:
         repo.save_digest(date_str, "", 0, "skipped")
+        repo.replace_digest_items(date_str, [])
         return {
             "ok": False,
             "error": f"Недостатньо повідомлень (score ≥ {cfg['min_score']}) за {date_label}",
@@ -95,12 +96,25 @@ async def _generate_daily_digest(reference_dt: datetime | None = None) -> dict:
         }
 
     lines = []
-    for m in messages:
+    digest_items: list[dict] = []
+    for idx, m in enumerate(messages, start=1):
         cat = m.get("ai_category") or "Інше"
         score = m.get("ai_score") or 0
         source = m.get("source_name") or "?"
-        text = (m.get("text") or "").strip()[:200]
+        text = (m.get("text") or "").strip()
         lines.append(f"[{cat}, {score}, {source}] {text}")
+        digest_items.append(
+            {
+                "order_index": idx,
+                "message_id": int(m.get("id") or 0),
+                "source_name": str(source),
+                "ai_score": score,
+                "ai_category": cat,
+                "published_at": m.get("published_at"),
+                "text_chars": len(text),
+                "included_chars": len(text),
+            }
+        )
     messages_text = "\n\n".join(lines)
     model_name = getattr(provider, "model", cfg["ai_provider"])
 
@@ -115,6 +129,7 @@ async def _generate_daily_digest(reference_dt: datetime | None = None) -> dict:
             date_label,
         )
         repo.save_digest(date_str, result.content, len(messages), "ok", model_name, result.tokens_in, result.tokens_out)
+        repo.replace_digest_items(date_str, digest_items)
         repo.cleanup_old_digests(cfg["keep_days"])
         broadcast_sse("digest_ready", {"date": date_str})
         return {
@@ -126,6 +141,7 @@ async def _generate_daily_digest(reference_dt: datetime | None = None) -> dict:
     except Exception as exc:
         err = str(exc)
         repo.save_digest(date_str, "", 0, f"error: {err}")
+        repo.replace_digest_items(date_str, [])
         return {"ok": False, "error": err, "date": date_str}
 
 

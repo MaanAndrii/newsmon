@@ -1173,10 +1173,12 @@
       }
 
       async function saveDigestConfig() {
+        const hourRaw = Number(document.getElementById('digestHour').value);
+        const minuteRaw = Number(document.getElementById('digestMinute').value);
         const payload = {
           enabled: document.getElementById('digestEnabled').checked,
-          hour: parseInt(document.getElementById('digestHour').value) || 10,
-          minute: parseInt(document.getElementById('digestMinute').value) || 0,
+          hour: Number.isFinite(hourRaw) ? Math.max(0, Math.min(23, hourRaw)) : 10,
+          minute: Number.isFinite(minuteRaw) ? Math.max(0, Math.min(59, minuteRaw)) : 0,
           min_score: parseInt(document.getElementById('digestMinScore').value) || 6,
           max_per_category: parseInt(document.getElementById('digestMaxPerCategory').value) || 5,
           excluded_categories: _digestExcluded,
@@ -1218,6 +1220,7 @@
           const viewBtn = d.status === 'ok'
             ? `<button onclick="viewDigest('${escapeHtml(d.digest_date)}')" class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600">Переглянути</button>`
             : '';
+          const statsBtn = `<button onclick="viewDigestStats('${escapeHtml(d.digest_date)}')" class="text-xs px-2 py-1 rounded bg-sky-700 hover:bg-sky-600 text-white">📊 Статистика</button>`;
           return `<div class="py-2 border-t border-slate-800/60 text-xs space-y-1">
             <div class="flex items-center justify-between gap-3">
               <div class="flex items-center gap-3">
@@ -1228,6 +1231,7 @@
               <div class="flex items-center gap-2 text-slate-500">
                 <span>${escapeHtml(genAt)}</span>
                 ${viewBtn}
+                ${statsBtn}
                 <button onclick="deleteDigest('${escapeHtml(d.digest_date)}')" class="text-xs px-2 py-1 rounded bg-rose-900/60 hover:bg-rose-800 text-rose-300">Видалити</button>
               </div>
             </div>
@@ -1302,6 +1306,78 @@
             <div class="p-3 border-t border-slate-800 flex justify-end gap-2">
               <button onclick="copySettingsDigest()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">Копіювати</button>
               <button onclick="document.getElementById('digestViewModal').remove()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">Закрити</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+      }
+
+      async function viewDigestStats(digestDate) {
+        const res = await authFetch(`${apiBase}/api/digest/${digestDate}/stats`);
+        if (!res.ok) { showToast('Не вдалося завантажити статистику дайджесту', 'error'); return; }
+        const stats = await res.json();
+        openDigestStatsModal(stats);
+      }
+
+      function openDigestStatsModal(stats) {
+        const existing = document.getElementById('digestStatsModal');
+        if (existing) existing.remove();
+        const modal = document.createElement('div');
+        modal.id = 'digestStatsModal';
+        modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4';
+        const byCat = (stats.by_category || []).slice(0, 10).map(c =>
+          `<li class="flex justify-between gap-3"><span>${escapeHtml(c.category)}</span><span class="font-mono">${c.count}</span></li>`
+        ).join('') || '<li class="text-slate-500">Немає даних</li>';
+        const bySrc = (stats.top_sources || []).slice(0, 10).map(s =>
+          `<li class="flex justify-between gap-3"><span class="truncate">${escapeHtml(s.source_name)}</span><span class="font-mono">${s.count}</span></li>`
+        ).join('') || '<li class="text-slate-500">Немає даних</li>';
+        const sampleRows = (stats.items || []).slice(0, 20).map((it, idx) => `
+          <tr class="border-t border-slate-800/60">
+            <td class="py-1 pr-2 text-slate-500">${idx + 1}</td>
+            <td class="py-1 pr-2">${escapeHtml(it.source_name || '?')}</td>
+            <td class="py-1 pr-2">${escapeHtml(it.ai_category || 'Інше')}</td>
+            <td class="py-1 pr-2 font-mono">${it.ai_score ?? '—'}</td>
+            <td class="py-1 font-mono text-slate-400">${it.text_chars ?? 0}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="5" class="py-2 text-slate-500">Немає даних</td></tr>';
+        modal.innerHTML = `
+          <div class="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-xl border border-slate-700 bg-slate-900 shadow-2xl">
+            <div class="flex items-center justify-between p-4 border-b border-slate-800">
+              <div>
+                <h3 class="font-semibold">Статистика формування дайджесту: ${escapeHtml(stats.digest_date || '')}</h3>
+                <p class="text-xs text-slate-400 mt-0.5">Доступно лише в Налаштуваннях → Дайджест</p>
+              </div>
+              <button onclick="document.getElementById('digestStatsModal').remove()" class="text-slate-400 hover:text-white text-xl leading-none">✕</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-4 text-sm">
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <div class="rounded border border-slate-800 p-2"><p class="text-xs text-slate-400">Повідомлень</p><p class="text-lg font-semibold">${stats.message_count ?? 0}</p></div>
+                <div class="rounded border border-slate-800 p-2"><p class="text-xs text-slate-400">Джерел</p><p class="text-lg font-semibold">${stats.source_count ?? 0}</p></div>
+                <div class="rounded border border-slate-800 p-2"><p class="text-xs text-slate-400">Score (avg/min/max)</p><p class="text-lg font-semibold">${stats.avg_score ?? '—'} / ${stats.min_score ?? '—'} / ${stats.max_score ?? '—'}</p></div>
+                <div class="rounded border border-slate-800 p-2"><p class="text-xs text-slate-400">Символів (всього)</p><p class="text-lg font-semibold">${stats.total_text_chars ?? 0}</p></div>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div class="rounded border border-slate-800 p-3">
+                  <p class="font-medium mb-2">Категорії</p>
+                  <ul class="space-y-1 text-xs">${byCat}</ul>
+                </div>
+                <div class="rounded border border-slate-800 p-3">
+                  <p class="font-medium mb-2">Топ джерел</p>
+                  <ul class="space-y-1 text-xs">${bySrc}</ul>
+                </div>
+              </div>
+              <div class="rounded border border-slate-800 p-3">
+                <p class="font-medium mb-2">Перші 20 повідомлень, що увійшли в дайджест</p>
+                <div class="overflow-x-auto">
+                  <table class="min-w-full text-xs">
+                    <thead class="text-slate-400"><tr><th class="text-left py-1 pr-2">#</th><th class="text-left py-1 pr-2">Джерело</th><th class="text-left py-1 pr-2">Категорія</th><th class="text-left py-1 pr-2">Score</th><th class="text-left py-1">Символи</th></tr></thead>
+                    <tbody>${sampleRows}</tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div class="p-3 border-t border-slate-800 flex justify-end">
+              <button onclick="document.getElementById('digestStatsModal').remove()" class="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600">Закрити</button>
             </div>
           </div>`;
         document.body.appendChild(modal);

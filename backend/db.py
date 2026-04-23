@@ -224,6 +224,19 @@ def init_db() -> None:
                 generated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
             CREATE INDEX IF NOT EXISTS idx_digests_date ON digests(digest_date DESC);
+            CREATE TABLE IF NOT EXISTS digest_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                digest_date TEXT NOT NULL,
+                order_index INTEGER NOT NULL DEFAULT 0,
+                message_id INTEGER NOT NULL,
+                source_name TEXT NOT NULL DEFAULT '',
+                ai_score INTEGER NULL,
+                ai_category TEXT NULL,
+                published_at TEXT NULL,
+                text_chars INTEGER NOT NULL DEFAULT 0,
+                included_chars INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_digest_items_date ON digest_items(digest_date, order_index);
             """
         )
         _ensure_column(conn, "sources", "ai_enabled", "INTEGER NOT NULL DEFAULT 1")
@@ -1625,12 +1638,124 @@ class Repository:
                 (digest_date, content, message_count, status, model_name, tokens_in, tokens_out),
             )
 
+    def replace_digest_items(self, digest_date: str, items: list[dict[str, Any]]) -> None:
+        with get_connection() as conn:
+            conn.execute("DELETE FROM digest_items WHERE digest_date = ?", (digest_date,))
+            if not items:
+                return
+            conn.executemany(
+                """
+                INSERT INTO digest_items(
+                    digest_date, order_index, message_id, source_name, ai_score, ai_category,
+                    published_at, text_chars, included_chars
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        digest_date,
+                        int(item.get("order_index") or 0),
+                        int(item.get("message_id") or 0),
+                        str(item.get("source_name") or ""),
+                        item.get("ai_score"),
+                        item.get("ai_category"),
+                        item.get("published_at"),
+                        int(item.get("text_chars") or 0),
+                        int(item.get("included_chars") or 0),
+                    )
+                    for item in items
+                    if int(item.get("message_id") or 0) > 0
+                ],
+            )
+
     def get_digest(self, digest_date: str) -> dict[str, Any] | None:
         with get_connection() as conn:
             row = conn.execute(
                 "SELECT * FROM digests WHERE digest_date = ?", (digest_date,)
             ).fetchone()
         return dict(row) if row else None
+
+    def list_digest_items(self, digest_date: str, limit: int = 500) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 5000))
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT order_index, message_id, source_name, ai_score, ai_category,
+                       published_at, text_chars, included_chars
+                FROM digest_items
+                WHERE digest_date = ?
+                ORDER BY order_index ASC, id ASC
+                LIMIT ?
+                """,
+                (digest_date, safe_limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_digest_stats(self, digest_date: str) -> dict[str, Any] | None:
+        digest = self.get_digest(digest_date)
+        if not digest:
+            return None
+        items = self.list_digest_items(digest_date, limit=5000)
+        if not items:
+            return {
+                "digest_date": digest_date,
+                "message_count": int(digest.get("message_count") or 0),
+                "source_count": 0,
+                "avg_score": None,
+                "min_score": None,
+                "max_score": None,
+                "total_text_chars": 0,
+                "total_included_chars": 0,
+                "time_range": None,
+                "by_category": [],
+                "top_sources": [],
+                "items": [],
+            }
+
+        source_counts: dict[str, int] = {}
+        category_counts: dict[str, int] = {}
+        scores: list[int] = []
+        total_text_chars = 0
+        total_included_chars = 0
+        published_values: list[str] = []
+        for item in items:
+            src = str(item.get("source_name") or "Невідомо")
+            cat = str(item.get("ai_category") or "Інше")
+            source_counts[src] = source_counts.get(src, 0) + 1
+            category_counts[cat] = category_counts.get(cat, 0) + 1
+            if item.get("ai_score") is not None:
+                try:
+                    scores.append(int(item["ai_score"]))
+                except (TypeError, ValueError):
+                    pass
+            total_text_chars += int(item.get("text_chars") or 0)
+            total_included_chars += int(item.get("included_chars") or 0)
+            published = str(item.get("published_at") or "").strip()
+            if published:
+                published_values.append(published)
+
+        return {
+            "digest_date": digest_date,
+            "message_count": len(items),
+            "source_count": len(source_counts),
+            "avg_score": round(sum(scores) / len(scores), 2) if scores else None,
+            "min_score": min(scores) if scores else None,
+            "max_score": max(scores) if scores else None,
+            "total_text_chars": total_text_chars,
+            "total_included_chars": total_included_chars,
+            "time_range": {
+                "from": min(published_values) if published_values else None,
+                "to": max(published_values) if published_values else None,
+            },
+            "by_category": [
+                {"category": k, "count": v}
+                for k, v in sorted(category_counts.items(), key=lambda kv: (-kv[1], kv[0].lower()))
+            ],
+            "top_sources": [
+                {"source_name": k, "count": v}
+                for k, v in sorted(source_counts.items(), key=lambda kv: (-kv[1], kv[0].lower()))
+            ],
+            "items": items,
+        }
 
     def list_digests(self, limit: int = 7) -> list[dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 30))
@@ -1645,6 +1770,7 @@ class Repository:
 
     def delete_digest(self, digest_date: str) -> bool:
         with get_connection() as conn:
+            conn.execute("DELETE FROM digest_items WHERE digest_date = ?", (digest_date,))
             cur = conn.execute("DELETE FROM digests WHERE digest_date = ?", (digest_date,))
         return cur.rowcount > 0
 
@@ -1653,4 +1779,10 @@ class Repository:
             conn.execute(
                 "DELETE FROM digests WHERE digest_date < date('now', ? || ' days')",
                 (f"-{keep_days}",),
+            )
+            conn.execute(
+                """
+                DELETE FROM digest_items
+                WHERE digest_date NOT IN (SELECT digest_date FROM digests)
+                """
             )

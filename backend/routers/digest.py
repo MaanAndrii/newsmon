@@ -60,3 +60,11 @@ def get_digest(digest_date: str) -> dict:
     if not digest:
         raise HTTPException(status_code=404, detail="Дайджест не знайдено")
     return digest
+
+
+@router.get("/api/digest/{digest_date}/stats", dependencies=[Depends(require_admin)])
+def get_digest_stats(digest_date: str) -> dict:
+    stats = repo.get_digest_stats(digest_date)
+    if not stats:
+        raise HTTPException(status_code=404, detail="Дайджест не знайдено")
+    return stats
