@@ -40,7 +40,6 @@ def save_monitor_config(payload: MonitorConfigPayload) -> dict:
     repo.set_setting("monitor.collect_enabled", "1" if payload.collect_enabled else "0")
     repo.set_setting("monitor.ai_enabled", "1" if payload.ai_enabled else "0")
     repo.set_setting("monitor.dedup_enabled", "1" if payload.dedup_enabled else "0")
-    repo.set_setting("monitor.fetch_depth", str(payload.fetch_depth))
     repo.set_setting("monitor.retention_months", str(payload.retention_months))
     repo.set_setting("monitor.ai_prompt", (payload.ai_prompt or "").strip())
     repo.set_setting("monitor.ai_provider", payload.ai_provider)

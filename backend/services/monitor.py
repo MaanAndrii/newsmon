@@ -8,11 +8,8 @@ import sqlite3
 from datetime import datetime, timezone
 
 from config import (
-    DEFAULT_MONITOR_DEPTH,
     DEFAULT_RETENTION_MONTHS,
-    MAX_MONITOR_DEPTH,
     MAX_RETENTION_MONTHS,
-    MIN_MONITOR_DEPTH,
     MIN_RETENTION_MONTHS,
     _ai_counters,
     ai_processing_lock,
@@ -46,6 +43,7 @@ _AI_CONCURRENCY = 4
 
 # How often the dedicated AI loop wakes up (seconds)
 _AI_LOOP_INTERVAL = 30
+_FALLBACK_FETCH_DEPTH = 3
 
 
 # ---------------------------------------------------------------------------
@@ -113,15 +111,6 @@ def _detect_media_type(message: object) -> str | None:
 def _get_monitor_config() -> dict[str, bool | int | str]:
     collect_enabled = (repo.get_setting("monitor.collect_enabled", "1") or "1") == "1"
     ai_enabled = (repo.get_setting("monitor.ai_enabled", "1") or "1") == "1"
-    depth_raw = (
-        repo.get_setting("monitor.fetch_depth", str(DEFAULT_MONITOR_DEPTH))
-        or str(DEFAULT_MONITOR_DEPTH)
-    )
-    try:
-        fetch_depth = int(depth_raw)
-    except ValueError:
-        fetch_depth = DEFAULT_MONITOR_DEPTH
-    fetch_depth = max(MIN_MONITOR_DEPTH, min(MAX_MONITOR_DEPTH, fetch_depth))
     retention_raw = (
         repo.get_setting("monitor.retention_months", str(DEFAULT_RETENTION_MONTHS))
         or str(DEFAULT_RETENTION_MONTHS)
@@ -140,7 +129,7 @@ def _get_monitor_config() -> dict[str, bool | int | str]:
     return {
         "collect_enabled": collect_enabled,
         "ai_enabled": ai_enabled,
-        "fetch_depth": fetch_depth,
+        "fetch_depth": _FALLBACK_FETCH_DEPTH,
         "retention_months": retention_months,
         "ai_prompt": ai_prompt,
         "dedup_enabled": dedup_enabled,
@@ -343,7 +332,7 @@ async def _sync_sources_last_messages() -> tuple[int, int, int, str | None]:
     monitor_cfg = _get_monitor_config()
     if not monitor_cfg["collect_enabled"]:
         return 0, 0, 0, "Збір повідомлень глобально вимкнений у вкладці Моніторинг"
-    fetch_depth = int(monitor_cfg["fetch_depth"])
+    fetch_depth = _FALLBACK_FETCH_DEPTH
 
     integrations = repo.get_integrations()
     api_id = (integrations.get("telegram_api_id") or "").strip()
