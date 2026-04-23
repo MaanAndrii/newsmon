@@ -31,7 +31,6 @@ def _get_digest_config() -> dict:
         "min_score": int(g("min_score", "6")),
         "max_per_category": int(g("max_per_category", "5")),
         "excluded_categories": excluded,
-        "format": g("format", "article"),
         "ai_prompt": g("ai_prompt", ""),
         "keep_days": int(g("keep_days", "30")),
         "ai_provider": g("ai_provider", "claude"),
@@ -112,7 +111,7 @@ async def _generate_daily_digest(reference_dt: datetime | None = None) -> dict:
             provider.generate_digest,
             messages_text,
             cfg["ai_prompt"],
-            cfg["format"],
+            "article",
             date_label,
         )
         repo.save_digest(date_str, result.content, len(messages), "ok", model_name, result.tokens_in, result.tokens_out)

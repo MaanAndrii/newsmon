@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -176,6 +176,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS debug_api_calls (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 call_type TEXT NOT NULL,
+                provider TEXT NULL,
                 called_at TEXT NOT NULL DEFAULT (datetime('now')),
                 input_tokens INTEGER NOT NULL DEFAULT 0,
                 output_tokens INTEGER NOT NULL DEFAULT 0
@@ -188,6 +189,20 @@ def init_db() -> None:
                 event_type TEXT NOT NULL,
                 detail TEXT NOT NULL DEFAULT ''
             );
+
+            """
+        )
+        try:
+            cols = {
+                str(r["name"])
+                for r in conn.execute("PRAGMA table_info(debug_api_calls)").fetchall()
+            }
+            if "provider" not in cols:
+                conn.execute("ALTER TABLE debug_api_calls ADD COLUMN provider TEXT NULL")
+        except Exception:
+            pass
+        conn.executescript(
+            """
 
             CREATE TABLE IF NOT EXISTS debug_run_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1179,11 +1194,17 @@ class Repository:
     # Debug persistence
     # ------------------------------------------------------------------
 
-    def log_api_call(self, call_type: str, input_tokens: int = 0, output_tokens: int = 0) -> None:
+    def log_api_call(
+        self,
+        call_type: str,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        provider: str | None = None,
+    ) -> None:
         with get_connection() as conn:
             conn.execute(
-                "INSERT INTO debug_api_calls(call_type, input_tokens, output_tokens) VALUES (?, ?, ?)",
-                (call_type, input_tokens, output_tokens),
+                "INSERT INTO debug_api_calls(call_type, provider, input_tokens, output_tokens) VALUES (?, ?, ?, ?)",
+                (call_type, provider, input_tokens, output_tokens),
             )
             # Prune records older than 7 days
             conn.execute(
@@ -1192,12 +1213,20 @@ class Repository:
 
     def load_api_calls(self, call_type: str, hours: int = 48) -> list[dict[str, Any]]:
         with get_connection() as conn:
-            rows = conn.execute(
-                "SELECT called_at, input_tokens, output_tokens FROM debug_api_calls "
-                "WHERE call_type = ? AND called_at >= datetime('now', ? || ' hours') "
-                "ORDER BY called_at ASC",
-                (call_type, f"-{hours}"),
-            ).fetchall()
+            try:
+                rows = conn.execute(
+                    "SELECT called_at, input_tokens, output_tokens, provider FROM debug_api_calls "
+                    "WHERE call_type = ? AND called_at >= datetime('now', ? || ' hours') "
+                    "ORDER BY called_at ASC",
+                    (call_type, f"-{hours}"),
+                ).fetchall()
+            except sqlite3.OperationalError:
+                rows = conn.execute(
+                    "SELECT called_at, input_tokens, output_tokens, NULL as provider FROM debug_api_calls "
+                    "WHERE call_type = ? AND called_at >= datetime('now', ? || ' hours') "
+                    "ORDER BY called_at ASC",
+                    (call_type, f"-{hours}"),
+                ).fetchall()
         return [dict(r) for r in rows]
 
     def log_event(self, event_type: str, detail: str) -> None:
@@ -1450,18 +1479,31 @@ class Repository:
         ]
 
     def get_stats_weekday(self, days: int | None = None) -> list[dict[str, Any]]:
-        # weekday(): Mon=0..Sun=6 — return average per weekday occurrence, not cumulative
         day_totals: dict[int, int] = {}
-        day_dates: dict[int, set] = {}
-        for dt in self._iter_published_local(days):
+        points = self._iter_published_local(days)
+        for dt in points:
             wd = dt.weekday()
             day_totals[wd] = day_totals.get(wd, 0) + 1
-            day_dates.setdefault(wd, set()).add(dt.date())
+        weekday_occurrences: dict[int, int] = {i: 0 for i in range(7)}
+        if days is not None:
+            safe_days = max(1, min(int(days), 365))
+            end_date = datetime.now(timezone.utc).astimezone(_KYIV_TZ).date()
+            start_date = end_date - timedelta(days=safe_days - 1)
+            for offset in range(safe_days):
+                wd = (start_date + timedelta(days=offset)).weekday()
+                weekday_occurrences[wd] += 1
+        elif points:
+            start_date = min(dt.date() for dt in points)
+            end_date = max(dt.date() for dt in points)
+            span_days = (end_date - start_date).days + 1
+            for offset in range(max(1, span_days)):
+                wd = (start_date + timedelta(days=offset)).weekday()
+                weekday_occurrences[wd] += 1
         names = {0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Нд"}
         result = []
         for i in range(7):
             total = day_totals.get(i, 0)
-            n = len(day_dates.get(i, set()))
+            n = weekday_occurrences.get(i, 0)
             avg = round(total / n, 1) if n > 0 else 0
             result.append({"weekday": i, "name": names[i], "count": avg, "total": total, "days": n})
         return result
