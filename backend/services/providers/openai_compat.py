@@ -131,6 +131,12 @@ class OpenAICompatProvider:
             )
         except Exception:
             return None
+        usage = getattr(response, "usage", None)
+        _record_claude_call(
+            int(getattr(usage, "prompt_tokens", 0) or 0),
+            int(getattr(usage, "completion_tokens", 0) or 0),
+            provider=self.provider_name,
+        )
         payload = (response.choices[0].message.content or "").strip()
         try:
             parsed = json.loads(payload or "{}")

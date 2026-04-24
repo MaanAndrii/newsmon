@@ -204,7 +204,7 @@
               <input id="telethonAuthPhone" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="+380XXXXXXXXX" />
               <input id="telethonAuthCode" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Код з Telegram" />
               <input id="telethonAuthPassword" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="2FA пароль (опц.)" />
-              <div class="flex gap-2">
+              <div class="flex flex-wrap gap-2">
                 <button id="telethonCodeBtn" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs" onclick="requestTelethonCode()">Запросити код</button>
                 <button id="telethonVerifyBtn" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs" onclick="verifyTelethonCode()">Підтвердити</button>
                 <button id="telethonLogoutBtn" class="hidden px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-xs" onclick="logoutTelethon()">Вийти з Telethon</button>
@@ -212,7 +212,7 @@
             </div>
             <p id="telethonAuthMessage" class="text-xs text-slate-400">Статус авторизації: невідомо</p>
           </div>
-          <div class="flex gap-2">
+          <div class="flex flex-wrap gap-2">
             <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm" onclick="saveIntegrations()">Зберегти інтеграції</button>
             <button class="px-3 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-sm" onclick="validateIntegrations()">Перевірити підключення</button>
           </div>
@@ -262,12 +262,12 @@
               </div>
             </div>
             <div class="rounded-lg border border-slate-800 bg-slate-900/60 p-3 transition-colors hover:border-slate-700">
-              <div class="flex items-center justify-between gap-3">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
                   <p class="font-medium">AI-провайдер для оцінки</p>
                   <p class="text-xs text-slate-400">Який сервіс та модель використовувати для оцінки важливості.</p>
                 </div>
-                <select id="monitorAiProvider" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-right" onchange="updateMonitorModelDropdown()">
+                <select id="monitorAiProvider" class="w-full sm:w-auto bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" onchange="updateMonitorModelDropdown()">
                   <option value="claude">Claude (Anthropic)</option>
                   <option value="grok">Grok (xAI)</option>
                   <option value="gemini">Gemini (Google)</option>
@@ -1222,20 +1222,20 @@
             : '';
           const statsBtn = `<button onclick="viewDigestStats('${escapeHtml(d.digest_date)}')" class="text-xs px-2 py-1 rounded bg-sky-700 hover:bg-sky-600 text-white">📊 Статистика</button>`;
           return `<div class="py-2 border-t border-slate-800/60 text-xs space-y-1">
-            <div class="flex items-center justify-between gap-3">
-              <div class="flex items-center gap-3">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+              <div class="flex flex-wrap items-center gap-2">
                 <span class="font-mono text-slate-300">${escapeHtml(d.digest_date)}</span>
                 <span class="${statusCls}">${escapeHtml(statusLabel)}</span>
                 <span class="text-slate-500">${d.message_count ?? 0} повідомлень</span>
+                <span class="text-slate-500">${escapeHtml(genAt)}</span>
               </div>
-              <div class="flex items-center gap-2 text-slate-500">
-                <span>${escapeHtml(genAt)}</span>
+              <div class="flex flex-wrap items-center gap-2">
                 ${viewBtn}
                 ${statsBtn}
                 <button onclick="deleteDigest('${escapeHtml(d.digest_date)}')" class="text-xs px-2 py-1 rounded bg-rose-900/60 hover:bg-rose-800 text-rose-300">Видалити</button>
               </div>
             </div>
-            ${modelLabel || tokensLabel ? `<div class="flex items-center gap-3 pl-0.5">${modelLabel}${tokensLabel}</div>` : ''}
+            ${modelLabel || tokensLabel ? `<div class="flex flex-wrap items-center gap-3 pl-0.5">${modelLabel}${tokensLabel}</div>` : ''}
           </div>`;
         }).join('');
       }
