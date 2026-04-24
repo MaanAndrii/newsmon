@@ -16,9 +16,6 @@ PROTOTYPE_DIR = ROOT_DIR / "prototype"
 # ---------------------------------------------------------------------------
 # Monitor constants
 # ---------------------------------------------------------------------------
-MONITOR_INTERVAL_SECONDS = 600
-MIN_MONITOR_INTERVAL_SECONDS = 300
-MAX_MONITOR_INTERVAL_SECONDS = 7200
 DEFAULT_MONITOR_DEPTH = 3
 MIN_MONITOR_DEPTH = 1
 MAX_MONITOR_DEPTH = 10
@@ -102,24 +99,14 @@ try:
             _at = datetime.fromisoformat(_row["called_at"].replace(" ", "T")).replace(
                 tzinfo=__import__("datetime").timezone.utc
             )
+            provider = str(_row.get("provider") or "").strip()
+            if not provider:
+                continue  # skip records without provider — can't attribute correctly
             claude_call_events.append({
                 "at": _at,
                 "input_tokens": int(_row.get("input_tokens") or 0),
                 "output_tokens": int(_row.get("output_tokens") or 0),
-                "provider": str(_row.get("provider") or "claude"),
-            })
-        except Exception:
-            pass
-    for _row in repo.load_api_calls("claude", hours=168):
-        try:
-            _at = datetime.fromisoformat(_row["called_at"].replace(" ", "T")).replace(
-                tzinfo=__import__("datetime").timezone.utc
-            )
-            claude_call_events.append({
-                "at": _at,
-                "input_tokens": int(_row.get("input_tokens") or 0),
-                "output_tokens": int(_row.get("output_tokens") or 0),
-                "provider": "claude",
+                "provider": provider,
             })
         except Exception:
             pass
