@@ -240,6 +240,7 @@ def init_db() -> None:
             """
         )
         _ensure_column(conn, "sources", "ai_enabled", "INTEGER NOT NULL DEFAULT 1")
+        _ensure_column(conn, "sources", "digest_enabled", "INTEGER NOT NULL DEFAULT 1")
         _ensure_column(conn, "sources", "last_message_at", "TEXT NULL")
         _ensure_column(conn, "sources", "tg_peer_id", "INTEGER NULL")
         _ensure_column(conn, "sources", "tg_access_hash", "INTEGER NULL")
@@ -542,7 +543,7 @@ class Repository:
         }.get(sort_by, "id DESC")
         with get_connection() as conn:
             rows = conn.execute(
-                f"SELECT id, name, url, is_active, ai_enabled, last_message_at, tg_peer_id, tg_access_hash, created_at FROM sources ORDER BY {order_by}"
+                f"SELECT id, name, url, is_active, ai_enabled, digest_enabled, last_message_at, tg_peer_id, tg_access_hash, created_at FROM sources ORDER BY {order_by}"
             ).fetchall()
         return [dict(r) for r in rows]
 
@@ -553,12 +554,12 @@ class Repository:
                 (name, url),
             )
             row = conn.execute(
-                "SELECT id, name, url, is_active, ai_enabled, last_message_at, tg_peer_id, tg_access_hash, created_at FROM sources WHERE id = ?",
+                "SELECT id, name, url, is_active, ai_enabled, digest_enabled, last_message_at, tg_peer_id, tg_access_hash, created_at FROM sources WHERE id = ?",
                 (cur.lastrowid,),
             ).fetchone()
         return dict(row)
 
-    def update_source(self, source_id: int, is_active: bool | None, ai_enabled: bool | None) -> dict[str, Any] | None:
+    def update_source(self, source_id: int, is_active: bool | None, ai_enabled: bool | None, digest_enabled: bool | None = None) -> dict[str, Any] | None:
         with get_connection() as conn:
             row = conn.execute("SELECT id FROM sources WHERE id = ?", (source_id,)).fetchone()
             if not row:
@@ -567,8 +568,10 @@ class Repository:
                 conn.execute("UPDATE sources SET is_active = ? WHERE id = ?", (int(is_active), source_id))
             if ai_enabled is not None:
                 conn.execute("UPDATE sources SET ai_enabled = ? WHERE id = ?", (int(ai_enabled), source_id))
+            if digest_enabled is not None:
+                conn.execute("UPDATE sources SET digest_enabled = ? WHERE id = ?", (int(digest_enabled), source_id))
             updated = conn.execute(
-                "SELECT id, name, url, is_active, ai_enabled, last_message_at, tg_peer_id, tg_access_hash, created_at FROM sources WHERE id = ?",
+                "SELECT id, name, url, is_active, ai_enabled, digest_enabled, last_message_at, tg_peer_id, tg_access_hash, created_at FROM sources WHERE id = ?",
                 (source_id,),
             ).fetchone()
         return dict(updated)
@@ -1592,6 +1595,7 @@ class Repository:
                 WHERE m.ai_status = 'done'
                   AND m.is_dedup = 0
                   AND m.ai_score >= ?
+                  AND s.digest_enabled = 1
                   {date_clause}
                   {excl_clause}
                 ORDER BY m.ai_category, m.ai_score DESC

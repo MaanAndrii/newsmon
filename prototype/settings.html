@@ -389,6 +389,7 @@
                   <th class="text-left p-3">Сигнал</th>
                   <th class="text-left p-3">Моніторинг</th>
                   <th class="text-left p-3">ШІ</th>
+                  <th class="text-left p-3">Дайджест</th>
                   <th class="text-left p-3">Дія</th>
                 </tr>
               </thead>
@@ -1709,6 +1710,13 @@
                 <input type="checkbox" ${item.ai_enabled ? 'checked' : ''} class="sr-only peer"
                   onchange="toggleSource(${item.id}, 'ai_enabled', this.checked)" />
                 <span class="w-10 h-5 bg-slate-700 rounded-full peer peer-checked:bg-emerald-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
+              </label>
+            </td>
+            <td class="p-3">
+              <label class="inline-flex items-center cursor-pointer">
+                <input type="checkbox" ${item.digest_enabled !== false && item.digest_enabled !== 0 ? 'checked' : ''} class="sr-only peer"
+                  onchange="toggleSource(${item.id}, 'digest_enabled', this.checked)" />
+                <span class="w-10 h-5 bg-slate-700 rounded-full peer peer-checked:bg-violet-600 relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:bg-white after:rounded-full peer-checked:after:translate-x-5 after:transition"></span>
               </label>
             </td>
             <td class="p-3"><button class="px-2 py-1 rounded bg-rose-700 hover:bg-rose-600 text-xs" onclick="deleteSource(${item.id})">Видалити</button></td>

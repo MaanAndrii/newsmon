@@ -73,7 +73,7 @@ def create_source(payload: SourceCreate) -> dict:
 
 @router.patch("/api/sources/{source_id}", dependencies=[Depends(require_admin)])
 def update_source(source_id: int, payload: SourceUpdate) -> dict:
-    updated = repo.update_source(source_id, payload.is_active, payload.ai_enabled)
+    updated = repo.update_source(source_id, payload.is_active, payload.ai_enabled, payload.digest_enabled)
     if updated is None:
         raise HTTPException(status_code=404, detail="Source not found")
     return updated
