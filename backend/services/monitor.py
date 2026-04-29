@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from config import (
     DEFAULT_RETENTION_MONTHS,
     MAX_RETENTION_MONTHS,
+    MISC_CATEGORY,
     MIN_RETENTION_MONTHS,
     _ai_counters,
     ai_processing_lock,
@@ -323,7 +324,7 @@ async def _ingest_channel_message(
             original_id=dedup_original["id"],
         )
     elif not should_ai:
-        repo.mark_message_no_ai(new_message_id, _get_default_category_name())
+        repo.mark_message_no_ai(new_message_id, MISC_CATEGORY)
     await _process_alerts_for_message(new_message_id, "new_message")
     return 1
 
@@ -437,7 +438,7 @@ async def _process_one_ai_item(
         message_id = int(item.get("message_id") or 0)
         text = (item.get("text") or "").strip()
         if message_id <= 0 or not text:
-            repo.mark_message_no_ai(message_id, _get_default_category_name())
+            repo.mark_message_no_ai(message_id, MISC_CATEGORY)
             _log_event("ai_flush", f"msg#{message_id}: порожній текст → позначено без оцінки")
             return
 
@@ -509,7 +510,7 @@ async def _process_ai_queue(limit: int = 50) -> int:
     monitor_cfg = _get_monitor_config()
 
     if not monitor_cfg["ai_enabled"]:
-        flushed = repo.flush_ai_queue_no_ai(_get_default_category_name())
+        flushed = repo.flush_ai_queue_no_ai(MISC_CATEGORY)
         if flushed:
             _log_event(
                 "ai_flush",
@@ -524,7 +525,7 @@ async def _process_ai_queue(limit: int = 50) -> int:
     provider = get_provider(ai_provider_name, integrations, model_override=ai_model_override)
 
     if not provider.has_credentials():
-        flushed = repo.flush_ai_queue_no_ai(_get_default_category_name())
+        flushed = repo.flush_ai_queue_no_ai(MISC_CATEGORY)
         if flushed:
             _log_event(
                 "ai_flush",
@@ -589,7 +590,7 @@ async def _process_ai_queue(limit: int = 50) -> int:
             msg_id = int(item.get("message_id") or 0)
             text = (item.get("text") or "").strip()
             if not text or msg_id <= 0:
-                repo.mark_message_no_ai(msg_id, _get_default_category_name())
+                repo.mark_message_no_ai(msg_id, MISC_CATEGORY)
                 continue
             h = _compute_content_hash(text)
             original = repo.find_scored_message_by_hash(h, hours=6, exclude_id=msg_id) if h else None

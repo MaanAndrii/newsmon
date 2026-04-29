@@ -17,6 +17,7 @@ PROTOTYPE_DIR = ROOT_DIR / "prototype"
 # Monitor constants
 # ---------------------------------------------------------------------------
 DEFAULT_MONITOR_DEPTH = 3
+MISC_CATEGORY = "Різне"  # reserved category for messages without AI scoring
 MIN_MONITOR_DEPTH = 1
 MAX_MONITOR_DEPTH = 10
 DEFAULT_RETENTION_MONTHS = 3
