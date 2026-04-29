@@ -18,6 +18,7 @@ class SourceCreate(BaseModel):
 class SourceUpdate(BaseModel):
     is_active: bool | None = None
     ai_enabled: bool | None = None
+    digest_enabled: bool | None = None
 
 
 class CategoryCreate(BaseModel):
