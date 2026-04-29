@@ -1594,7 +1594,7 @@ class Repository:
                 JOIN sources s ON s.id = m.source_id
                 WHERE m.ai_status = 'done'
                   AND m.is_dedup = 0
-                  AND m.ai_score >= ?
+                  AND (m.ai_score >= ? OR (m.ai_score IS NULL AND s.ai_enabled = 0))
                   AND s.digest_enabled = 1
                   {date_clause}
                   {excl_clause}
