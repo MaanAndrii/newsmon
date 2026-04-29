@@ -330,10 +330,10 @@ class Repository:
             where_parts.append("LOWER(COALESCE(m.text, '')) LIKE LOWER(?)")
             params.append(f"%{keyword_raw}%")
         if min_score is not None:
-            where_parts.append("m.ai_score >= ?")
+            where_parts.append("(m.ai_score >= ? OR m.ai_category = 'Різне')")
             params.append(int(min_score))
         if max_score is not None:
-            where_parts.append("m.ai_score <= ?")
+            where_parts.append("(m.ai_score <= ? OR m.ai_category = 'Різне')")
             params.append(int(max_score))
         if content_hash_raw:
             where_parts.append("m.content_hash = ?")
