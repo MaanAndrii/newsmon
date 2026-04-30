@@ -6,7 +6,6 @@ from typing import NamedTuple
 class ScoreResult(NamedTuple):
     score: int
     category: str | None
-    matched_keyword: str | None
     tokens_in: int = 0
     tokens_out: int = 0
 

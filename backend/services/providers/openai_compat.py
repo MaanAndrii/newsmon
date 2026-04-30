@@ -32,26 +32,13 @@ class OpenAICompatProvider:
         text: str,
         categories: list[str],
         ai_prompt: str,
-        keywords: list[str] | None = None,
     ) -> ScoreResult:
         categories_text = ", ".join(categories) if categories else "Без категорії"
         base_prompt = ai_prompt or "Оціни медіа-важливість повідомлення від 1 до 10 і обери найкращу категорію."
-        if keywords:
-            keywords_text = ", ".join(f'"{k}"' for k in keywords)
-            json_format = '{"score": 7, "category": "Економіка", "matched_keyword": "Харків"}'
-            keyword_instruction = (
-                f'Ключові слова для пошуку (з урахуванням відмінків/словоформ): {keywords_text}. '
-                f'Якщо жодне не знайдено — matched_keyword: null. '
-            )
-        else:
-            json_format = '{"score": 7, "category": "Економіка"}'
-            keyword_instruction = ""
-
         system_prompt = (
             f"{base_prompt}\n"
             f"Категорії: {categories_text}.\n"
-            f"{keyword_instruction}"
-            f"Поверни ТІЛЬКИ JSON без пояснень, формат: {json_format}."
+            'Поверни ТІЛЬКИ JSON без пояснень, формат: {"score": 7, "category": "Економіка"}.'
         )
 
         client = self._client()
@@ -63,7 +50,7 @@ class OpenAICompatProvider:
             try:
                 response = client.chat.completions.create(
                     model=self.model,
-                    max_tokens=200 if keywords else 120,
+                    max_tokens=120,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": text},
@@ -72,7 +59,6 @@ class OpenAICompatProvider:
                 break
             except Exception as exc:
                 last_exc = exc
-                # Only retry on rate-limit / server errors
                 status = getattr(getattr(exc, "status_code", None), "real", None) or getattr(exc, "status_code", None)
                 if status and status not in (429, 500, 503):
                     raise
@@ -98,58 +84,7 @@ class OpenAICompatProvider:
         category = str(parsed.get("category") or "").strip() or None
         if categories and category not in categories:
             category = None
-        matched_keyword: str | None = None
-        if keywords:
-            raw_match = str(parsed.get("matched_keyword") or "").strip()
-            if raw_match:
-                for kw in keywords:
-                    if kw.lower() == raw_match.lower():
-                        matched_keyword = kw
-                        break
-        return ScoreResult(score=score, category=category, matched_keyword=matched_keyword,
-                           tokens_in=tok_in, tokens_out=tok_out)
-
-    def match_keywords(self, text: str, keywords: list[str]) -> str | None:
-        normalized = [k.strip() for k in keywords if k and k.strip()]
-        if not normalized:
-            return None
-        system_prompt = (
-            "Отримай текст новини та список ключових слів. "
-            "Визнач, чи є в тексті одне з ключових слів з урахуванням відмінків/словоформ. "
-            'Поверни ТІЛЬКИ JSON формату {"matched_keyword": "..."} або {"matched_keyword": null}.'
-        )
-        user_content = json.dumps({"keywords": normalized, "text": text[:2000]}, ensure_ascii=False)
-        client = self._client()
-        try:
-            response = client.chat.completions.create(
-                model=self.model,
-                max_tokens=80,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
-                ],
-            )
-        except Exception:
-            return None
-        usage = getattr(response, "usage", None)
-        _record_claude_call(
-            int(getattr(usage, "prompt_tokens", 0) or 0),
-            int(getattr(usage, "completion_tokens", 0) or 0),
-            provider=self.provider_name,
-        )
-        payload = (response.choices[0].message.content or "").strip()
-        try:
-            parsed = json.loads(payload or "{}")
-        except json.JSONDecodeError:
-            m = re.search(r"\{.*\}", payload, flags=re.DOTALL)
-            parsed = json.loads(m.group(0)) if m else {}
-        raw = str(parsed.get("matched_keyword") or "").strip()
-        if not raw:
-            return None
-        for kw in normalized:
-            if kw.lower() == raw.lower():
-                return kw
-        return None
+        return ScoreResult(score=score, category=category, tokens_in=tok_in, tokens_out=tok_out)
 
     def generate_digest(
         self,

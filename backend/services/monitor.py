@@ -430,7 +430,6 @@ async def _process_one_ai_item(
     provider: ClaudeProvider | OpenAICompatProvider,
     categories: list[str],
     ai_prompt: str,
-    keyword_patterns: list[str],
     dedup_enabled: bool = True,
     ai_provider_name: str = "claude",
 ) -> None:
@@ -465,9 +464,8 @@ async def _process_one_ai_item(
                 _prepare_ai_text(text),
                 categories,
                 ai_prompt,
-                keyword_patterns or None,
             )
-            score, category, matched_keyword = result.score, result.category, result.matched_keyword
+            score, category = result.score, result.category
             tok_in, tok_out = result.tokens_in, result.tokens_out
             if category is None:
                 category = _get_default_category_name()
@@ -482,11 +480,7 @@ async def _process_one_ai_item(
                 tokens_in=tok_in,
                 tokens_out=tok_out,
             )
-            await _process_alerts_for_message(
-                message_id, "ai_scored", score=score,
-                matched_keyword=matched_keyword,
-                keyword_checked=bool(keyword_patterns),
-            )
+            await _process_alerts_for_message(message_id, "ai_scored", score=score)
         except Exception as exc:
             repo.mark_ai_error(message_id, str(exc))
             _log_event(
@@ -538,15 +532,6 @@ async def _process_ai_queue(limit: int = 50) -> int:
         c.get("name", "").strip() for c in repo.list_categories() if c.get("name")
     ]
     ai_prompt = str(monitor_cfg.get("ai_prompt") or "").strip()
-    # Collect all active keyword_ai patterns once per queue flush to avoid
-    # per-message DB queries and to pass them into the combined scoring call.
-    keyword_patterns: list[str] = list({
-        str(a.get("pattern") or "").strip()
-        for a in repo.list_alerts()
-        if int(a.get("is_enabled") or 0) == 1
-        and str(a.get("alert_type") or "") == "keyword_ai"
-        and str(a.get("pattern") or "").strip()
-    })
 
     async with ai_processing_lock:
         pending = repo.claim_ai_queue_pending(limit=limit)
@@ -577,7 +562,7 @@ async def _process_ai_queue(limit: int = 50) -> int:
         await asyncio.gather(
             *[
                 _process_one_ai_item(
-                    item, semaphore, provider, categories, ai_prompt, keyword_patterns,
+                    item, semaphore, provider, categories, ai_prompt,
                     dedup_batch_enabled, ai_provider_name,
                 )
                 for item in primary_items
@@ -605,8 +590,7 @@ async def _process_ai_queue(limit: int = 50) -> int:
             else:
                 # Fallback: original wasn't scored (e.g. AI error) — score normally.
                 await _process_one_ai_item(
-                    item, semaphore, provider, categories, ai_prompt, keyword_patterns,
-                    dedup_batch_enabled,
+                    item, semaphore, provider, categories, ai_prompt, dedup_batch_enabled,
                 )
 
         # Update shared counter so _monitor_loop can read it for run history
