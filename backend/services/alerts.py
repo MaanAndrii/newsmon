@@ -60,16 +60,10 @@ async def _process_alerts_for_message(
         if not target_chat_id:
             continue
         alert_name = str(alert.get("name") or "Alert")
-        msg = (
-            f"🔔 {alert_name}\n"
-            f"Канал: {source_name}\n"
-            f"Час: {published_at}\n"
-            f"Оцінка: {ai_score}\n"
-            f"Категорія: {ai_category}\n"
-            f"{'Ключове слово: ' + keyword_for_delivery + chr(10) if keyword_for_delivery else ''}"
-            f"Текст: {(text or '—')[:800]}\n"
-            f"{telegram_url}"
-        )
+        msg_parts = [f"🔔 {alert_name}", f"Канал: {source_name}"]
+        if telegram_url:
+            msg_parts.append(telegram_url)
+        msg = "\n".join(msg_parts)
         try:
             sent = _send_telegram_bot_message(bot_token, target_chat_id, msg)
         except Exception:
