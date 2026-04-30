@@ -341,9 +341,9 @@
                   <th class="text-left p-3">Назва</th>
                   <th class="text-left p-3">Тип</th>
                   <th class="text-left p-3">Канал</th>
-                  <th class="text-left p-3">Pattern/keyword</th>
+                  <th class="text-left p-3">Ключове слово</th>
                   <th class="text-left p-3">Мін. оцінка</th>
-                  <th class="text-left p-3">Target chat</th>
+                  <th class="text-left p-3">Отримувач</th>
                   <th class="text-left p-3">Статус</th>
                   <th class="text-left p-3">Дії</th>
                 </tr>
@@ -351,20 +351,40 @@
               <tbody id="alertsBody"></tbody>
             </table>
           </div>
-          <div class="grid grid-cols-1 md:grid-cols-7 gap-2 text-sm">
-            <input id="alertNameInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Назва правила" />
-            <select id="alertTypeInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
-              <option value="new_message">Нове повідомлення</option>
-              <option value="min_score">Оцінка >= min</option>
-              <option value="keyword_ai">Ключове слово (AI)</option>
-            </select>
-            <select id="alertSourceInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
-              <option value="">Усі канали</option>
-            </select>
-            <input id="alertPatternInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Ключове слово / pattern" />
-            <input id="alertMinScoreInput" type="number" min="0" max="10" value="7" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Мін. оцінка" />
-            <input id="alertTargetChatInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="-100..." />
-            <button class="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500" onclick="saveAlert()">Зберегти правило</button>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm p-4 bg-slate-900 rounded-lg border border-slate-800">
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-400">Назва правила</label>
+              <input id="alertNameInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Моє сповіщення" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-400">Тип</label>
+              <select id="alertTypeInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" onchange="onAlertTypeChange()">
+                <option value="new_message">Нове повідомлення</option>
+                <option value="min_score">За оцінкою</option>
+                <option value="keyword_ai">За ключовим словом</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-400">Канал (або усі)</label>
+              <select id="alertSourceInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
+                <option value="">Усі канали</option>
+              </select>
+            </div>
+            <div id="alertPatternWrap" class="flex flex-col gap-1 hidden">
+              <label class="text-xs text-slate-400">Ключове слово</label>
+              <input id="alertPatternInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="напр. Маринюк Андрій" />
+            </div>
+            <div id="alertMinScoreWrap" class="flex flex-col gap-1 hidden">
+              <label class="text-xs text-slate-400">Мінімальна оцінка (0–10)</label>
+              <input id="alertMinScoreInput" type="number" min="0" max="10" value="7" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="7" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-400">Отримувач (chat id або @username)</label>
+              <input id="alertTargetChatInput" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="-100… або @username" />
+            </div>
+            <div class="flex items-end">
+              <button class="w-full px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500" onclick="saveAlert()">Зберегти правило</button>
+            </div>
           </div>
           <p id="alertMessage" class="text-xs text-slate-400"></p>
         </div>
@@ -1948,19 +1968,35 @@
         }
       }
 
+      function onAlertTypeChange() {
+        const type = document.getElementById('alertTypeInput').value;
+        document.getElementById('alertPatternWrap').classList.toggle('hidden', type !== 'keyword_ai');
+        document.getElementById('alertMinScoreWrap').classList.toggle('hidden', type !== 'min_score');
+      }
+
       async function saveAlert() {
+        const type = document.getElementById('alertTypeInput').value;
         const payload = {
           name: document.getElementById('alertNameInput').value.trim(),
-          alert_type: document.getElementById('alertTypeInput').value,
+          alert_type: type,
           source_id: document.getElementById('alertSourceInput').value ? Number(document.getElementById('alertSourceInput').value) : null,
-          pattern: document.getElementById('alertPatternInput').value.trim(),
-          min_score: document.getElementById('alertMinScoreInput').value ? Number(document.getElementById('alertMinScoreInput').value) : null,
+          pattern: type === 'keyword_ai' ? document.getElementById('alertPatternInput').value.trim() : '',
+          min_score: type === 'min_score' && document.getElementById('alertMinScoreInput').value !== ''
+            ? Number(document.getElementById('alertMinScoreInput').value) : null,
           target_chat_id: document.getElementById('alertTargetChatInput').value.trim(),
           is_enabled: true,
-          is_ai_keyword: true,
+          is_ai_keyword: type === 'keyword_ai',
         };
         if (!payload.name || !payload.target_chat_id) {
-          document.getElementById('alertMessage').textContent = 'Вкажіть назву правила і target chat id.';
+          document.getElementById('alertMessage').textContent = 'Вкажіть назву правила і отримувача.';
+          return;
+        }
+        if (type === 'keyword_ai' && !payload.pattern) {
+          document.getElementById('alertMessage').textContent = 'Вкажіть ключове слово.';
+          return;
+        }
+        if (type === 'min_score' && payload.min_score === null) {
+          document.getElementById('alertMessage').textContent = 'Вкажіть мінімальну оцінку.';
           return;
         }
         const method = editingAlertId ? 'PATCH' : 'POST';
@@ -1981,6 +2017,8 @@
           document.getElementById('alertTargetChatInput').value = '';
           document.getElementById('alertMinScoreInput').value = '7';
           document.getElementById('alertSourceInput').value = '';
+          document.getElementById('alertTypeInput').value = 'new_message';
+          onAlertTypeChange();
           await loadAlerts();
         }
       }
@@ -1998,7 +2036,9 @@
         document.getElementById('alertPatternInput').value = item.pattern || '';
         document.getElementById('alertMinScoreInput').value = item.min_score == null ? '7' : String(Number(item.min_score));
         document.getElementById('alertTargetChatInput').value = item.target_chat_id || '';
+        onAlertTypeChange();
         document.getElementById('alertMessage').textContent = `Редагування правила #${item.id}`;
+        document.getElementById('alertsTab').scrollIntoView({ behavior: 'smooth', block: 'end' });
       }
 
       async function deleteAlert(alertId) {
