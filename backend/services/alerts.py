@@ -3,24 +3,14 @@ from __future__ import annotations
 import asyncio
 
 from config import repo
-from services.claude import _prepare_ai_text
-from services.providers import get_provider
+from services.lemmatizer import lemmatize, lemmas_from_json, match as lemma_match
 from services.telegram import _send_telegram_bot_message
-
-
-def _get_monitor_provider():
-    ai_provider = (repo.get_setting("monitor.ai_provider", "claude") or "claude").strip()
-    ai_model = (repo.get_setting("monitor.ai_model", "") or "").strip() or None
-    integrations = repo.get_integrations()
-    return get_provider(ai_provider, integrations, model_override=ai_model)
 
 
 async def _process_alerts_for_message(
     message_id: int,
     event_type: str,
     score: int | None = None,
-    matched_keyword: str | None = None,
-    keyword_checked: bool = False,
 ) -> None:
     bot_token = (repo.get_integrations().get("telegram_bot_token") or "").strip()
     if not bot_token:
@@ -39,31 +29,8 @@ async def _process_alerts_for_message(
     published_at = str(message.get("published_at") or "")
     source_name = str(message.get("source_name") or "Канал")
 
-    # matched_keyword is pre-resolved by the combined scoring call in monitor.py
-    # when keyword_checked=True.  Fallback: run keyword matching via the current
-    # monitor AI provider when keywords were not checked during scoring.
-    keyword_alerts = [a for a in alerts if a.get("alert_type") == "keyword_ai"]
-    if not keyword_checked and matched_keyword is None and event_type == "ai_scored" and keyword_alerts:
-        keyword_candidates = list(
-            {
-                str(a.get("pattern") or "").strip()
-                for a in keyword_alerts
-                if str(a.get("pattern") or "").strip()
-            }
-        )
-        if keyword_candidates and text.strip():
-            provider = _get_monitor_provider()
-            if provider.has_credentials():
-                loop = asyncio.get_running_loop()
-                try:
-                    matched_keyword = await loop.run_in_executor(
-                        None,
-                        provider.match_keywords,
-                        _prepare_ai_text(text),
-                        keyword_candidates,
-                    )
-                except Exception:
-                    matched_keyword = None
+    # Pre-compute message lemmas once for all keyword_ai alerts
+    text_lemmas = lemmatize(text) if event_type == "ai_scored" else frozenset()
 
     for alert in alerts:
         alert_id = int(alert.get("id") or 0)
@@ -83,13 +50,10 @@ async def _process_alerts_for_message(
             min_score = int(alert.get("min_score") or 0)
             should_send = ai_score >= min_score
         elif alert_type == "keyword_ai" and event_type == "ai_scored":
-            expected = str(alert.get("pattern") or "").strip()
-            should_send = bool(
-                matched_keyword
-                and expected
-                and matched_keyword.lower() == expected.lower()
-            )
-            keyword_for_delivery = matched_keyword
+            keyword_lemmas = lemmas_from_json(alert.get("keyword_lemmas"))
+            should_send = lemma_match(text_lemmas, keyword_lemmas)
+            if should_send:
+                keyword_for_delivery = str(alert.get("pattern") or "").strip()
         if not should_send:
             continue
         target_chat_id = str(alert.get("target_chat_id") or "").strip()

@@ -9,6 +9,7 @@ import config
 from config import PROTOTYPE_DIR
 from db import init_db
 from services.digest import _digest_loop
+from services.lemmatizer import keyword_to_lemma_json
 from services.monitor import _ai_loop, _monitor_loop
 
 from routers import alerts as alerts_router
@@ -41,12 +42,27 @@ app.include_router(stats_router.router)
 @app.on_event("startup")
 async def startup() -> None:
     init_db()
+    _migrate_alert_lemmas()
     if config.monitor_task is None:
         config.monitor_task = asyncio.create_task(_monitor_loop())
     if config.ai_task is None:
         config.ai_task = asyncio.create_task(_ai_loop())
     if config.digest_task is None:
         config.digest_task = asyncio.create_task(_digest_loop())
+
+
+def _migrate_alert_lemmas() -> None:
+    """Compute and store lemmas for existing keyword_ai alerts that have none."""
+    from config import repo
+    alerts = repo.list_keyword_ai_alerts_without_lemmas()
+    if not alerts:
+        return
+    for alert in alerts:
+        pattern = (alert.get("pattern") or "").strip()
+        if not pattern:
+            continue
+        lemmas_json = keyword_to_lemma_json(pattern)
+        repo.update_alert(alert_id=int(alert["id"]), keyword_lemmas=lemmas_json)
 
 
 @app.get("/")

@@ -274,6 +274,7 @@ def init_db() -> None:
         _ensure_column(conn, "integrations", "grok_model_3", "TEXT NULL")
         _ensure_column(conn, "integrations", "gemini_model_2", "TEXT NULL")
         _ensure_column(conn, "integrations", "gemini_model_3", "TEXT NULL")
+        _ensure_column(conn, "alerts", "keyword_lemmas", "TEXT NULL")
 
 
 def _ensure_column(conn: sqlite3.Connection, table_name: str, column_name: str, ddl: str) -> None:
@@ -979,7 +980,7 @@ class Repository:
                 """
                 SELECT a.id, a.name, a.pattern, a.alert_type, a.source_id,
                        s.name AS source_name, a.min_score, a.target_chat_id,
-                       a.is_ai_keyword, a.is_enabled, a.created_at
+                       a.is_ai_keyword, a.is_enabled, a.created_at, a.keyword_lemmas
                 FROM alerts a
                 LEFT JOIN sources s ON s.id = a.source_id
                 ORDER BY a.id DESC
@@ -997,20 +998,21 @@ class Repository:
         target_chat_id: str,
         is_ai_keyword: bool,
         is_enabled: bool,
+        keyword_lemmas: str | None = None,
     ) -> dict[str, Any]:
         with get_connection() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO alerts(name, pattern, alert_type, source_id, min_score, target_chat_id, is_ai_keyword, is_enabled)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO alerts(name, pattern, alert_type, source_id, min_score, target_chat_id, is_ai_keyword, is_enabled, keyword_lemmas)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (name, pattern, alert_type, source_id, min_score, target_chat_id, int(is_ai_keyword), int(is_enabled)),
+                (name, pattern, alert_type, source_id, min_score, target_chat_id, int(is_ai_keyword), int(is_enabled), keyword_lemmas),
             )
             row = conn.execute(
                 """
                 SELECT a.id, a.name, a.pattern, a.alert_type, a.source_id,
                        s.name AS source_name, a.min_score, a.target_chat_id,
-                       a.is_ai_keyword, a.is_enabled, a.created_at
+                       a.is_ai_keyword, a.is_enabled, a.created_at, a.keyword_lemmas
                 FROM alerts a
                 LEFT JOIN sources s ON s.id = a.source_id
                 WHERE a.id = ?
@@ -1030,6 +1032,8 @@ class Repository:
         target_chat_id: str | None = None,
         is_ai_keyword: bool | None = None,
         is_enabled: bool | None = None,
+        keyword_lemmas: str | None = None,
+        clear_keyword_lemmas: bool = False,
     ) -> dict[str, Any] | None:
         with get_connection() as conn:
             row = conn.execute("SELECT id FROM alerts WHERE id = ?", (alert_id,)).fetchone()
@@ -1051,11 +1055,13 @@ class Repository:
                 conn.execute("UPDATE alerts SET is_ai_keyword = ? WHERE id = ?", (int(is_ai_keyword), alert_id))
             if is_enabled is not None:
                 conn.execute("UPDATE alerts SET is_enabled = ? WHERE id = ?", (int(is_enabled), alert_id))
+            if keyword_lemmas is not None or clear_keyword_lemmas:
+                conn.execute("UPDATE alerts SET keyword_lemmas = ? WHERE id = ?", (keyword_lemmas, alert_id))
             updated = conn.execute(
                 """
                 SELECT a.id, a.name, a.pattern, a.alert_type, a.source_id,
                        s.name AS source_name, a.min_score, a.target_chat_id,
-                       a.is_ai_keyword, a.is_enabled, a.created_at
+                       a.is_ai_keyword, a.is_enabled, a.created_at, a.keyword_lemmas
                 FROM alerts a
                 LEFT JOIN sources s ON s.id = a.source_id
                 WHERE a.id = ?
@@ -1068,6 +1074,19 @@ class Repository:
         with get_connection() as conn:
             cur = conn.execute("DELETE FROM alerts WHERE id = ?", (alert_id,))
         return cur.rowcount > 0
+
+    def list_keyword_ai_alerts_without_lemmas(self) -> list[dict[str, Any]]:
+        """Return keyword_ai alerts that have no lemmas computed yet."""
+        with get_connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, pattern FROM alerts
+                WHERE alert_type = 'keyword_ai'
+                  AND (keyword_lemmas IS NULL OR keyword_lemmas = '')
+                  AND TRIM(pattern) <> ''
+                """
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def list_alert_keywords(self) -> list[str]:
         with get_connection() as conn:

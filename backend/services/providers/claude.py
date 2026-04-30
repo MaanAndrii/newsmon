@@ -21,21 +21,15 @@ class ClaudeProvider:
         text: str,
         categories: list[str],
         ai_prompt: str,
-        keywords: list[str] | None = None,
     ) -> ScoreResult:
-        score, category, matched_keyword, tok_in, tok_out = _call_claude_score_sync(
+        score, category, tok_in, tok_out = _call_claude_score_sync(
             self.api_key,
             self.model,
             text,
             categories,
             ai_prompt,
-            keywords,
         )
-        return ScoreResult(score=score, category=category, matched_keyword=matched_keyword,
-                           tokens_in=tok_in, tokens_out=tok_out)
-
-    def match_keywords(self, text: str, keywords: list[str]) -> str | None:
-        return _call_claude_keyword_match_sync(self.api_key, self.model, text, keywords)
+        return ScoreResult(score=score, category=category, tokens_in=tok_in, tokens_out=tok_out)
 
     def generate_digest(
         self,
