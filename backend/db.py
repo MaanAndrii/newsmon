@@ -1587,8 +1587,11 @@ class Repository:
         self,
         target_date: str | None = None,
         min_score: int = 6,
+        target_items: int = 20,
+        min_per_category: int = 1,
         excluded_categories: list[str] | None = None,
         max_per_category: int = 5,
+        max_per_source: int = 3,
         start_datetime: str | None = None,
         end_datetime: str | None = None,
     ) -> list[dict[str, Any]]:
@@ -1621,17 +1624,74 @@ class Repository:
                 """,
                 params,
             ).fetchall()
-        by_category: dict[str, list[dict]] = {}
+        by_category: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
-            cat = str(row["ai_category"] or "Інше")
-            if cat not in by_category:
-                by_category[cat] = []
+            item = dict(row)
+            cat = str(item.get("ai_category") or "Інше")
+            by_category.setdefault(cat, [])
             if len(by_category[cat]) < max_per_category:
-                by_category[cat].append(dict(row))
-        result: list[dict] = []
-        for msgs in by_category.values():
-            result.extend(msgs)
-        return result
+                by_category[cat].append(item)
+
+        safe_target = max(1, int(target_items))
+        safe_min_per_category = max(0, int(min_per_category))
+        safe_max_per_source = max(1, int(max_per_source))
+
+        selected: list[dict[str, Any]] = []
+        selected_ids: set[int] = set()
+        per_source: dict[str, int] = {}
+
+        def _try_add(message: dict[str, Any]) -> bool:
+            mid = int(message.get("id") or 0)
+            if mid <= 0 or mid in selected_ids:
+                return False
+            source_name = str(message.get("source_name") or "")
+            if per_source.get(source_name, 0) >= safe_max_per_source:
+                return False
+            selected.append(message)
+            selected_ids.add(mid)
+            per_source[source_name] = per_source.get(source_name, 0) + 1
+            return True
+
+        # Pass 1: guarantee minimal category representation.
+        if safe_min_per_category > 0:
+            for cat in sorted(by_category.keys()):
+                added = 0
+                for msg in by_category[cat]:
+                    if len(selected) >= safe_target:
+                        break
+                    if _try_add(msg):
+                        added += 1
+                    if added >= safe_min_per_category:
+                        break
+                if len(selected) >= safe_target:
+                    break
+
+        # Pass 2: fill the remaining budget by global score with soft category balancing.
+        if len(selected) < safe_target:
+            ranked: list[dict[str, Any]] = []
+            for msgs in by_category.values():
+                ranked.extend(msgs)
+            ranked.sort(
+                key=lambda m: (
+                    int(m.get("ai_score") or 0),
+                    str(m.get("published_at") or ""),
+                    int(m.get("id") or 0),
+                ),
+                reverse=True,
+            )
+            for msg in ranked:
+                if len(selected) >= safe_target:
+                    break
+                _try_add(msg)
+
+        selected.sort(
+            key=lambda m: (
+                str(m.get("ai_category") or ""),
+                -int(m.get("ai_score") or 0),
+                str(m.get("published_at") or ""),
+            )
+        )
+        return selected
 
     def save_digest(
         self,
