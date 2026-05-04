@@ -477,8 +477,23 @@
                   class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
               </div>
               <div>
+                <label class="block text-xs text-slate-400 mb-1">Цільова кількість повідомлень</label>
+                <input id="digestTargetItems" type="number" min="5" max="100" value="20"
+                  class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Мінімум повідомлень на категорію</label>
+                <input id="digestMinPerCategory" type="number" min="0" max="10" value="1"
+                  class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
+              </div>
+              <div>
                 <label class="block text-xs text-slate-400 mb-1">Максимум повідомлень на категорію</label>
                 <input id="digestMaxPerCategory" type="number" min="1" max="20" value="5"
+                  class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">Максимум повідомлень з одного джерела</label>
+                <input id="digestMaxPerSource" type="number" min="1" max="20" value="3"
                   class="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm" />
               </div>
             </div>
@@ -1160,7 +1175,10 @@
         document.getElementById('digestHour').value = d.hour ?? 10;
         document.getElementById('digestMinute').value = d.minute ?? 0;
         document.getElementById('digestMinScore').value = d.min_score ?? 6;
+        document.getElementById('digestTargetItems').value = d.target_items ?? 20;
+        document.getElementById('digestMinPerCategory').value = d.min_per_category ?? 1;
         document.getElementById('digestMaxPerCategory').value = d.max_per_category ?? 5;
+        document.getElementById('digestMaxPerSource').value = d.max_per_source ?? 3;
         document.getElementById('digestAiProvider').value = d.ai_provider || 'claude';
         updateDigestModelDropdown(d.ai_model || '');
         document.getElementById('digestPrompt').value = d.ai_prompt || '';
@@ -1201,7 +1219,10 @@
           hour: Number.isFinite(hourRaw) ? Math.max(0, Math.min(23, hourRaw)) : 10,
           minute: Number.isFinite(minuteRaw) ? Math.max(0, Math.min(59, minuteRaw)) : 0,
           min_score: parseInt(document.getElementById('digestMinScore').value) || 6,
+          target_items: parseInt(document.getElementById('digestTargetItems').value) || 20,
+          min_per_category: parseInt(document.getElementById('digestMinPerCategory').value) || 1,
           max_per_category: parseInt(document.getElementById('digestMaxPerCategory').value) || 5,
+          max_per_source: parseInt(document.getElementById('digestMaxPerSource').value) || 3,
           excluded_categories: _digestExcluded,
           ai_provider: document.getElementById('digestAiProvider').value || 'claude',
           ai_model: document.getElementById('digestAiModel').value || '',
