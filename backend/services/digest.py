@@ -29,7 +29,10 @@ def _get_digest_config() -> dict:
         "hour": int(g("hour", "10")),
         "minute": int(g("minute", "0")),
         "min_score": int(g("min_score", "6")),
+        "target_items": int(g("target_items", "20")),
+        "min_per_category": int(g("min_per_category", "1")),
         "max_per_category": int(g("max_per_category", "5")),
+        "max_per_source": int(g("max_per_source", "3")),
         "excluded_categories": excluded,
         "ai_prompt": g("ai_prompt", ""),
         "keep_days": int(g("keep_days", "30")),
@@ -80,8 +83,11 @@ async def _generate_daily_digest(reference_dt: datetime | None = None) -> dict:
     messages = repo.get_digest_messages(
         target_date=None,
         min_score=cfg["min_score"],
+        target_items=cfg["target_items"],
+        min_per_category=cfg["min_per_category"],
         excluded_categories=cfg["excluded_categories"] or None,
         max_per_category=cfg["max_per_category"],
+        max_per_source=cfg["max_per_source"],
         start_datetime=start_datetime,
         end_datetime=end_datetime,
     )
