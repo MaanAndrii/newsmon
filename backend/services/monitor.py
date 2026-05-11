@@ -97,6 +97,22 @@ def _get_default_category_name() -> str:
     return "Без категорії"
 
 
+def _is_permanent_ai_auth_error(exc: Exception) -> bool:
+    """Return True for non-retriable provider auth/credential failures."""
+    text = f"{type(exc).__name__}: {exc}".lower()
+    markers = (
+        "api key expired",
+        "invalid api key",
+        "unauthorized",
+        "permission denied",
+        "invalid_argument",
+        "authentication",
+        "auth",
+        "expired",
+    )
+    return any(marker in text for marker in markers)
+
+
 def _detect_media_type(message: object) -> str | None:
     media = getattr(message, "media", None)
     if not media:
@@ -482,12 +498,20 @@ async def _process_one_ai_item(
             )
             await _process_alerts_for_message(message_id, "ai_scored", score=score)
         except Exception as exc:
-            repo.mark_ai_error(message_id, str(exc))
-            _log_event(
-                "ai_error",
-                f"msg#{message_id}: {type(exc).__name__}: {str(exc)[:200]}",
-                message_id=message_id,
-            )
+            if _is_permanent_ai_auth_error(exc):
+                repo.mark_message_no_ai(message_id, MISC_CATEGORY)
+                _log_event(
+                    "ai_auth_error",
+                    f"msg#{message_id}: {type(exc).__name__}: {str(exc)[:200]} (позначено без AI)",
+                    message_id=message_id,
+                )
+            else:
+                repo.mark_ai_error(message_id, str(exc))
+                _log_event(
+                    "ai_error",
+                    f"msg#{message_id}: {type(exc).__name__}: {str(exc)[:200]}",
+                    message_id=message_id,
+                )
 
 
 async def _process_ai_queue(limit: int = 50) -> int:
