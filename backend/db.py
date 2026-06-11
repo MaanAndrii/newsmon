@@ -274,6 +274,10 @@ def init_db() -> None:
         _ensure_column(conn, "integrations", "grok_model_3", "TEXT NULL")
         _ensure_column(conn, "integrations", "gemini_model_2", "TEXT NULL")
         _ensure_column(conn, "integrations", "gemini_model_3", "TEXT NULL")
+        _ensure_column(conn, "integrations", "deepseek_api_key", "TEXT NULL")
+        _ensure_column(conn, "integrations", "deepseek_model", "TEXT NULL")
+        _ensure_column(conn, "integrations", "deepseek_model_2", "TEXT NULL")
+        _ensure_column(conn, "integrations", "deepseek_model_3", "TEXT NULL")
         _ensure_column(conn, "alerts", "keyword_lemmas", "TEXT NULL")
 
 
@@ -710,6 +714,7 @@ class Repository:
                 SELECT claude_api_key, claude_model, claude_model_2, claude_model_3,
                        grok_api_key, grok_model, grok_model_2, grok_model_3,
                        gemini_api_key, gemini_model, gemini_model_2, gemini_model_3,
+                       deepseek_api_key, deepseek_model, deepseek_model_2, deepseek_model_3,
                        telegram_api_id, telegram_api_hash,
                        telegram_bot_token, telegram_bot_chat_id,
                        telegram_unknown_forward_enabled,
@@ -726,6 +731,7 @@ class Repository:
                     SELECT claude_api_key, claude_model, claude_model_2, claude_model_3,
                            grok_api_key, grok_model, grok_model_2, grok_model_3,
                            gemini_api_key, gemini_model, gemini_model_2, gemini_model_3,
+                           deepseek_api_key, deepseek_model, deepseek_model_2, deepseek_model_3,
                            telegram_api_id, telegram_api_hash,
                            telegram_bot_token, telegram_bot_chat_id,
                            telegram_unknown_forward_enabled,
@@ -773,6 +779,7 @@ class Repository:
                     id, claude_api_key, claude_model, claude_model_2, claude_model_3,
                     grok_api_key, grok_model, grok_model_2, grok_model_3,
                     gemini_api_key, gemini_model, gemini_model_2, gemini_model_3,
+                    deepseek_api_key, deepseek_model, deepseek_model_2, deepseek_model_3,
                     telegram_api_id, telegram_api_hash,
                     telegram_bot_token, telegram_bot_chat_id,
                     telegram_unknown_forward_enabled,
@@ -780,7 +787,7 @@ class Repository:
                     telegram_unknown_forward_reserve,
                     updated_at
                 )
-                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ON CONFLICT(id) DO UPDATE SET
                     claude_api_key=excluded.claude_api_key,
                     claude_model=excluded.claude_model,
@@ -794,6 +801,10 @@ class Repository:
                     gemini_model=excluded.gemini_model,
                     gemini_model_2=excluded.gemini_model_2,
                     gemini_model_3=excluded.gemini_model_3,
+                    deepseek_api_key=excluded.deepseek_api_key,
+                    deepseek_model=excluded.deepseek_model,
+                    deepseek_model_2=excluded.deepseek_model_2,
+                    deepseek_model_3=excluded.deepseek_model_3,
                     telegram_api_id=excluded.telegram_api_id,
                     telegram_api_hash=excluded.telegram_api_hash,
                     telegram_bot_token=excluded.telegram_bot_token,
@@ -816,6 +827,10 @@ class Repository:
                     payload.get("gemini_model"),
                     payload.get("gemini_model_2") or None,
                     payload.get("gemini_model_3") or None,
+                    payload.get("deepseek_api_key"),
+                    payload.get("deepseek_model"),
+                    payload.get("deepseek_model_2") or None,
+                    payload.get("deepseek_model_3") or None,
                     payload.get("telegram_api_id"),
                     payload.get("telegram_api_hash"),
                     payload.get("telegram_bot_token"),
@@ -830,6 +845,7 @@ class Repository:
                 SELECT claude_api_key, claude_model, claude_model_2, claude_model_3,
                        grok_api_key, grok_model, grok_model_2, grok_model_3,
                        gemini_api_key, gemini_model, gemini_model_2, gemini_model_3,
+                       deepseek_api_key, deepseek_model, deepseek_model_2, deepseek_model_3,
                        telegram_api_id, telegram_api_hash,
                        telegram_bot_token, telegram_bot_chat_id,
                        telegram_unknown_forward_enabled,

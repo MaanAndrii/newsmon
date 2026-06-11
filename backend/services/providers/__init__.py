@@ -7,9 +7,10 @@ from services.providers.openai_compat import OpenAICompatProvider
 _PROVIDER_URLS: dict[str, str] = {
     "grok": "https://api.x.ai/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "deepseek": "https://api.deepseek.com/v1",
 }
 
-_VALID_PROVIDERS = ("claude", "grok", "gemini")
+_VALID_PROVIDERS = ("claude", "grok", "gemini", "deepseek")
 
 
 def get_provider(

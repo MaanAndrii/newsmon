@@ -57,6 +57,10 @@
             <option value="gemini-1.5-flash-8b">gemini-1.5-flash-8b — мінімальний</option>
             <option value="gemini-2.5-pro-exp-03-25">gemini-2.5-pro-exp-03-25 — експериментальний</option>
           </datalist>
+          <datalist id="deepseekModelsList">
+            <option value="deepseek-chat">deepseek-chat — рекомендований</option>
+            <option value="deepseek-reasoner">deepseek-reasoner — потужний</option>
+          </datalist>
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
             <details class="md:col-span-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
@@ -149,6 +153,37 @@
                     <input id="geminiModel3" type="text" autocomplete="off" list="geminiModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="" />
                   </label>
                   <span class="text-[10px] text-slate-500">Актуальний список: <a href="https://ai.google.dev/gemini-api/docs/models" target="_blank" rel="noopener" class="text-sky-400 hover:underline">ai.google.dev/gemini-api/docs/models</a></span>
+                </div>
+              </div>
+            </details>
+            <details class="md:col-span-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
+              <summary class="cursor-pointer list-none flex items-center justify-between">
+                <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <span id="sigDeepseek" class="hidden w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
+                  DeepSeek
+                </p>
+                <span class="text-slate-400">+</span>
+              </summary>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+                <label class="flex flex-col gap-1">
+                  <span class="text-slate-300">DeepSeek API Key</span>
+                  <input id="deepseekApiKey" type="password" autocomplete="off" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="sk-..." />
+                  <span class="text-[10px] text-slate-500">Залиш пустим, щоб залишити поточне значення.</span>
+                </label>
+                <div class="flex flex-col gap-2">
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-300 text-xs">Model ID 1 (основний)</span>
+                    <input id="deepseekModel" type="text" autocomplete="off" list="deepseekModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="deepseek-chat" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-400 text-xs">Model ID 2 (альтернативний)</span>
+                    <input id="deepseekModel2" type="text" autocomplete="off" list="deepseekModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="deepseek-reasoner" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-slate-400 text-xs">Model ID 3 (альтернативний)</span>
+                    <input id="deepseekModel3" type="text" autocomplete="off" list="deepseekModelsList" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="" />
+                  </label>
+                  <span class="text-[10px] text-slate-500">Актуальний список: <a href="https://platform.deepseek.com/docs" target="_blank" rel="noopener" class="text-sky-400 hover:underline">platform.deepseek.com/docs</a></span>
                 </div>
               </div>
             </details>
@@ -272,6 +307,7 @@
                   <option value="claude">Claude (Anthropic)</option>
                   <option value="grok">Grok (xAI)</option>
                   <option value="gemini">Gemini (Google)</option>
+                  <option value="deepseek">DeepSeek</option>
                 </select>
               </div>
               <div class="mt-2 flex items-center gap-2">
@@ -500,6 +536,7 @@
                 <option value="claude">Claude (Anthropic)</option>
                 <option value="grok">Grok (xAI)</option>
                 <option value="gemini">Gemini (Google)</option>
+                <option value="deepseek">DeepSeek</option>
               </select>
             </div>
             <div>
@@ -971,10 +1008,14 @@
           gemini_model: trim('geminiModel'),
           gemini_model_2: trim('geminiModel2'),
           gemini_model_3: trim('geminiModel3'),
+          deepseek_model: trim('deepseekModel'),
+          deepseek_model_2: trim('deepseekModel2'),
+          deepseek_model_3: trim('deepseekModel3'),
         };
         const claudeKey = trim('claudeApiKey');
         const grokKey = trim('grokApiKey');
         const geminiKey = trim('geminiApiKey');
+        const deepseekKey = trim('deepseekApiKey');
         const apiId = trim('telegramApiId');
         const apiHash = trim('telegramApiHash');
         const botToken = trim('telegramBotToken');
@@ -984,6 +1025,7 @@
         if (claudeKey) payload.claude_api_key = claudeKey;
         if (grokKey) payload.grok_api_key = grokKey;
         if (geminiKey) payload.gemini_api_key = geminiKey;
+        if (deepseekKey) payload.deepseek_api_key = deepseekKey;
         if (apiId) payload.telegram_api_id = apiId;
         if (apiHash) payload.telegram_api_hash = apiHash;
         if (botToken) payload.telegram_bot_token = botToken;
@@ -1062,6 +1104,7 @@
         applySecretPlaceholder('claudeApiKey', data.claude_api_key_set, data.claude_api_key_preview);
         applySecretPlaceholder('grokApiKey', data.grok_api_key_set, data.grok_api_key_preview);
         applySecretPlaceholder('geminiApiKey', data.gemini_api_key_set, data.gemini_api_key_preview);
+        applySecretPlaceholder('deepseekApiKey', data.deepseek_api_key_set, data.deepseek_api_key_preview);
         applySecretPlaceholder('telegramApiHash', data.telegram_api_hash_set, data.telegram_api_hash_preview);
         applySecretPlaceholder('telegramBotToken', data.telegram_bot_token_set, data.telegram_bot_token_preview);
         // Store cached models for dropdowns
@@ -1075,6 +1118,9 @@
           gemini_model: data.gemini_model || '',
           gemini_model_2: data.gemini_model_2 || '',
           gemini_model_3: data.gemini_model_3 || '',
+          deepseek_model: data.deepseek_model || '',
+          deepseek_model_2: data.deepseek_model_2 || '',
+          deepseek_model_3: data.deepseek_model_3 || '',
         };
         document.getElementById('claudeModel').value = data.claude_model || 'claude-haiku-4-5-20251001';
         document.getElementById('claudeModel2').value = data.claude_model_2 || '';
@@ -1085,6 +1131,9 @@
         document.getElementById('geminiModel').value = data.gemini_model || '';
         document.getElementById('geminiModel2').value = data.gemini_model_2 || '';
         document.getElementById('geminiModel3').value = data.gemini_model_3 || '';
+        document.getElementById('deepseekModel').value = data.deepseek_model || '';
+        document.getElementById('deepseekModel2').value = data.deepseek_model_2 || '';
+        document.getElementById('deepseekModel3').value = data.deepseek_model_3 || '';
         document.getElementById('telegramApiId').value = data.telegram_api_id || '';
         document.getElementById('telegramUnknownForwardEnabled').checked = !!data.telegram_unknown_forward_enabled;
         document.getElementById('telegramUnknownForwardPrimary').value = data.telegram_unknown_forward_primary || '';
@@ -1094,6 +1143,8 @@
           data.grok_api_key_set ? (data.grok_model ? true : false) : null);
         setSignal('sigGemini',
           data.gemini_api_key_set ? (data.gemini_model ? true : false) : null);
+        setSignal('sigDeepseek',
+          data.deepseek_api_key_set ? (data.deepseek_model ? true : false) : null);
         // Refresh model dropdowns in other tabs
         updateMonitorModelDropdown();
         updateDigestModelDropdown();
