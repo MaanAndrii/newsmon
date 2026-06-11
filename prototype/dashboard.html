@@ -492,6 +492,20 @@
         loadMessages();
       }
 
+      function applySourceFilter(sourceId, sourceName) {
+        const id = String(sourceId || '').trim();
+        const name = String(sourceName || '').trim();
+        queryStateCache.sourceId = id;
+        queryStateCache.sourceName = name;
+        pendingFilters.sourceId = id;
+        pendingFilters.sourceName = name;
+        const srcBtn = document.getElementById('filterSourceBtn');
+        if (srcBtn) srcBtn.textContent = name || 'Всі канали';
+        visibleCount = PAGE_SIZE;
+        updateResetButtonState();
+        loadMessages();
+      }
+
       function renderMessageCard(item, idx) {
         const preview = escapeHtml((item.text || '').slice(0, 280));
         const isDedup = !!item.is_dedup || item.dedup_count > 0;
@@ -503,7 +517,7 @@
           : '';
         return `<article class="rounded-xl border border-slate-800 bg-slate-900 p-4 flex flex-col gap-3${borderClass}"${miscAttr}>
           <div class="flex items-center justify-between">
-            <div><p class="font-semibold">${escapeHtml(item.source_name)}</p><p class="text-xs text-slate-400">${formatPublishedAt(item.published_at)}</p></div>
+            <div><button class="font-semibold text-left hover:text-sky-400 transition-colors" data-source-id="${Number(item.source_id)}" data-source-name="${escapeHtml(item.source_name)}" onclick="applySourceFilter(this.dataset.sourceId, this.dataset.sourceName)" title="Фільтрувати за каналом">${escapeHtml(item.source_name)}</button><p class="text-xs text-slate-400">${formatPublishedAt(item.published_at)}</p></div>
             <div class="flex gap-1 items-center">
               ${dedupBtn}
               ${isMisc ? '' : scoreBadge(item.ai_score)}
