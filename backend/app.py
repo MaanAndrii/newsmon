@@ -14,6 +14,7 @@ from services.monitor import _ai_loop, _monitor_loop
 
 from routers import alerts as alerts_router
 from routers import categories as categories_router
+from routers import export_import as export_import_router
 from routers import integrations as integrations_router
 from routers import keywords as keywords_router
 from routers import messages as messages_router
@@ -37,6 +38,7 @@ app.include_router(telethon_router.router)
 app.include_router(digest_router.router)
 app.include_router(sse_router.router)
 app.include_router(stats_router.router)
+app.include_router(export_import_router.router)
 
 
 @app.on_event("startup")

@@ -747,6 +747,11 @@ class Repository:
             return default
         return str(row["value"])
 
+    def list_settings(self) -> dict[str, str]:
+        with get_connection() as conn:
+            rows = conn.execute("SELECT key, value FROM settings ORDER BY key").fetchall()
+        return {str(r["key"]): str(r["value"]) for r in rows}
+
     def set_setting(self, key: str, value: str) -> None:
         with get_connection() as conn:
             conn.execute(

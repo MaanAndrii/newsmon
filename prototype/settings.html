@@ -32,6 +32,7 @@
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('sourcesTab', this)">Джерела</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('digestTab', this)">Дайджест</button>
           <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('debugTab', this)">Debug</button>
+          <button class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm" onclick="switchTab('importExportTab', this)">Імпорт/Експорт</button>
         </div>
 
         <div id="apiTab" class="tab-panel space-y-4">
@@ -539,6 +540,44 @@
               </div>
             </div>
           </details>
+        </div>
+
+        <div id="importExportTab" class="tab-panel hidden space-y-6">
+          <h2 class="text-lg font-semibold">Імпорт / Експорт</h2>
+
+          <!-- SETTINGS JSON -->
+          <div class="rounded-lg border border-slate-800 p-5 space-y-3">
+            <h3 class="font-semibold text-slate-200">Налаштування (JSON)</h3>
+            <p class="text-xs text-slate-400">Містить усі інтеграції (API ключі), джерела, категорії, ключові слова, сповіщення та системні налаштування. Файл може містити конфіденційні дані — зберігайте в безпечному місці.</p>
+            <div class="flex flex-wrap gap-3">
+              <a id="exportSettingsBtn" href="#" onclick="downloadSettings(event)" class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-sm font-medium">⬇ Завантажити налаштування (.json)</a>
+            </div>
+            <div class="flex flex-wrap items-end gap-3 pt-2 border-t border-slate-800">
+              <div class="flex flex-col gap-1">
+                <label class="text-xs text-slate-400">Файл налаштувань (.json)</label>
+                <input type="file" id="importSettingsFile" accept=".json" class="text-sm text-slate-300 file:mr-2 file:px-3 file:py-1 file:rounded file:border-0 file:bg-slate-700 file:text-slate-200 file:hover:bg-slate-600" />
+              </div>
+              <button onclick="importSettings()" class="px-4 py-2 rounded-lg bg-sky-700 hover:bg-sky-600 text-sm font-medium">⬆ Імпортувати налаштування</button>
+            </div>
+            <p id="importSettingsMsg" class="text-xs text-slate-400 hidden"></p>
+          </div>
+
+          <!-- FULL BACKUP -->
+          <div class="rounded-lg border border-amber-900/50 p-5 space-y-3 bg-amber-950/20">
+            <h3 class="font-semibold text-slate-200">Повна резервна копія (база даних)</h3>
+            <p class="text-xs text-slate-400">Містить усі повідомлення, налаштування та сесію Telegram. Використовуйте для перенесення системи або повного відновлення. Після відновлення рекомендується перезапустити сервер.</p>
+            <div class="flex flex-wrap gap-3">
+              <a href="#" onclick="downloadBackup(event)" class="px-4 py-2 rounded-lg bg-amber-700 hover:bg-amber-600 text-sm font-medium">⬇ Завантажити резервну копію (.db)</a>
+            </div>
+            <div class="flex flex-wrap items-end gap-3 pt-2 border-t border-amber-900/50">
+              <div class="flex flex-col gap-1">
+                <label class="text-xs text-slate-400">Файл резервної копії (.db)</label>
+                <input type="file" id="importBackupFile" accept=".db" class="text-sm text-slate-300 file:mr-2 file:px-3 file:py-1 file:rounded file:border-0 file:bg-slate-700 file:text-slate-200 file:hover:bg-slate-600" />
+              </div>
+              <button onclick="importBackup()" class="px-4 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-sm font-medium">⬆ Відновити з резервної копії</button>
+            </div>
+            <p id="importBackupMsg" class="text-xs text-slate-400 hidden"></p>
+          </div>
         </div>
 
         <div id="debugTab" class="tab-panel hidden space-y-4">
@@ -2050,6 +2089,83 @@
         } else {
           document.getElementById('alertMessage').textContent = 'Не вдалося видалити правило.';
         }
+      }
+
+      // --- Import / Export ---
+
+      async function downloadSettings(e) {
+        e.preventDefault();
+        const res = await authFetch(`${apiBase}/api/export/settings`);
+        if (!res.ok) { alert('Помилка експорту налаштувань'); return; }
+        const blob = await res.blob();
+        const cd = res.headers.get('Content-Disposition') || '';
+        const nameMatch = cd.match(/filename="([^"]+)"/);
+        const filename = nameMatch ? nameMatch[1] : 'newsmon-settings.json';
+        _triggerDownload(blob, filename);
+      }
+
+      async function downloadBackup(e) {
+        e.preventDefault();
+        const res = await authFetch(`${apiBase}/api/export/backup`);
+        if (!res.ok) { alert('Помилка експорту бази даних'); return; }
+        const blob = await res.blob();
+        const cd = res.headers.get('Content-Disposition') || '';
+        const nameMatch = cd.match(/filename="([^"]+)"/);
+        const filename = nameMatch ? nameMatch[1] : 'newsmon-backup.db';
+        _triggerDownload(blob, filename);
+      }
+
+      async function importSettings() {
+        const file = document.getElementById('importSettingsFile').files[0];
+        if (!file) { alert('Оберіть файл .json'); return; }
+        const msgEl = document.getElementById('importSettingsMsg');
+        msgEl.textContent = 'Імпортується…';
+        msgEl.classList.remove('hidden', 'text-rose-400');
+        msgEl.classList.add('text-slate-400');
+        const form = new FormData();
+        form.append('file', file);
+        const res = await authFetch(`${apiBase}/api/import/settings`, { method: 'POST', body: form });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          const parts = Object.entries(data.results || {}).map(([k, v]) => `${k}: ${v}`);
+          msgEl.textContent = '✓ ' + (parts.join(' · ') || 'Готово');
+        } else {
+          msgEl.textContent = '✗ ' + (data.detail || 'Помилка імпорту');
+          msgEl.classList.replace('text-slate-400', 'text-rose-400');
+        }
+        msgEl.classList.remove('hidden');
+      }
+
+      async function importBackup() {
+        const file = document.getElementById('importBackupFile').files[0];
+        if (!file) { alert('Оберіть файл .db'); return; }
+        if (!confirm('⚠️ Поточна база даних буде замінена вмістом завантаженого файлу. Продовжити?')) return;
+        const msgEl = document.getElementById('importBackupMsg');
+        msgEl.textContent = 'Завантажується…';
+        msgEl.classList.remove('hidden', 'text-rose-400');
+        msgEl.classList.add('text-slate-400');
+        const form = new FormData();
+        form.append('file', file);
+        const res = await authFetch(`${apiBase}/api/import/backup`, { method: 'POST', body: form });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          msgEl.textContent = '✓ ' + (data.message || 'Готово');
+        } else {
+          msgEl.textContent = '✗ ' + (data.detail || 'Помилка відновлення');
+          msgEl.classList.replace('text-slate-400', 'text-rose-400');
+        }
+        msgEl.classList.remove('hidden');
+      }
+
+      function _triggerDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
       }
 
       initSettingsPage();
