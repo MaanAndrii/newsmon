@@ -34,6 +34,31 @@ def _parse_json_response(payload: str) -> dict:
     return {}
 
 
+def _parse_score_from_reasoning(text: str, categories: list[str]) -> dict:
+    """Last-resort fallback: extract score and category from free-form reasoning text.
+
+    Used when a model (e.g. deepseek-chat) writes prose before the JSON and
+    max_tokens cuts the response before the JSON object is emitted.
+    """
+    result: dict = {}
+
+    # Score: "score: 7", "score around 6-7", "Score 8/10", etc. — take first digit
+    score_match = re.search(r'\bscore[^\d]{0,15}(\d+)', text, re.IGNORECASE)
+    if not score_match:
+        # "7/10", "6-7", plain digit near end
+        score_match = re.search(r'\b([5-9]|10)\s*(?:/\s*10)?\b', text)
+    if score_match:
+        result['score'] = int(score_match.group(1))
+
+    # Category: find the first known category name mentioned in the text
+    for cat in categories:
+        if cat.lower() in text.lower():
+            result['category'] = cat
+            break
+
+    return result
+
+
 def _log_raw(
     provider: str,
     model: str,
@@ -85,7 +110,8 @@ class OpenAICompatProvider:
         system_prompt = (
             f"{base_prompt}\n"
             f"Категорії: {categories_text}.\n"
-            'Поверни ТІЛЬКИ JSON без пояснень, формат: {"score": 7, "category": "Економіка"}.'
+            'Відповідай ВИКЛЮЧНО валідним JSON без будь-яких пояснень чи коментарів. '
+            'Формат відповіді: {"score": 7, "category": "Економіка"}.'
         )
 
         client = self._client()
@@ -97,7 +123,7 @@ class OpenAICompatProvider:
             try:
                 response = client.chat.completions.create(
                     model=self.model,
-                    max_tokens=120,
+                    max_tokens=400,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": text},
@@ -123,13 +149,22 @@ class OpenAICompatProvider:
 
         msg = response.choices[0].message
         raw_content = msg.content or ""
+        reasoning_content = getattr(msg, "reasoning_content", None) or ""
+        # For deepseek-reasoner: answer is in content, thinking is in reasoning_content.
+        # If content is empty, fall back to reasoning_content (some API proxies merge them).
         if not raw_content.strip():
-            # deepseek-reasoner returns the answer in reasoning_content when content is empty
-            raw_content = getattr(msg, "reasoning_content", None) or ""
+            raw_content = reasoning_content
         if not raw_content.strip():
             raise RuntimeError(f"Модель {self.model} повернула порожню відповідь")
         payload = raw_content.strip()
         parsed = _parse_json_response(payload)
+
+        # If JSON extraction failed but we have reasoning prose, try heuristic extraction.
+        # This covers models that output thinking text and the JSON was cut off by max_tokens.
+        if not parsed.get("score"):
+            # Also search reasoning_content directly (may contain the concluded score)
+            search_text = payload + "\n" + reasoning_content
+            parsed = _parse_score_from_reasoning(search_text, categories)
 
         score = int(parsed.get("score") or 0)
         score = max(1, min(10, score))
