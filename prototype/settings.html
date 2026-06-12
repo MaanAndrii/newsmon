@@ -1367,7 +1367,7 @@
         btn.disabled = true;
         btn.textContent = '⏳ Генерація...';
         try {
-          const res = await authFetch(`${apiBase}/api/digest/generate`, { method: 'POST' });
+          const res = await authFetch(`${apiBase}/api/digest/generate?force=true`, { method: 'POST' });
           const data = await res.json();
           if (res.ok) {
             showToast(`Дайджест за ${data.date} згенеровано (${data.message_count} повідомлень)`, 'success');
