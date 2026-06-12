@@ -318,15 +318,8 @@
               </div>
             </div>
             <div class="rounded-lg border border-slate-800 p-3 md:col-span-2">
-              <div class="flex items-center justify-between mb-1 gap-2">
-                <p class="font-medium">Промт для оцінки важливості</p>
-                <div class="flex items-center gap-2 shrink-0">
-                  <span id="promptTokenBadge" class="text-xs text-slate-400 font-mono"></span>
-                  <button onclick="countPromptTokens()" class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 whitespace-nowrap" title="Підрахувати кількість токенів промту через Anthropic API">λ токени</button>
-                </div>
-              </div>
+              <p class="font-medium mb-1">Промт для оцінки важливості</p>
               <textarea id="monitorAiPrompt" rows="3" class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm" placeholder="Оціни важливість новини від 1 до 10 та обери категорію."></textarea>
-              <p id="promptTokenDetail" class="text-[10px] text-slate-500 mt-1 hidden"></p>
             </div>
           </div>
           <div class="flex gap-2">
@@ -638,6 +631,11 @@
               <p class="font-medium">Gemini API (24h)</p>
               <p id="dbgGeminiReq" class="text-slate-300 mt-1">Запитів: —</p>
               <p id="dbgGeminiTok" class="text-slate-400 text-xs mt-1">in/out токени: —</p>
+            </div>
+            <div class="rounded-lg border border-slate-800 p-3">
+              <p class="font-medium">DeepSeek API (24h)</p>
+              <p id="dbgDeepseekReq" class="text-slate-300 mt-1">Запитів: —</p>
+              <p id="dbgDeepseekTok" class="text-slate-400 text-xs mt-1">in/out токени: —</p>
             </div>
             <div class="rounded-lg border border-slate-800 p-3">
               <p class="font-medium">Telegram API (48h)</p>
@@ -1207,6 +1205,7 @@
         setSignal('sigClaude', data.claude.ok);
         setSignal('sigGrok', data.grok?.ok ?? null);
         setSignal('sigGemini', data.gemini?.ok ?? null);
+        setSignal('sigDeepseek', data.deepseek?.ok ?? null);
         setSignal('sigTelegramUser', data.telegram_user_api.ok);
         setSignal('sigTelethon', data.telethon.ok);
         setSignal('sigTelegramBot', data.telegram_bot_api.ok);
@@ -1215,6 +1214,7 @@
           { ok: data.claude.ok, label: `Claude${data.claude.model ? ' (' + data.claude.model + ')' : ''}`, detail: data.claude.ok ? null : data.claude.reason },
           { ok: data.grok?.ok ?? null, label: `Grok${data.grok?.model ? ' (' + data.grok.model + ')' : ''}`, detail: data.grok?.reason || null },
           { ok: data.gemini?.ok ?? null, label: `Gemini${data.gemini?.model ? ' (' + data.gemini.model + ')' : ''}`, detail: data.gemini?.reason || null },
+          { ok: data.deepseek?.ok ?? null, label: `DeepSeek${data.deepseek?.model ? ' (' + data.deepseek.model + ')' : ''}`, detail: data.deepseek?.reason || null },
           { ok: data.telegram_user_api.ok, label: 'Telegram User API', detail: data.telegram_user_api.ok ? null : data.telegram_user_api.reason },
           { ok: data.telethon.ok, label: 'Telethon', detail: data.telethon.ok ? null : data.telethon.reason },
           { ok: data.telegram_bot_api.ok, label: 'Telegram Bot API', detail: data.telegram_bot_api.ok ? null : data.telegram_bot_api.reason },
@@ -1506,6 +1506,8 @@
         document.getElementById('dbgGrokTok').textContent = `in/out токени: ${data.grok_input_tokens_24h ?? 0} / ${data.grok_output_tokens_24h ?? 0}`;
         document.getElementById('dbgGeminiReq').textContent = `Запитів: ${data.gemini_requests_24h ?? 0}`;
         document.getElementById('dbgGeminiTok').textContent = `in/out токени: ${data.gemini_input_tokens_24h ?? 0} / ${data.gemini_output_tokens_24h ?? 0}`;
+        document.getElementById('dbgDeepseekReq').textContent = `Запитів: ${data.deepseek_requests_24h ?? 0}`;
+        document.getElementById('dbgDeepseekTok').textContent = `in/out токени: ${data.deepseek_input_tokens_24h ?? 0} / ${data.deepseek_output_tokens_24h ?? 0}`;
         document.getElementById('dbgTg48h').textContent = `Запитів: ${data.telegram_requests_48h ?? 0}`;
         document.getElementById('dbgTg24h').textContent = `Запитів: ${data.telegram_requests_24h ?? 0}`;
         document.getElementById('dbgTg60m').textContent = `Запитів: ${data.telegram_requests_60m ?? 0}`;
@@ -1606,45 +1608,6 @@
         });
         await parseApiBody(res);
       }
-
-      let _promptTokenDebounce = null;
-
-      async function countPromptTokens() {
-        const badge = document.getElementById('promptTokenBadge');
-        const detail = document.getElementById('promptTokenDetail');
-        badge.textContent = '...';
-        const promptText = document.getElementById('monitorAiPrompt').value;
-        const res = await authFetch(`${apiBase}/api/monitor/count-prompt-tokens`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ai_prompt: promptText }),
-        });
-        if (!res.ok) {
-          const data = await parseApiBody(res);
-          badge.textContent = '⚠ ' + (data.detail || 'помилка');
-          badge.className = 'text-xs text-rose-400 font-mono';
-          detail.classList.add('hidden');
-          return;
-        }
-        const data = await res.json();
-        badge.textContent = `~${data.system_tokens} токенів`;
-        badge.className = 'text-xs text-sky-400 font-mono font-semibold';
-        const parts = [`модель: ${data.model}`];
-        if (data.category_count) parts.push(`${data.category_count} кат.`);
-        if (data.has_keywords) parts.push(`${data.keyword_count} ключ. слів`);
-        parts.push(`~${data.total_with_content} токенів з контентом`);
-        detail.textContent = parts.join(' • ');
-        detail.classList.remove('hidden');
-      }
-
-      document.getElementById('monitorAiPrompt').addEventListener('input', () => {
-        const badge = document.getElementById('promptTokenBadge');
-        badge.textContent = '';
-        badge.className = 'text-xs text-slate-400 font-mono';
-        document.getElementById('promptTokenDetail').classList.add('hidden');
-        clearTimeout(_promptTokenDebounce);
-        _promptTokenDebounce = setTimeout(countPromptTokens, 1800);
-      });
 
       async function loadTelethonAuthStatus() {
         const logoutBtn = document.getElementById('telethonLogoutBtn');
