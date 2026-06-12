@@ -670,6 +670,15 @@
             </div>
           </div>
 
+          <!-- AI raw logs -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-sm font-medium">AI запити/відповіді (10 останніх)</h3>
+              <button onclick="loadAiRawLogs()" class="text-xs px-2 py-1 rounded bg-slate-700 hover:bg-slate-600">Оновити</button>
+            </div>
+            <div id="aiRawLogs" class="space-y-2 text-xs"></div>
+          </div>
+
           <!-- Event log -->
           <div>
             <h3 class="text-sm font-medium mb-2">Журнал подій (100 останніх)</h3>
@@ -1573,8 +1582,49 @@
         }).join('');
       }
 
+      async function loadAiRawLogs() {
+        const container = document.getElementById('aiRawLogs');
+        const res = await authFetch(`${apiBase}/api/debug/ai-logs`);
+        if (!res.ok) { container.innerHTML = '<p class="text-slate-500">Не вдалося завантажити</p>'; return; }
+        const data = await res.json();
+        if (!data.logs || !data.logs.length) {
+          container.innerHTML = '<p class="text-slate-500">Поки немає логів. Зачекайте наступного AI-циклу.</p>';
+          return;
+        }
+        container.innerHTML = data.logs.map((log, i) => {
+          const borderColor = log.error ? 'border-rose-800' : (log.score >= 6 ? 'border-emerald-800' : 'border-slate-700');
+          const badge = log.error
+            ? `<span class="px-1.5 py-0.5 rounded bg-rose-900 text-rose-300">помилка</span>`
+            : `<span class="px-1.5 py-0.5 rounded bg-slate-700">${log.provider} · ${log.model}</span>
+               <span class="px-1.5 py-0.5 rounded ${log.score >= 6 ? 'bg-emerald-800' : 'bg-slate-600'}">score=${log.score ?? '?'}</span>
+               <span class="px-1.5 py-0.5 rounded bg-slate-700">${escapeHtml(log.category || '—')}</span>`;
+          const summaryId = `aiLogSum${i}`;
+          return `<details class="rounded-lg border ${borderColor} bg-slate-900/50">
+            <summary id="${summaryId}" class="cursor-pointer list-none flex flex-wrap items-center gap-1.5 p-2">
+              <span class="text-slate-500 font-mono">${escapeHtml(log.at)}</span>
+              ${badge}
+            </summary>
+            <div class="p-2 space-y-2 border-t border-slate-800">
+              ${log.error ? `<div><p class="text-rose-400 font-semibold mb-0.5">Помилка</p><pre class="whitespace-pre-wrap text-rose-300 bg-slate-950 rounded p-2 overflow-x-auto">${escapeHtml(log.error)}</pre></div>` : ''}
+              <div>
+                <p class="text-slate-400 font-semibold mb-0.5">System prompt</p>
+                <pre class="whitespace-pre-wrap text-slate-300 bg-slate-950 rounded p-2 overflow-x-auto max-h-40">${escapeHtml(log.system_prompt || '')}</pre>
+              </div>
+              <div>
+                <p class="text-slate-400 font-semibold mb-0.5">User message (перші 500 символів)</p>
+                <pre class="whitespace-pre-wrap text-slate-300 bg-slate-950 rounded p-2 overflow-x-auto max-h-32">${escapeHtml(log.user_message || '')}</pre>
+              </div>
+              <div>
+                <p class="text-slate-400 font-semibold mb-0.5">Raw response</p>
+                <pre class="whitespace-pre-wrap text-emerald-300 bg-slate-950 rounded p-2 overflow-x-auto max-h-32">${escapeHtml(log.raw_response || '(порожньо)')}</pre>
+              </div>
+            </div>
+          </details>`;
+        }).join('');
+      }
+
       async function loadDebugAll() {
-        await Promise.all([loadDebugStats(), loadEventLog(), loadDashboardUsers()]);
+        await Promise.all([loadDebugStats(), loadEventLog(), loadAiRawLogs(), loadDashboardUsers()]);
       }
 
       async function loadMonitorConfig() {

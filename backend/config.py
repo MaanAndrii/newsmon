@@ -81,6 +81,7 @@ telegram_call_events: deque[datetime] = deque(maxlen=10000)
 # In-memory event log (last 100 entries) and collect-cycle history (last 10)
 event_log: deque[dict] = deque(maxlen=100)
 monitor_run_history: deque[dict] = deque(maxlen=10)
+ai_raw_logs: deque[dict] = deque(maxlen=10)
 
 # ---------------------------------------------------------------------------
 # Restore debug state from DB so restarts don't lose history

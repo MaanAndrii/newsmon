@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from config import claude_call_events, event_log, monitor_run_history, monitor_status, repo, telegram_call_events
+from config import ai_raw_logs, claude_call_events, event_log, monitor_run_history, monitor_status, repo, telegram_call_events
 from models import DashboardHeartbeatPayload, MonitorConfigPayload
 from security import _rate_limit_hit, require_admin
 from services.monitor import _get_monitor_config
@@ -106,6 +106,12 @@ def get_run_history() -> dict:
 def get_debug_log() -> dict:
     """Return the last 100 event-log entries, newest first."""
     return {"events": list(reversed(list(event_log)))}
+
+
+@router.get("/api/debug/ai-logs", dependencies=[Depends(require_admin)])
+def get_ai_raw_logs() -> dict:
+    """Return the last 10 raw AI request/response pairs, newest first."""
+    return {"logs": list(reversed(list(ai_raw_logs)))}
 
 
 @router.post("/api/debug/dashboard-usage/heartbeat")
