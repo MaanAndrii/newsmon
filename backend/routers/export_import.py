@@ -7,7 +7,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 from config import repo
@@ -313,3 +313,36 @@ async def import_backup(file: UploadFile = File(...)) -> dict:
         "status": "ok",
         "message": "Базу даних замінено. Попередня версія збережена як newsmon.db.bak. Рекомендується перезапустити сервер.",
     }
+
+
+# ---------------------------------------------------------------------------
+# Timezone setting
+# ---------------------------------------------------------------------------
+
+_KNOWN_TIMEZONES = [
+    "Europe/Kyiv", "Europe/Warsaw", "Europe/Berlin", "Europe/Paris",
+    "Europe/London", "Europe/Moscow", "Europe/Istanbul",
+    "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+    "Asia/Almaty", "Asia/Kolkata", "Asia/Bangkok", "Asia/Shanghai", "Asia/Tokyo",
+    "Australia/Sydney", "UTC",
+]
+
+
+@router.get("/api/settings/timezone", dependencies=[Depends(require_admin)])
+def get_timezone() -> dict:
+    tz = repo.get_setting("app.timezone") or "Europe/Kyiv"
+    return {"timezone": tz, "known_timezones": _KNOWN_TIMEZONES}
+
+
+@router.post("/api/settings/timezone", dependencies=[Depends(require_admin)])
+def save_timezone(body: dict = Body(...)) -> dict:
+    tz = (body.get("timezone") or "").strip()
+    if not tz:
+        raise HTTPException(status_code=400, detail="Порожній timezone")
+    try:
+        from zoneinfo import ZoneInfo
+        ZoneInfo(tz)  # validate
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"Невідомий timezone: {tz}")
+    repo.set_setting("app.timezone", tz)
+    return {"ok": True, "timezone": tz}

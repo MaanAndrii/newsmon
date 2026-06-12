@@ -590,6 +590,21 @@
         <div id="importExportTab" class="tab-panel hidden space-y-6">
           <h2 class="text-lg font-semibold">Імпорт / Експорт</h2>
 
+          <!-- TIMEZONE -->
+          <div class="rounded-lg border border-slate-800 p-5 space-y-3">
+            <h3 class="font-semibold text-slate-200">Часовий пояс</h3>
+            <p class="text-xs text-slate-400">Впливає на відображення часу в адмінці, фільтрацію повідомлень за датою та розклад дайджесту.</p>
+            <div class="flex flex-wrap items-end gap-3">
+              <div class="flex flex-col gap-1">
+                <label class="text-xs text-slate-400">Timezone</label>
+                <input id="appTimezone" list="timezoneList" class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm w-64" placeholder="Europe/Kyiv" />
+                <datalist id="timezoneList"></datalist>
+              </div>
+              <button onclick="saveTimezone()" class="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-sm font-medium">Зберегти</button>
+              <span id="tzSaveMsg" class="text-xs hidden"></span>
+            </div>
+          </div>
+
           <!-- SETTINGS JSON -->
           <div class="rounded-lg border border-slate-800 p-5 space-y-3">
             <h3 class="font-semibold text-slate-200">Налаштування (JSON)</h3>
@@ -969,6 +984,7 @@
 
       function bootstrapSettings() {
         document.getElementById('settingsMain').classList.remove('hidden');
+        loadTimezone();
         loadIntegrations();
         loadMonitorConfig();
         loadSources();
@@ -1787,10 +1803,51 @@
         await loadTelethonAuthStatus();
       }
 
+      let _appTimezone = 'Europe/Kyiv';
+
       function formatLocalDateTime(value) {
         if (!value) return 'Немає даних';
         const d = new Date(value.replace(' ', 'T') + 'Z');
-        return Number.isNaN(d.getTime()) ? value : d.toLocaleString('uk-UA');
+        if (Number.isNaN(d.getTime())) return value;
+        try {
+          return d.toLocaleString('uk-UA', { timeZone: _appTimezone });
+        } catch (_) {
+          return d.toLocaleString('uk-UA');
+        }
+      }
+
+      async function loadTimezone() {
+        try {
+          const res = await apiFetch('/api/settings/timezone');
+          const data = await res.json();
+          _appTimezone = data.timezone || 'Europe/Kyiv';
+          document.getElementById('appTimezone').value = _appTimezone;
+          const dl = document.getElementById('timezoneList');
+          dl.innerHTML = (data.known_timezones || []).map(tz => `<option value="${escapeHtml(tz)}">`).join('');
+        } catch (_) {}
+      }
+
+      async function saveTimezone() {
+        const tz = document.getElementById('appTimezone').value.trim();
+        const msg = document.getElementById('tzSaveMsg');
+        if (!tz) return;
+        try {
+          const res = await apiFetch('/api/settings/timezone', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({timezone: tz}) });
+          const data = await res.json();
+          if (res.ok) {
+            _appTimezone = data.timezone;
+            msg.textContent = '✓ Збережено';
+            msg.className = 'text-xs text-emerald-400';
+          } else {
+            msg.textContent = data.detail || 'Помилка';
+            msg.className = 'text-xs text-rose-400';
+          }
+        } catch (_) {
+          msg.textContent = 'Помилка з\'єднання';
+          msg.className = 'text-xs text-rose-400';
+        }
+        msg.classList.remove('hidden');
+        setTimeout(() => msg.classList.add('hidden'), 3000);
       }
 
       function formatDuration(totalSeconds) {
