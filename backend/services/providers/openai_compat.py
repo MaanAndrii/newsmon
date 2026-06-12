@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import re
 import time
+from datetime import datetime, timezone
 
+from config import ai_raw_logs
 from services.claude import _record_claude_call
 from services.providers.base import DigestResult, ScoreResult
 
@@ -30,6 +32,29 @@ def _parse_json_response(payload: str) -> dict:
             except json.JSONDecodeError:
                 pass
     return {}
+
+
+def _log_raw(
+    provider: str,
+    model: str,
+    system_prompt: str,
+    user_message: str,
+    raw_response: str,
+    score: int | None = None,
+    category: str | None = None,
+    error: str | None = None,
+) -> None:
+    ai_raw_logs.append({
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "provider": provider,
+        "model": model,
+        "system_prompt": system_prompt,
+        "user_message": user_message,
+        "raw_response": raw_response,
+        "score": score,
+        "category": category,
+        "error": error,
+    })
 
 
 class OpenAICompatProvider:
@@ -84,8 +109,10 @@ class OpenAICompatProvider:
                 last_exc = exc
                 status = getattr(getattr(exc, "status_code", None), "real", None) or getattr(exc, "status_code", None)
                 if status and status not in (429, 500, 503):
+                    _log_raw(self.provider_name, self.model, system_prompt, text[:500], "", error=f"{type(exc).__name__}: {exc}")
                     raise
         else:
+            _log_raw(self.provider_name, self.model, system_prompt, text[:500], "", error=f"{type(last_exc).__name__}: {last_exc}")
             raise RuntimeError(
                 f"AI API не відповідає після {len(_RETRY_DELAYS) + 1} спроб"
             ) from last_exc
@@ -103,6 +130,8 @@ class OpenAICompatProvider:
         category = str(parsed.get("category") or "").strip() or None
         if categories and category not in categories:
             category = None
+
+        _log_raw(self.provider_name, self.model, system_prompt, text[:500], payload, score=score, category=category)
         return ScoreResult(score=score, category=category, tokens_in=tok_in, tokens_out=tok_out)
 
     def generate_digest(

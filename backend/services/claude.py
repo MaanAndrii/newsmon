@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 from config import (
     DEFAULT_CLAUDE_MODEL,
+    ai_raw_logs,
     claude_call_events,
     repo,
 )
@@ -104,6 +105,7 @@ def _call_claude_score_sync(
     tok_out = int(getattr(response.usage, "output_tokens", 0) or 0)
     _record_claude_call(tok_in, tok_out)
 
+    user_text = text
     payload = "".join(
         block.text for block in response.content if hasattr(block, "text")
     ).strip()
@@ -124,6 +126,17 @@ def _call_claude_score_sync(
     category = str(parsed.get("category") or "").strip() or None
     if categories and category not in categories:
         category = None
+    ai_raw_logs.append({
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+        "provider": "claude",
+        "model": model,
+        "system_prompt": system_prompt,
+        "user_message": user_text[:500],
+        "raw_response": payload,
+        "score": score,
+        "category": category,
+        "error": None,
+    })
     return score, category, tok_in, tok_out
 
 
