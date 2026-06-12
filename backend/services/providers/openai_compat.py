@@ -113,6 +113,9 @@ class OpenAICompatProvider:
             'Відповідай ВИКЛЮЧНО валідним JSON без будь-яких пояснень чи коментарів. '
             'Формат відповіді: {"score": 7, "category": "Економіка"}.'
         )
+        # Prefill assistant turn so the model is forced to continue the JSON directly,
+        # preventing reasoning/thinking text from appearing before the JSON object.
+        _PREFILL = '{"score":'
 
         client = self._client()
         last_exc: Exception | None = None
@@ -123,10 +126,11 @@ class OpenAICompatProvider:
             try:
                 response = client.chat.completions.create(
                     model=self.model,
-                    max_tokens=400,
+                    max_tokens=80,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": text},
+                        {"role": "assistant", "content": _PREFILL},
                     ],
                 )
                 break
@@ -150,19 +154,16 @@ class OpenAICompatProvider:
         msg = response.choices[0].message
         raw_content = msg.content or ""
         reasoning_content = getattr(msg, "reasoning_content", None) or ""
-        # For deepseek-reasoner: answer is in content, thinking is in reasoning_content.
-        # If content is empty, fall back to reasoning_content (some API proxies merge them).
         if not raw_content.strip():
             raw_content = reasoning_content
         if not raw_content.strip():
             raise RuntimeError(f"Модель {self.model} повернула порожню відповідь")
-        payload = raw_content.strip()
+        # The model continues after the prefill — reconstruct the full JSON string.
+        payload = (_PREFILL + raw_content).strip()
         parsed = _parse_json_response(payload)
 
-        # If JSON extraction failed but we have reasoning prose, try heuristic extraction.
-        # This covers models that output thinking text and the JSON was cut off by max_tokens.
+        # Last-resort heuristic if prefill somehow still didn't yield valid JSON.
         if not parsed.get("score"):
-            # Also search reasoning_content directly (may contain the concluded score)
             search_text = payload + "\n" + reasoning_content
             parsed = _parse_score_from_reasoning(search_text, categories)
 
