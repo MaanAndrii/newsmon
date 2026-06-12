@@ -113,9 +113,6 @@ class OpenAICompatProvider:
             'Відповідай ВИКЛЮЧНО валідним JSON без будь-яких пояснень чи коментарів. '
             'Формат відповіді: {"score": 7, "category": "Економіка"}.'
         )
-        # Prefill assistant turn so the model is forced to continue the JSON directly,
-        # preventing reasoning/thinking text from appearing before the JSON object.
-        _PREFILL = '{"score":'
 
         client = self._client()
         last_exc: Exception | None = None
@@ -126,12 +123,14 @@ class OpenAICompatProvider:
             try:
                 response = client.chat.completions.create(
                     model=self.model,
-                    max_tokens=80,
+                    max_tokens=200,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": text},
-                        {"role": "assistant", "content": _PREFILL},
                     ],
+                    # Disable chain-of-thought reasoning for scoring — we need
+                    # a short deterministic JSON, not a deliberation process.
+                    extra_body={"thinking": {"type": "disabled"}},
                 )
                 break
             except Exception as exc:
@@ -154,15 +153,14 @@ class OpenAICompatProvider:
         msg = response.choices[0].message
         raw_content = msg.content or ""
         reasoning_content = getattr(msg, "reasoning_content", None) or ""
-        if not raw_content.strip():
-            raw_content = reasoning_content
+        # reasoning_content is the internal chain-of-thought (Chinese/English prose) — ignore it.
+        # content should contain the clean JSON answer when thinking is disabled.
         if not raw_content.strip():
             raise RuntimeError(f"Модель {self.model} повернула порожню відповідь")
-        # The model continues after the prefill — reconstruct the full JSON string.
-        payload = (_PREFILL + raw_content).strip()
+        payload = raw_content.strip()
         parsed = _parse_json_response(payload)
 
-        # Last-resort heuristic if prefill somehow still didn't yield valid JSON.
+        # Last-resort heuristic: scan reasoning prose for score/category hints.
         if not parsed.get("score"):
             search_text = payload + "\n" + reasoning_content
             parsed = _parse_score_from_reasoning(search_text, categories)
