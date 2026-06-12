@@ -803,9 +803,21 @@
         setTimeout(() => t.remove(), 3500);
       }
 
-      function _userIsEditing() {
-        const el = document.activeElement;
-        return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
+      let _lastUserActivity = 0;
+      function _touchActivity() { _lastUserActivity = Date.now(); }
+      document.addEventListener('mousemove', _touchActivity, { passive: true });
+      document.addEventListener('mousedown', _touchActivity, { passive: true });
+      document.addEventListener('keydown', _touchActivity, { passive: true });
+      document.addEventListener('scroll', _touchActivity, { passive: true, capture: true });
+      document.addEventListener('touchstart', _touchActivity, { passive: true });
+
+      function _userIsActive() {
+        return (Date.now() - _lastUserActivity) < 60000;
+      }
+
+      function _tabIsVisible(tabId) {
+        const el = document.getElementById(tabId);
+        return el && !el.classList.contains('hidden');
       }
 
       function escapeHtml(value) {
@@ -966,11 +978,9 @@
         loadDigestHistory();
         loadTelethonAuthStatus();
         loadDebugAll();
-        setInterval(() => { if (!_userIsEditing()) loadMonitorConfig(); }, 15000);
-        setInterval(() => { if (!_userIsEditing()) loadTelethonAuthStatus(); }, 30000);
-        setInterval(() => {
-          if (!document.getElementById('debugTab').classList.contains('hidden') && !_userIsEditing()) loadDebugAll();
-        }, 30000);
+        setInterval(() => { if (!_userIsActive() && _tabIsVisible('monitoringTab')) loadMonitorConfig(); }, 15000);
+        setInterval(() => { if (!_userIsActive()) loadTelethonAuthStatus(); }, 30000);
+        setInterval(() => { if (!_userIsActive() && _tabIsVisible('debugTab')) loadDebugAll(); }, 30000);
       }
 
       async function initSettingsPage() {
