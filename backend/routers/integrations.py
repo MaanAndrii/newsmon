@@ -15,6 +15,7 @@ SECRET_INTEGRATION_FIELDS = (
     "claude_api_key",
     "grok_api_key",
     "gemini_api_key",
+    "deepseek_api_key",
     "telegram_api_hash",
     "telegram_bot_token",
 )
@@ -29,6 +30,7 @@ _EXTRA_MODEL_FIELDS = (
     "claude_model_2", "claude_model_3",
     "grok_model_2", "grok_model_3",
     "gemini_model_2", "gemini_model_3",
+    "deepseek_model_2", "deepseek_model_3",
 )
 
 
@@ -47,6 +49,7 @@ def _integrations_public_view(data: dict) -> dict:
     result["claude_model"] = _resolve_claude_model(data.get("claude_model"))
     result["grok_model"] = (data.get("grok_model") or "").strip()
     result["gemini_model"] = (data.get("gemini_model") or "").strip()
+    result["deepseek_model"] = (data.get("deepseek_model") or "").strip()
     for key in _EXTRA_MODEL_FIELDS:
         result[key] = (data.get(key) or "").strip()
     return result
@@ -92,6 +95,7 @@ def save_integrations(payload: IntegrationsPayload) -> dict:
     merged["claude_model"] = _resolve_claude_model(incoming.get("claude_model"))
     merged["grok_model"] = (incoming.get("grok_model") or "").strip()
     merged["gemini_model"] = (incoming.get("gemini_model") or "").strip()
+    merged["deepseek_model"] = (incoming.get("deepseek_model") or "").strip()
     for key in _EXTRA_MODEL_FIELDS:
         merged[key] = (incoming.get(key) or "").strip()
     saved = repo.save_integrations(merged)
@@ -116,6 +120,8 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
     grok_model = (data.get("grok_model") or existing.get("grok_model") or "").strip()
     gemini_key = _pick("gemini_api_key")
     gemini_model = (data.get("gemini_model") or existing.get("gemini_model") or "").strip()
+    deepseek_key = _pick("deepseek_api_key")
+    deepseek_model = (data.get("deepseek_model") or existing.get("deepseek_model") or "").strip()
     telegram_api_id = _pick("telegram_api_id")
     telegram_api_hash = _pick("telegram_api_hash")
     telegram_bot_token = _pick("telegram_bot_token")
@@ -160,6 +166,17 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
     else:
         gemini_ok = True
         gemini_reason = f"Ключ присутній, модель: {gemini_model}"
+
+    # --- DeepSeek ---
+    if not deepseek_key:
+        deepseek_ok = None
+        deepseek_reason = "API ключ DeepSeek не налаштовано"
+    elif not deepseek_model:
+        deepseek_ok = False
+        deepseek_reason = "Model ID DeepSeek не вказано"
+    else:
+        deepseek_ok = True
+        deepseek_reason = f"Ключ присутній, модель: {deepseek_model}"
 
     # Extra models format check
     extra_model_issues: list[str] = []
@@ -229,6 +246,11 @@ def validate_integrations(payload: IntegrationsPayload) -> dict:
             "ok": gemini_ok,
             "reason": gemini_reason,
             "model": gemini_model,
+        },
+        "deepseek": {
+            "ok": deepseek_ok,
+            "reason": deepseek_reason,
+            "model": deepseek_model,
         },
         "telegram_user_api": {
             "ok": telegram_user_format,

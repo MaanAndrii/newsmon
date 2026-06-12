@@ -53,6 +53,10 @@ class IntegrationsPayload(BaseModel):
     gemini_model: str | None = None
     gemini_model_2: str | None = None
     gemini_model_3: str | None = None
+    deepseek_api_key: str | None = None
+    deepseek_model: str | None = None
+    deepseek_model_2: str | None = None
+    deepseek_model_3: str | None = None
     telegram_api_id: str | None = None
     telegram_api_hash: str | None = None
     telegram_bot_token: str | None = None
@@ -81,7 +85,7 @@ class MonitorConfigPayload(BaseModel):
     )
     ai_prompt: str | None = None
     dedup_enabled: bool = True
-    ai_provider: str = Field(default="claude", pattern=r"^(claude|grok|gemini)$")
+    ai_provider: str = Field(default="claude", pattern=r"^(claude|grok|gemini|deepseek)$")
     ai_model: str | None = None
 
 
@@ -125,7 +129,7 @@ class DigestConfigPayload(BaseModel):
     excluded_categories: list[str] = []
     ai_prompt: str = Field(default="", max_length=2000)
     keep_days: int = Field(default=30, ge=1, le=365)
-    ai_provider: str = Field(default="claude", pattern=r"^(claude|grok|gemini)$")
+    ai_provider: str = Field(default="claude", pattern=r"^(claude|grok|gemini|deepseek)$")
     ai_model: str | None = None
     mode: str = Field(default="previous_day", pattern=r"^(previous_24h|previous_day)$")
 
