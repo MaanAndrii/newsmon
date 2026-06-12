@@ -934,9 +934,10 @@ class Repository:
         with get_connection() as conn:
             rows = conn.execute(
                 """
-                SELECT q.message_id, m.text
+                SELECT q.message_id, m.text, s.name AS source_name
                 FROM ai_queue q
                 JOIN messages m ON m.id = q.message_id
+                LEFT JOIN sources s ON s.id = m.source_id
                 WHERE q.status = 'pending'
                 ORDER BY q.id ASC
                 LIMIT ?

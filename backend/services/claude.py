@@ -36,16 +36,12 @@ def _record_claude_call(input_tokens: int, output_tokens: int, provider: str = "
         pass
 
 
-def _prepare_ai_text(text: str) -> str:
+def _prepare_ai_text(text: str, source_name: str = "") -> str:
     cleaned = text.strip()
     if not cleaned:
         return ""
-    lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
-    title = lines[0] if lines else ""
-    paragraphs = [p.strip() for p in cleaned.split("\n\n") if p.strip()]
-    first_paragraph = paragraphs[0] if paragraphs else title
-    reduced = f"Заголовок: {title}\nПерший абзац: {first_paragraph}".strip()
-    return reduced[:1600]
+    prefix = f"[{source_name}] " if source_name else ""
+    return (prefix + cleaned)[:500]
 
 
 def _call_claude_score_sync(

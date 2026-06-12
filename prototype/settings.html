@@ -803,6 +803,11 @@
         setTimeout(() => t.remove(), 3500);
       }
 
+      function _userIsEditing() {
+        const el = document.activeElement;
+        return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
+      }
+
       function escapeHtml(value) {
         if (value == null) return '';
         return String(value)
@@ -961,10 +966,10 @@
         loadDigestHistory();
         loadTelethonAuthStatus();
         loadDebugAll();
-        setInterval(loadMonitorConfig, 15000);
-        setInterval(loadTelethonAuthStatus, 30000);
+        setInterval(() => { if (!_userIsEditing()) loadMonitorConfig(); }, 15000);
+        setInterval(() => { if (!_userIsEditing()) loadTelethonAuthStatus(); }, 30000);
         setInterval(() => {
-          if (!document.getElementById('debugTab').classList.contains('hidden')) loadDebugAll();
+          if (!document.getElementById('debugTab').classList.contains('hidden') && !_userIsEditing()) loadDebugAll();
         }, 30000);
       }
 
