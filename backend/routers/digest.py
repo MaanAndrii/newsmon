@@ -42,8 +42,8 @@ def list_digests(limit: int = 7) -> dict:
 
 
 @router.post("/api/digest/generate", dependencies=[Depends(require_admin)])
-async def generate_digest() -> dict:
-    result = await _generate_daily_digest()
+async def generate_digest(force: bool = False) -> dict:
+    result = await _generate_daily_digest(force=force)
     if not result.get("ok"):
         raise HTTPException(status_code=400, detail=result.get("error", "Помилка генерації"))
     return result

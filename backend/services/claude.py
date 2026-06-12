@@ -108,11 +108,16 @@ def _call_claude_score_sync(
         block.text for block in response.content if hasattr(block, "text")
     ).strip()
 
+    text = payload
+    text = re.sub(r"```(?:\w+)?\s*", "", text).replace("```", "").strip()
     try:
-        parsed = json.loads(payload or "{}")
+        parsed = json.loads(text or "{}")
     except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", payload, flags=re.DOTALL)
-        parsed = json.loads(match.group(0)) if match else {}
+        match = re.search(r"\{[^{}]*\}", text) or re.search(r"\{.*?\}", text, re.DOTALL)
+        try:
+            parsed = json.loads(match.group(0)) if match else {}
+        except (json.JSONDecodeError, AttributeError):
+            parsed = {}
 
     score = int(parsed.get("score") or 0)
     score = max(1, min(10, score))

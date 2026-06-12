@@ -10,6 +10,28 @@ from services.providers.base import DigestResult, ScoreResult
 _RETRY_DELAYS = (2.0, 4.0, 8.0)
 
 
+def _parse_json_response(payload: str) -> dict:
+    """Extract a JSON object from an AI response string.
+
+    Handles: bare JSON, markdown code fences, leading/trailing text.
+    Always returns a dict (never raises).
+    """
+    text = payload.strip()
+    # Strip markdown code fences: ```json ... ``` or ``` ... ```
+    text = re.sub(r"```(?:\w+)?\s*", "", text).replace("```", "").strip()
+    try:
+        return json.loads(text or "{}")
+    except json.JSONDecodeError:
+        # Try to find the first JSON object in the text (non-greedy)
+        match = re.search(r"\{[^{}]*\}", text) or re.search(r"\{.*?\}", text, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
+    return {}
+
+
 class OpenAICompatProvider:
     def __init__(self, api_key: str, model: str, base_url: str, provider_name: str = "openai_compat") -> None:
         self.api_key = api_key
@@ -51,6 +73,7 @@ class OpenAICompatProvider:
                 response = client.chat.completions.create(
                     model=self.model,
                     max_tokens=120,
+                    response_format={"type": "json_object"},
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": text},
@@ -73,11 +96,7 @@ class OpenAICompatProvider:
         _record_claude_call(tok_in, tok_out, provider=self.provider_name)
 
         payload = (response.choices[0].message.content or "").strip()
-        try:
-            parsed = json.loads(payload or "{}")
-        except json.JSONDecodeError:
-            match = re.search(r"\{.*\}", payload, flags=re.DOTALL)
-            parsed = json.loads(match.group(0)) if match else {}
+        parsed = _parse_json_response(payload)
 
         score = int(parsed.get("score") or 0)
         score = max(1, min(10, score))

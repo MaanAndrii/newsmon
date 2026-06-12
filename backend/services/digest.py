@@ -42,7 +42,7 @@ def _get_digest_config() -> dict:
     }
 
 
-async def _generate_daily_digest(reference_dt: datetime | None = None) -> dict:
+async def _generate_daily_digest(reference_dt: datetime | None = None, force: bool = False) -> dict:
     cfg = _get_digest_config()
     integrations = repo.get_integrations()
 
@@ -74,7 +74,7 @@ async def _generate_daily_digest(reference_dt: datetime | None = None) -> dict:
         date_label = yesterday_midnight.strftime("%d.%m.%Y")
 
     existing = repo.get_digest(date_str)
-    if existing and existing.get("status") == "ok" and existing.get("content"):
+    if not force and existing and existing.get("status") == "ok" and existing.get("content"):
         return {"ok": True, "date": date_str, "cached": True, **existing}
 
     start_datetime = dt_from.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
