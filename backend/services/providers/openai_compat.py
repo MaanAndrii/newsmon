@@ -98,7 +98,6 @@ class OpenAICompatProvider:
                 response = client.chat.completions.create(
                     model=self.model,
                     max_tokens=120,
-                    response_format={"type": "json_object"},
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": text},
@@ -122,7 +121,14 @@ class OpenAICompatProvider:
         tok_out = int(getattr(usage, "completion_tokens", 0) or 0)
         _record_claude_call(tok_in, tok_out, provider=self.provider_name)
 
-        payload = (response.choices[0].message.content or "").strip()
+        msg = response.choices[0].message
+        raw_content = msg.content or ""
+        if not raw_content.strip():
+            # deepseek-reasoner returns the answer in reasoning_content when content is empty
+            raw_content = getattr(msg, "reasoning_content", None) or ""
+        if not raw_content.strip():
+            raise RuntimeError(f"Модель {self.model} повернула порожню відповідь")
+        payload = raw_content.strip()
         parsed = _parse_json_response(payload)
 
         score = int(parsed.get("score") or 0)

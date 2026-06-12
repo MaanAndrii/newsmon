@@ -436,6 +436,7 @@ async def _process_one_ai_item(
     async with semaphore:
         message_id = int(item.get("message_id") or 0)
         text = (item.get("text") or "").strip()
+        source_name = (item.get("source_name") or "").strip()
         if message_id <= 0 or not text:
             repo.mark_message_no_ai(message_id, MISC_CATEGORY)
             _log_event("ai_flush", f"msg#{message_id}: порожній текст → позначено без оцінки")
@@ -461,7 +462,7 @@ async def _process_one_ai_item(
             result = await loop.run_in_executor(
                 None,
                 provider.score_message,
-                _prepare_ai_text(text),
+                _prepare_ai_text(text, source_name),
                 categories,
                 ai_prompt,
             )
