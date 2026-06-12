@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from zoneinfo import ZoneInfo
-    _KYIV_TZ: Any = ZoneInfo("Europe/Kyiv")
+    from zoneinfo import ZoneInfo as _ZoneInfo
+    _KYIV_TZ: Any = _ZoneInfo("Europe/Kyiv")
 except Exception:
+    _ZoneInfo = None  # type: ignore[assignment,misc]
     _KYIV_TZ = timezone.utc
 
 DB_PATH = Path(__file__).resolve().parent / "newsmon.db"
@@ -345,7 +346,7 @@ class Repository:
             params.append(content_hash_raw)
         published_date_raw = (published_date or "").strip()
         if published_date_raw:
-            where_parts.append("DATE(datetime(m.published_at, '+3 hours')) = ?")
+            where_parts.append(f"DATE(datetime(m.published_at, '{self._tz_sql_offset()}')) = ?")
             params.append(published_date_raw)
         params.append(limit)
         query = f"""
@@ -402,7 +403,7 @@ class Repository:
                         fallback_where.append("m.content_hash = ?")
                         fallback_params.append(content_hash_raw)
                     if published_date_raw:
-                        fallback_where.append("DATE(datetime(m.published_at, '+3 hours')) = ?")
+                        fallback_where.append(f"DATE(datetime(m.published_at, '{self._tz_sql_offset()}')) = ?")
                         fallback_params.append(published_date_raw)
                     fallback_params.append(limit)
                     fallback_query = f"""
@@ -770,6 +771,27 @@ class Repository:
                 """,
                 (key, value),
             )
+
+    def get_app_tz(self) -> Any:
+        """Return the configured application timezone (ZoneInfo or UTC fallback)."""
+        tz_name = (self.get_setting("app.timezone") or "Europe/Kyiv").strip()
+        if _ZoneInfo is not None:
+            try:
+                return _ZoneInfo(tz_name)
+            except Exception:
+                pass
+        return _KYIV_TZ
+
+    def _tz_sql_offset(self) -> str:
+        """Return SQLite datetime modifier for the configured timezone, e.g. '+3 hours'."""
+        tz = self.get_app_tz()
+        offset_secs = datetime.now(tz).utcoffset().total_seconds()
+        total_minutes = int(offset_secs / 60)
+        sign = "+" if total_minutes >= 0 else "-"
+        abs_minutes = abs(total_minutes)
+        if abs_minutes % 60 == 0:
+            return f"{sign}{abs_minutes // 60} hours"
+        return f"{sign}{abs_minutes} minutes"
 
     def save_integrations(self, payload: dict[str, Any]) -> dict[str, Any]:
         with get_connection() as conn:
@@ -1520,7 +1542,7 @@ class Repository:
                 continue
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
-            out.append(dt.astimezone(_KYIV_TZ))
+            out.append(dt.astimezone(self.get_app_tz()))
         return out
 
     def get_stats_hours(self, days: int | None = None) -> list[dict[str, Any]]:
@@ -1544,7 +1566,7 @@ class Repository:
         weekday_occurrences: dict[int, int] = {i: 0 for i in range(7)}
         if days is not None:
             safe_days = max(1, min(int(days), 365))
-            end_date = datetime.now(timezone.utc).astimezone(_KYIV_TZ).date()
+            end_date = datetime.now(timezone.utc).astimezone(self.get_app_tz()).date()
             start_date = end_date - timedelta(days=safe_days - 1)
             for offset in range(safe_days):
                 wd = (start_date + timedelta(days=offset)).weekday()

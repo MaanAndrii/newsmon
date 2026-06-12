@@ -7,11 +7,6 @@ from datetime import datetime, timedelta, timezone
 from config import broadcast_sse, repo
 from services.providers import get_provider
 
-try:
-    from zoneinfo import ZoneInfo
-    _KYIV_TZ = ZoneInfo("Europe/Kyiv")
-except Exception:
-    _KYIV_TZ = timezone.utc
 
 
 def _get_digest_config() -> dict:
@@ -49,7 +44,7 @@ async def _generate_daily_digest(reference_dt: datetime | None = None, force: bo
         return {"ok": False, "error": f"API ключ або модель для провайдера '{cfg['ai_provider']}' не налаштовані"}
 
     mode = cfg.get("mode", "previous_day")
-    tz = _KYIV_TZ
+    tz = repo.get_app_tz()
 
     if reference_dt is None:
         reference_dt = datetime.now(timezone.utc).astimezone(tz)
@@ -153,7 +148,7 @@ async def _digest_loop() -> None:
                 await asyncio.sleep(300)
                 continue
 
-            tz = _KYIV_TZ
+            tz = repo.get_app_tz()
             now_local = datetime.now(timezone.utc).astimezone(tz)
             target_hour: int = cfg["hour"]
             target_minute: int = cfg["minute"]
