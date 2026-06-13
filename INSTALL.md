@@ -1,504 +1,277 @@
-# NewsMon — детальна інструкція встановлення на Raspberry Pi
+# NewsMon — інструкція встановлення на Raspberry Pi
 
-> Оновлено: 21 квітня 2026 · версія 1.0.210426  
-> Ціль: підняти робочий прототип (FastAPI + SQLite + Telethon + Web UI) на Raspberry Pi в локальній мережі.
+> Оновлено: червень 2026  
+> Ціль: підняти робочу систему (FastAPI + SQLite + Telethon + Web UI) на Raspberry Pi в локальній мережі.
 
 ---
 
-## 1) Вимоги
+## Вимоги
 
 ### Апаратні
-- Raspberry Pi 4/5 (рекомендовано 4+ GB RAM).
-- SSD через USB 3.0 (бажано) або microSD.
-- Стабільне живлення (офіційний БЖ 5V/3A).
-- Доступ до локальної мережі та інтернету.
+- Raspberry Pi 4 / 5 (рекомендовано 4+ GB RAM)
+- SSD через USB 3.0 (бажано) або microSD
+- Стабільне живлення (офіційний БЖ 5V/3A)
+- Доступ до інтернету
 
 ### Програмні
-- Raspberry Pi OS Lite (64-bit).
-- Python 3.11+.
-- Git.
-- Доступ до Telegram API:
-  - `API ID`
-  - `API Hash`
-  - номер телефону Telegram-акаунта.
+- Raspberry Pi OS Lite 64-bit (Debian Bookworm)
+- Python 3.11+
+- Git
+
+### Облікові дані (отримай заздалегідь)
+- **Telegram API ID + API Hash** — [my.telegram.org](https://my.telegram.org) → API development tools
+- **API ключ AI-провайдера** (хоча б один):
+  - Claude: [console.anthropic.com](https://console.anthropic.com)
+  - Grok: [console.x.ai](https://console.x.ai)
+  - Gemini: [aistudio.google.com](https://aistudio.google.com)
+  - DeepSeek: [platform.deepseek.com](https://platform.deepseek.com)
 
 ---
 
-## 2) Підготовка системи
+## 1. Встановлення (автоматичне)
 
 ```bash
-sudo apt update
-sudo apt upgrade -y
-sudo apt install -y git python3 python3-venv python3-pip sqlite3
-```
-
-Перевір:
-```bash
-python3 --version
-git --version
-```
-
----
-
-## 3) Клонування репозиторію
-
-```bash
-cd /home/maan
+sudo apt update && sudo apt install -y git
 git clone https://github.com/MaanAndrii/newsmon.git
 cd newsmon
+sudo bash setup.sh
 ```
 
-> Якщо у тебе інша гілка для розробки, переключись:
+Скрипт автоматично виконає всі кроки нижче: встановить залежності, створить Python venv, згенерує адмін-токен, налаштує та запустить systemd-сервіс.
+
+Після завершення в терміналі будуть:
+- **Адреса** сервера (`http://<IP>:8000`)
+- **Адмін-токен** — скопіюй і збережи в надійне місце
+
+---
+
+## 2. Перша конфігурація в браузері
+
+Відкрий `http://<IP Raspberry Pi>:8000/settings.html`
+
+При першому відкритті з'явиться вікно авторизації — введи адмін-токен, який вивів `setup.sh`.
+
+### 2.1 Telegram API + Telethon авторизація
+
+Вкладка **«API та інтеграції»**:
+
+1. Введи `Telegram API ID` та `Telegram API Hash`
+2. Натисни **Зберегти інтеграції**
+3. У блоці Telethon:
+   - Введи номер телефону у форматі `+380...`
+   - Натисни **Запросити код**
+   - Введи код із Telegram
+   - За потреби введи 2FA пароль
+   - Натисни **Підтвердити**
+
+### 2.2 AI-провайдер
+
+У тій само вкладці обери та налаштуй один провайдер:
+
+| Провайдер | Рекомендована модель | Поле API Key |
+|---|---|---|
+| Claude (Anthropic) | `claude-haiku-4-5-20251001` | Claude API Key |
+| Grok (xAI) | `grok-3-mini` | Grok API Key |
+| Gemini (Google) | `gemini-2.0-flash` | Gemini API Key |
+| DeepSeek | `deepseek-v4-flash` | DeepSeek API Key |
+
+Натисни **Зберегти інтеграції**, потім **Перевірка інтеграцій** — має з'явитись 🟢.
+
+Для кожного провайдера можна задати до 3 моделей (поля Model ID 1, 2, 3) і використовувати різні для моніторингу та дайджесту.
+
+### 2.3 Вибір провайдера для задач
+
+- Вкладка **«Моніторинг»** → поле «AI-провайдер» та «AI-модель»
+- Вкладка **«Дайджест»** → аналогічно (можна вибрати інший провайдер/модель)
+
+### 2.4 Джерела
+
+Вкладка **«Джерела»**:
+- Додай канал у форматі `@username` або `https://t.me/username`
+- Переконайся, що «Моніторинг» увімкнений
+
+Система автоматично почне збирати повідомлення та ставити їх у чергу AI-оцінки.
+
+---
+
+## 3. Перевірка після налаштування
+
 ```bash
-git checkout work
+# Стан моніторингу
+curl http://127.0.0.1:8000/api/monitor/status
+
+# Останні повідомлення
+curl http://127.0.0.1:8000/api/messages?limit=5
+
+# Стан Telethon сесії
+curl -H "Authorization: Bearer $(sudo grep -oP '(?<=NEWSMON_API_TOKEN=)\S+' /etc/newsmon.env)" \
+     http://127.0.0.1:8000/api/telethon/session/health
 ```
 
 ---
 
-## 4) Python-оточення і залежності
+## 4. Оновлення
 
 ```bash
-cd /home/maan/newsmon/backend
-python3 -m venv .venv
+cd newsmon
+sudo bash setup.sh --update
+```
+
+Виконує `git pull`, оновлює залежності та перезапускає сервіс.
+
+---
+
+## 5. Адмін-токен
+
+Токен генерується автоматично при першому запуску `setup.sh` і зберігається в `/etc/newsmon.env`.
+
+**Переглянути токен:**
+```bash
+sudo cat /etc/newsmon.env
+```
+
+**Змінити токен:**
+```bash
+NEW_TOKEN=$(openssl rand -hex 32)
+echo "NEWSMON_API_TOKEN=$NEW_TOKEN" | sudo tee /etc/newsmon.env > /dev/null
+sudo chmod 600 /etc/newsmon.env
+sudo systemctl restart newsmon
+echo "Новий токен: $NEW_TOKEN"
+```
+
+Після зміни всі браузери з старим токеном отримають 401 і запропонують ввести новий.
+
+---
+
+## 6. Корисні команди
+
+```bash
+# Логи в реальному часі
+journalctl -u newsmon -f
+
+# Статус сервісу
+systemctl status newsmon
+
+# Перезапуск
+sudo systemctl restart newsmon
+
+# Видалення сервісу (файли репо та БД НЕ видаляються)
+sudo bash setup.sh --uninstall
+```
+
+---
+
+## 7. Резервне копіювання
+
+**Через UI:** Вкладка «Імпорт / Експорт» → «Завантажити резервну копію (.db)»
+
+**Через термінал:**
+```bash
+cp /home/$USER/newsmon/backend/newsmon.db \
+   /home/$USER/newsmon/backend/newsmon_$(date +%F_%H-%M-%S).db
+```
+
+**Відновлення з файлу:**
+1. Через UI: вкладка «Імпорт / Експорт» → «Відновити з резервної копії»
+2. Або вручну:
+```bash
+sudo systemctl stop newsmon
+cp backup.db /home/$USER/newsmon/backend/newsmon.db
+sudo systemctl start newsmon
+```
+
+---
+
+## 8. Типові проблеми
+
+### Сервіс не стартує — 503 «Сервер не налаштовано»
+```bash
+sudo cat /etc/newsmon.env          # перевір наявність токена
+sudo systemctl daemon-reload
+sudo systemctl restart newsmon
+journalctl -u newsmon -n 50
+```
+
+### Telethon не авторизується (EOF / readonly)
+
+```bash
+# 1. Зупини сервіс
+sudo systemctl stop newsmon
+
+# 2. Видали старі session-файли
+rm -f ~/newsmon/backend/telegram_user.session*
+
+# 3. Виправ права
+sudo chown -R $USER:$USER ~/newsmon
+
+# 4. Запусти і авторизуйся знову через UI
+sudo systemctl start newsmon
+```
+
+### Повідомлення не з'являються в Dashboard
+- Перевір наявність активних джерел у вкладці «Джерела»
+- Перевір стан Telethon: вкладка «Інтеграції» → блок Telethon
+- Перевір логи: `journalctl -u newsmon -f`
+
+### Не встановлюється пакет (pip install fails)
+```bash
+cd ~/newsmon/backend
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
+### DeepSeek повертає роздуми замість JSON
+
+DeepSeek V4 є reasoning-моделлю — система автоматично відключає chain-of-thought для задач оцінки через параметр `thinking: disabled`. Якщо проблема зберігається, спробуй модель `deepseek-v4-flash` замість `deepseek-v4-pro`.
+
 ---
 
-## 5) Перший запуск вручну
+## 9. Ручне встановлення (без setup.sh)
+
+Якщо потрібен повний контроль над процесом:
 
 ```bash
-cd /home/maan/newsmon/backend
+# Залежності
+sudo apt update && sudo apt install -y git python3 python3-venv python3-pip sqlite3
+
+# Репозиторій
+git clone https://github.com/MaanAndrii/newsmon.git
+cd newsmon/backend
+
+# Python venv
+python3 -m venv .venv
 source .venv/bin/activate
-uvicorn app:app --host 0.0.0.0 --port 8000
-```
+pip install --upgrade pip
+pip install -r requirements.txt
 
-Відкрий у браузері:
-- `http://<IP_PI>:8000/dashboard.html`
-- `http://<IP_PI>:8000/settings.html`
-- `http://<IP_PI>:8000/docs`
+# Токен
+ADMIN_TOKEN=$(openssl rand -hex 32)
+sudo install -m 600 -o $USER -g $USER /dev/null /etc/newsmon.env
+echo "NEWSMON_API_TOKEN=$ADMIN_TOKEN" | sudo tee /etc/newsmon.env
+echo "Токен: $ADMIN_TOKEN"
 
-На першому старті автоматично створиться SQLite БД:
-- `/home/maan/newsmon/backend/newsmon.db`
-
----
-
-## 6) Налаштування інтеграцій у UI
-
-Відкрий `Налаштування` → `API та інтеграції`:
-
-1. Заповни `Telegram API ID`.
-2. Заповни `Telegram API Hash`.
-3. Натисни **Зберегти інтеграції**.
-4. У блоці Telethon авторизації:
-   - введи телефон у форматі `+380...`,
-   - натисни **Запросити код**,
-   - введи код з Telegram,
-   - за потреби введи 2FA пароль,
-   - натисни **Підтвердити**.
-
-Додатково перевір:
-- `GET /api/telethon/session/health` — стан session-файлу Telethon.
-
----
-
-## 6.1) Налаштування AI-провайдерів
-
-NewsMon підтримує три AI-провайдери: **Claude** (Anthropic), **Grok** (xAI) та **Gemini** (Google).
-Усі вони налаштовуються у вкладці `Налаштування` → `API та інтеграції`.
-
-> Достатньо налаштувати **один** провайдер — той, яким ти плануєш користуватись.
-
----
-
-### Claude (Anthropic)
-
-1. Отримай API ключ на [console.anthropic.com](https://console.anthropic.com).
-2. У полі **Claude API Key** введи ключ формату `sk-ant-api03-...`.
-3. У полі **Claude Model ID** введи назву моделі, наприклад:
-   - `claude-haiku-4-5-20251001` — швидка та дешева (рекомендується для моніторингу)
-   - `claude-sonnet-4-5` — збалансована
-   - `claude-opus-4-5` — найпотужніша
-4. Натисни **Зберегти інтеграції**.
-
----
-
-### Grok (xAI)
-
-1. Отримай API ключ на [console.x.ai](https://console.x.ai).
-2. У полі **Grok API Key** введи ключ.
-3. У полі **Grok Model ID** введи назву моделі, наприклад:
-   - `grok-3-mini` — швидка та економна
-   - `grok-3` — потужна
-4. Натисни **Зберегти інтеграції**.
-
----
-
-### Gemini (Google)
-
-1. Отримай API ключ на [aistudio.google.com](https://aistudio.google.com).
-2. У полі **Gemini API Key** введи ключ.
-3. У полі **Gemini Model ID** введи назву моделі, наприклад:
-   - `gemini-2.0-flash` — найшвидша (рекомендується)
-   - `gemini-2.0-flash-lite` — ще економніша
-   - `gemini-1.5-pro` — потужна
-   - `gemini-2.5-pro-exp-03-25` — найновіша експериментальна
-4. Натисни **Зберегти інтеграції**.
-
----
-
-### Кілька Model ID для одного провайдера
-
-Для кожного провайдера можна задати до **3 моделей** (поля Model ID 1, 2, 3).
-Це дозволяє використовувати різні моделі для різних задач:
-
-- **Model ID 1** — основна модель (використовується за замовчуванням).
-- **Model ID 2, 3** — альтернативні (доступні у випадаючих списках вкладок «Моніторинг» та «Дайджест»).
-
-Наприклад: Model ID 1 = `gemini-2.0-flash` (для щоденного моніторингу), Model ID 2 = `gemini-1.5-pro` (для дайджесту де потрібна вища якість).
-
----
-
-### Вибір AI-провайдера для кожної задачі
-
-Після збереження інтеграцій перейди у відповідну вкладку:
-
-**Моніторинг** (`Налаштування` → `Моніторинг`):
-- Поле **AI-провайдер** — обери провайдера для оцінки повідомлень.
-- Поле **AI-модель** — обери конкретну модель зі списку (або залиш порожнім для основної).
-
-**Дайджест** (`Налаштування` → `Дайджест`):
-- Те саме — можна обрати інший провайдер або модель ніж для моніторингу.
-
----
-
-### Перевірка налаштувань
-
-Кнопка **Перевірка інтеграцій** у вкладці `API та інтеграції` покаже стан усіх провайдерів:
-- 🟢 — ключ і модель налаштовані коректно
-- 🔴 — ключ є, але модель не вказана або формат невірний
-- ⚫ — провайдер не налаштований (це нормально якщо ти не плануєш його використовувати)
-
----
-
-## 7) Додавання джерел і запуск ingestion
-
-У вкладці `Джерела`:
-1. Додай канал у форматі `@username` або `https://t.me/username`.
-2. Переконайся, що `Моніторинг` увімкнений.
-
-Система автоматично в monitor loop:
-- перевіряє останні повідомлення джерел,
-- оновлює `last_message_at`,
-- інжестить останні повідомлення в таблицю `messages`,
-- додає нові повідомлення в `ai_queue`.
-
-Дані стрічки Dashboard беруться з `GET /api/messages`.
-
----
-
-## 8) Налаштування systemd (автозапуск)
-
-Створи сервіс:
-
-```bash
-sudo tee /etc/systemd/system/newsmon.service > /dev/null <<'EOF'
+# Systemd сервіс
+sudo tee /etc/systemd/system/newsmon.service > /dev/null <<EOF
 [Unit]
-Description=NewsMon FastAPI Service
-After=network.target
+Description=NewsMon — Telegram News Monitor
+After=network-online.target
 
 [Service]
 Type=simple
-User=maan
-Group=maan
-WorkingDirectory=/home/maan/newsmon/backend
+User=$USER
+Group=$USER
+WorkingDirectory=$(pwd)
+EnvironmentFile=/etc/newsmon.env
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/maan/newsmon/backend/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
+ExecStart=$(pwd)/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 EOF
-```
 
-Активуй:
-```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now newsmon
-sudo systemctl status newsmon
-```
-
-Логи:
-```bash
-journalctl -u newsmon -f
-```
-
----
-
-## 8.1) Адмін-токен `NEWSMON_API_TOKEN` (обов'язково)
-
-Починаючи з phase 1 security, всі адмін-ендпоінти (`/api/integrations`,
-`/api/sources` POST/PATCH/DELETE, `/api/categories`, `/api/keywords`,
-`/api/monitor/config`, `/api/monitor/run-once`, `/api/messages/clear-all`,
-`/api/debug/stats`, всі `/api/telethon/*`) вимагають заголовок
-`Authorization: Bearer <NEWSMON_API_TOKEN>`.
-
-Без змінної оточення бекенд повертатиме **503 «Сервер не налаштовано»**,
-і сторінка `settings.html` взагалі не відкриється.
-
-### Крок 1. Згенерувати довгий випадковий токен
-
-```bash
-openssl rand -hex 32
-```
-
-Вивід — це твій адмін-пароль (напр. `9b7d8c...`). Скопіюй і збережи його
-в password manager — нічого складнішого тут не треба. Якщо колись
-компрометується — просто переусталиш і рестартнеш сервіс.
-
-### Крок 2. Записати токен у захищений env-файл
-
-```bash
-sudo install -m 600 -o maan -g maan /dev/null /etc/newsmon.env
-echo 'NEWSMON_API_TOKEN=ВСТАВ_СЮДИ_ЗГЕНЕРОВАНИЙ_ТОКЕН' | sudo tee /etc/newsmon.env > /dev/null
-sudo chmod 600 /etc/newsmon.env
-sudo chown maan:maan /etc/newsmon.env
-```
-
-> Права `600` важливі: токен не повинен бути читабельним нікому, крім
-> юзера, під яким працює `newsmon.service`. `ps -ef` і `systemctl show`
-> при такому підході також НЕ показують значення.
-
-### Крок 3. Підключити env-файл до systemd-сервісу
-
-Варіант через `override` (найчистіший, не чіпає основний unit):
-
-```bash
-sudo systemctl edit newsmon
-```
-
-У редакторі додати рівно цей блок і зберегти:
-
-```ini
-[Service]
-EnvironmentFile=/etc/newsmon.env
-```
-
-Альтернативно — відредагувати прямо `newsmon.service` з секції 8 і додати
-той самий рядок `EnvironmentFile=/etc/newsmon.env` у блок `[Service]`.
-
-### Крок 4. Перезавантажити systemd і рестартнути сервіс
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart newsmon
-sudo systemctl status newsmon --no-pager
-```
-
-### Крок 5. Перевірити, що процес бачить токен
-
-```bash
-PID=$(pgrep -f 'uvicorn app:app' | head -1)
-sudo tr '\0' '\n' < /proc/$PID/environ | grep NEWSMON_API_TOKEN
-```
-
-Має вивести `NEWSMON_API_TOKEN=9b7d8c...`. Якщо нічого не вивело —
-`EnvironmentFile` не підхопився (перевір права, шлях, `daemon-reload`).
-
-### Крок 6. Перевірити API
-
-```bash
-# без токена → 401
-curl -i http://127.0.0.1:8000/api/integrations
-
-# з токеном → 200 і JSON із masked-прев'ю секретів
-curl -i -H "Authorization: Bearer ВСТАВ_СЮДИ_ТОКЕН" http://127.0.0.1:8000/api/integrations
-
-# публічний дашборд має працювати БЕЗ токена
-curl -i http://127.0.0.1:8000/api/messages?limit=3
-```
-
-Якщо отримуєш `503 "Сервер не налаштовано: змінна оточення
-NEWSMON_API_TOKEN не задана"` — змінну не бачить саме Python-процес
-uvicorn. Найчастіші причини:
-1. Забув `sudo systemctl daemon-reload` або `restart` після edit.
-2. `EnvironmentFile` вказує не на той шлях або має неправильні права
-   (systemd тихо ігнорує нечитабельний файл).
-3. Раніше був ручний запуск uvicorn і він ще висить — `pkill -f
-   'uvicorn app:app'` і далі тільки через `systemctl`.
-
-### Крок 7. Ввести токен у браузері
-
-Відкрий `http://<IP_PI>:8000/settings.html` — при першому відкритті з'явиться
-`prompt()` «Введіть адмін-токен». Введи той самий рядок, що й у
-`/etc/newsmon.env`. Токен зберігається в `localStorage` браузера (тільки
-на твоєму девайсі); колеги, які користуються лише `dashboard.html`,
-нічого не вводять і взагалі не знають про існування токена.
-
-Для виходу — кнопка **«Вихід адміна»** у хедері settings: вона очищує
-локальний токен і редіректить на дашборд.
-
-### Ротація токена
-
-```bash
-openssl rand -hex 32                                    # згенерувати новий
-sudo nano /etc/newsmon.env                              # замінити значення
-sudo systemctl restart newsmon                          # перезапустити бекенд
-```
-
-Усі браузери, що мали старий токен, при наступному запиті отримають 401
-і фронт попросить ввести новий. localStorage не треба чистити вручну —
-це робиться автоматично.
-
----
-
-## 9) Базовий health-check після деплою
-
-```bash
-curl http://127.0.0.1:8000/api/monitor/status
-curl http://127.0.0.1:8000/api/messages?limit=5
-curl http://127.0.0.1:8000/api/telethon/auth/status
-curl http://127.0.0.1:8000/api/telethon/session/health
-```
-
-Очікування:
-- `monitor/status` повертає `state`, `updated_sources`, `ingested_messages`.
-- `api/messages` повертає список збережених повідомлень.
-- `telethon/session/health` має `ok: true` або зрозумілий `detail`.
-
----
-
-## 10) Оновлення проєкту
-
-```bash
-cd /home/maan/newsmon
-git pull --rebase
-cd backend
-source .venv/bin/activate
-pip install -r requirements.txt
-sudo systemctl restart newsmon
-sudo systemctl status newsmon
-```
-
----
-
-## 11) Резервне копіювання БД
-
-```bash
-mkdir -p /home/maan/newsmon/backups
-cp /home/maan/newsmon/backend/newsmon.db /home/maan/newsmon/backups/newsmon_$(date +%F_%H-%M-%S).db
-```
-
-Для відновлення:
-```bash
-cp /home/maan/newsmon/backups/<backup_file>.db /home/maan/newsmon/backend/newsmon.db
-sudo systemctl restart newsmon
-```
-
----
-
-## 12) Типові проблеми
-
-### 1. `Telethon не встановлено`
-```bash
-cd /home/maan/newsmon/backend
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-### 2. `Помилка Telethon-сесії ... EOF when reading a line`
-1. Перевір `GET /api/telethon/session/health`.
-2. Повтори `Запросити код` після скидання/пересоздання сесії.
-
-### 3. Dashboard порожній
-- Перевір, чи є активні джерела.
-- Перевір Telethon авторизацію.
-- Перевір `GET /api/messages?limit=5`.
-- Перевір `journalctl -u newsmon -f`.
-
-### 4. `Пакет openai не встановлено` (Grok або Gemini API)
-
-Пакет `openai>=1.0` потрібен для роботи з Grok (xAI) та Gemini (Google) через
-OpenAI-сумісний API. Він вже включений у `requirements.txt`, але може бути
-відсутнім, якщо venv було створено до його додавання.
-
-```bash
-cd /home/maan/newsmon/backend
-source .venv/bin/activate
-pip install openai>=1.0
-# або перевстановити всі залежності:
-pip install -r requirements.txt
-sudo systemctl restart newsmon
-```
-
----
-
-## 13) Telethon не аутентифікується (EOF / readonly) — команди порядково
-
-> Виконуй **по черзі**, не пропускаючи кроки.
-
-### Крок 1. Перейти в проєкт і оновити код
-```bash
-cd /home/maan/newsmon
-git checkout work
-git pull --rebase
-```
-
-### Крок 2. Активувати venv і перевстановити залежності
-```bash
-cd /home/maan/newsmon/backend
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### Крок 3. Повністю видалити старі Telethon session-файли
-```bash
-cd /home/maan/newsmon/backend
-rm -f telegram_user.session
-rm -f telegram_user.session-journal
-rm -f telegram_user.session-wal
-rm -f telegram_user.session-shm
-rm -f telegram_user.session.broken_*
-```
-
-### Крок 4. Перевірити і виправити права доступу (щоб не було readonly)
-```bash
-cd /home/maan/newsmon
-sudo chown -R maan:maan /home/maan/newsmon
-chmod 755 /home/maan/newsmon/backend
-find /home/maan/newsmon/backend -type f -name "telegram_user.session*" -exec chmod 600 {} \;
-```
-
-### Крок 5. Перезапустити сервіс і перевірити статус
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart newsmon
-sudo systemctl status newsmon --no-pager
-```
-
-### Крок 6. Перевірити API health локально
-```bash
-curl -s http://127.0.0.1:8000/api/telethon/session/health | python3 -m json.tool
-curl -s http://127.0.0.1:8000/api/telethon/auth/status | python3 -m json.tool
-curl -s http://127.0.0.1:8000/api/monitor/status | python3 -m json.tool
-```
-
-### Крок 7. Відкрити UI і пройти авторизацію
-1. Відкрий `http://<IP_PI>:8000/settings.html`
-2. Введи номер у форматі `+380...`
-3. Натисни **Запросити код**
-4. Введи код і натисни **Підтвердити**
-
-### Крок 8. Якщо знову є помилка — дивитись live-логи
-```bash
-journalctl -u newsmon -f
-```
-
-Додатково (серверний debug-файл Telethon):
-```bash
-tail -n 200 /home/maan/newsmon/backend/telethon_debug.log
 ```
