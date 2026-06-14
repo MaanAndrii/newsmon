@@ -326,6 +326,13 @@ async def import_backup(file: UploadFile = File(...)) -> dict:
     except Exception:
         pass
 
+    # Remove WAL/SHM sidecars so the new DB file is not tainted by the old journal.
+    # If active connections prevent a full checkpoint the WAL file may linger on disk;
+    # after shutil.move replaces newsmon.db SQLite would pair the new data file with
+    # the old WAL and report "database disk image is malformed".
+    Path(str(DB_PATH) + "-wal").unlink(missing_ok=True)
+    Path(str(DB_PATH) + "-shm").unlink(missing_ok=True)
+
     # Swap in the clean copy
     bak_path = DB_PATH.with_suffix(".db.bak")
     try:
