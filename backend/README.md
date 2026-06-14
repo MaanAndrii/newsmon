@@ -9,7 +9,7 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-NEWSMON_API_TOKEN=dev uvicorn app:app --reload
+uvicorn app:app --reload
 ```
 
 БД створюється автоматично: `backend/newsmon.db`
@@ -68,9 +68,11 @@ backend/
 
 ## Змінні оточення
 
-| Змінна | Обов'язкова | Опис |
-|---|---|---|
-| `NEWSMON_API_TOKEN` | ✅ | Адмін Bearer-токен. Без неї бекенд повертає 503. |
+Жодних обов'язкових змінних оточення немає. Пароль адмінки зберігається в SQLite (`app.admin_password`), за замовчуванням `admin`.
+
+| Змінна | Опис |
+|---|---|
+| `NEWSMON_API_TOKEN` | Необов'язково. Якщо задана — використовується як пароль замість значення з БД (зворотна сумісність). |
 
 Решта конфігурації (API ключі, моделі, налаштування) зберігається в SQLite через веб-інтерфейс.
 
