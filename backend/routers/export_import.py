@@ -384,7 +384,7 @@ def save_timezone(body: dict = Body(...)) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Admin token (password) change
+# Admin password change
 # ---------------------------------------------------------------------------
 
 _PASSWORD_MIN_LEN = 4
