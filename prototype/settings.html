@@ -593,13 +593,13 @@
           <!-- ADMIN PASSWORD -->
           <div class="rounded-lg border border-slate-800 p-5 space-y-3">
             <h3 class="font-semibold text-slate-200">Пароль адмінки</h3>
-            <p class="text-xs text-slate-400">Мінімум 12 символів. Після зміни браузер автоматично збереже новий пароль — повторно вводити не потрібно.</p>
+            <p class="text-xs text-slate-400">Мінімум 4 символи. Після зміни браузер автоматично збереже новий пароль — повторно вводити не потрібно.</p>
             <div class="flex flex-wrap items-end gap-3">
               <div class="flex flex-col gap-1">
                 <label class="text-xs text-slate-400">Новий пароль</label>
                 <input id="newAdminToken" type="password" autocomplete="new-password"
                   class="bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm w-72 font-mono"
-                  placeholder="Мінімум 12 символів" />
+                  placeholder="Мінімум 4 символи" />
               </div>
               <div class="flex flex-col gap-1">
                 <label class="text-xs text-slate-400">Підтвердження</label>
@@ -813,11 +813,11 @@
     <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm hidden">
       <div class="w-full max-w-sm mx-4 rounded-xl border border-slate-700 bg-slate-900 shadow-2xl p-6">
         <h2 class="text-lg font-semibold mb-1">Вхід у налаштування</h2>
-        <p class="text-xs text-slate-400 mb-4">Введи адмін-токен NEWSMON_API_TOKEN, який задано на сервері.</p>
+        <p class="text-xs text-slate-400 mb-4">Введи пароль адміністратора.</p>
         <form id="authModalForm" onsubmit="event.preventDefault(); submitAuthModal();" class="space-y-3">
-          <input id="authModalInput" type="password" autocomplete="off" autofocus
+          <input id="authModalInput" type="password" autocomplete="current-password" autofocus
                  class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm"
-                 placeholder="Адмін-токен" />
+                 placeholder="Пароль" />
           <p id="authModalError" class="text-xs text-rose-400 hidden"></p>
           <div class="flex gap-2 justify-end">
             <button type="button" onclick="cancelAuthModal()"
@@ -937,13 +937,13 @@
         const submitBtn = document.getElementById('authModalSubmit');
         const token = (input.value || '').trim();
         if (!token) {
-          err.textContent = 'Введи токен.';
+          err.textContent = 'Введи пароль.';
           err.classList.remove('hidden');
           return;
         }
         submitBtn.disabled = true;
         input.disabled = true;
-        err.textContent = 'Перевіряємо токен...';
+        err.textContent = 'Перевіряємо пароль...';
         err.classList.remove('hidden');
         const result = await validateToken(token);
         if (result.ok) {
@@ -954,11 +954,11 @@
         }
         if (result.unauthorized) {
           setAdminToken('');
-          err.textContent = 'Невірний токен. Повертаємось на Dashboard...';
+          err.textContent = 'Невірний пароль. Повертаємось на Dashboard...';
           redirectToDashboard(1500);
           return;
         }
-        err.textContent = result.detail || 'Не вдалося перевірити токен.';
+        err.textContent = result.detail || 'Не вдалося перевірити пароль.';
         submitBtn.disabled = false;
         input.disabled = false;
       }
@@ -1002,7 +1002,7 @@
         opts.headers['Authorization'] = `Bearer ${token}`;
         const res = await fetch(url, opts);
         if (res.status === 401) {
-          handleAuthFailure('Токен більше не дійсний. Повертаємось на Dashboard...');
+          handleAuthFailure('Пароль більше не дійсний. Повертаємось на Dashboard...');
         }
         return res;
       }
@@ -1042,9 +1042,9 @@
         }
         setAdminToken('');
         if (result.unauthorized) {
-          showAuthModal('Попередня сесія застаріла. Введи токен ще раз.');
+          showAuthModal('Попередня сесія застаріла. Введи пароль ще раз.');
         } else {
-          showAuthModal(result.detail || 'Не вдалося перевірити токен.');
+          showAuthModal(result.detail || 'Не вдалося перевірити пароль.');
         }
       }
 
@@ -1945,7 +1945,7 @@
           setTimeout(() => msg.classList.add('hidden'), 5000);
         };
         if (!newToken) return show('Введи новий пароль', false);
-        if (newToken.length < 12) return show('Мінімум 12 символів', false);
+        if (newToken.length < 4) return show('Мінімум 4 символи', false);
         if (newToken !== confirm) return show('Паролі не збігаються', false);
         try {
           const res = await authFetch('/api/settings/admin-token', {

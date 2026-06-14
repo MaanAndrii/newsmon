@@ -51,10 +51,9 @@ sudo bash setup.sh
 Скрипт автоматично:
 - встановить системні залежності
 - створить Python venv
-- згенерує адмін-токен
 - налаштує та запустить systemd-сервіс
 
-Після завершення скрипт виведе адресу та токен для входу в адмінку.
+Після завершення скрипт виведе адресу сервера. Пароль для першого входу в адмінку: `admin`.
 
 Детальна інструкція → [INSTALL.md](INSTALL.md)
 
@@ -118,9 +117,6 @@ journalctl -u newsmon -f
 # Статус сервісу
 systemctl status newsmon
 
-# Переглянути / змінити токен
-sudo cat /etc/newsmon.env
-
 # Видалити сервіс
 sudo bash setup.sh --uninstall
 ```
@@ -136,7 +132,7 @@ sudo bash setup.sh --uninstall
 - `GET /api/monitor/status` — стан моніторингу
 - `GET /api/categories` — список категорій
 
-Адмін-ендпоінти (потрібен `Authorization: Bearer <token>`):
+Адмін-ендпоінти (потрібен `Authorization: Bearer <пароль>`):
 - `POST /api/integrations` — збереження ключів
 - `POST /api/monitor/config` — налаштування моніторингу
 - `GET /api/debug/stats` — статистика AI-запитів
