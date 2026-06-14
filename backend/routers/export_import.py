@@ -346,3 +346,22 @@ def save_timezone(body: dict = Body(...)) -> dict:
         raise HTTPException(status_code=400, detail=f"Невідомий timezone: {tz}")
     repo.set_setting("app.timezone", tz)
     return {"ok": True, "timezone": tz}
+
+
+# ---------------------------------------------------------------------------
+# Admin token (password) change
+# ---------------------------------------------------------------------------
+
+_TOKEN_MIN_LEN = 12
+
+
+@router.post("/api/settings/admin-token", dependencies=[Depends(require_admin)])
+def change_admin_token(body: dict = Body(...)) -> dict:
+    new_token = (body.get("new_token") or "").strip()
+    if len(new_token) < _TOKEN_MIN_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Токен занадто короткий (мінімум {_TOKEN_MIN_LEN} символів)",
+        )
+    repo.set_setting("app.admin_token_override", new_token)
+    return {"ok": True}

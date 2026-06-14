@@ -18,6 +18,15 @@ from utils import _resolve_client_ip
 
 
 def _get_admin_token() -> str:
+    # DB override takes precedence over the env var so the token can be
+    # changed through the admin UI without restarting the service.
+    try:
+        from config import repo
+        db_token = (repo.get_setting("app.admin_token_override") or "").strip()
+        if db_token:
+            return db_token
+    except Exception:
+        pass
     return (os.environ.get(ADMIN_TOKEN_ENV) or "").strip()
 
 
