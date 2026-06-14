@@ -174,16 +174,18 @@ if [[ -f "$ENV_FILE" ]]; then
     EXISTING_TOKEN=$(grep -oP '(?<=NEWSMON_API_TOKEN=)\S+' "$ENV_FILE" 2>/dev/null || true)
 fi
 
+DEFAULT_TOKEN="change-me-now"
+
 if [[ -n "$EXISTING_TOKEN" ]]; then
     success "Токен вже існує в $ENV_FILE"
     ADMIN_TOKEN="$EXISTING_TOKEN"
 else
-    ADMIN_TOKEN=$(openssl rand -hex 32)
+    ADMIN_TOKEN="$DEFAULT_TOKEN"
     install -m 600 -o "$CURRENT_USER" -g "$CURRENT_USER" /dev/null "$ENV_FILE"
     echo "NEWSMON_API_TOKEN=$ADMIN_TOKEN" > "$ENV_FILE"
     chmod 600 "$ENV_FILE"
     chown "$CURRENT_USER:$CURRENT_USER" "$ENV_FILE"
-    success "Токен згенеровано та збережено в $ENV_FILE"
+    success "Дефолтний пароль записано в $ENV_FILE"
 fi
 
 # ── Step 5: systemd service ───────────────────────────────────────────────────
@@ -248,19 +250,27 @@ echo -e "${GREEN}${BOLD}║           NewsMon успішно встановле�
 echo -e "${GREEN}${BOLD}╚══════════════════════════════════════════════════════════╝${RESET}"
 echo ""
 echo -e "  ${BOLD}Адреси:${RESET}"
-echo -e "    Dashboard  →  ${CYAN}http://$IP:$PORT/dashboard.html${RESET}"
+echo -e "    Dashboard    →  ${CYAN}http://$IP:$PORT/dashboard.html${RESET}"
 echo -e "    Налаштування →  ${CYAN}http://$IP:$PORT/settings.html${RESET}"
 echo ""
-echo -e "  ${BOLD}Адмін-токен (вводиш в браузері один раз):${RESET}"
+if [[ "$ADMIN_TOKEN" == "$DEFAULT_TOKEN" ]]; then
+echo -e "  ${BOLD}Пароль для першого входу:${RESET}"
 echo -e "    ${YELLOW}${BOLD}$ADMIN_TOKEN${RESET}"
+echo ""
+echo -e "  ${RED}${BOLD}⚠  ЗМІНЬ ПАРОЛЬ ОДРАЗУ ПІСЛЯ ПЕРШОГО ВХОДУ!${RESET}"
+echo -e "  ${RED}Налаштування → Імпорт/Експорт → Пароль адмінки${RESET}"
+else
+echo -e "  ${BOLD}Пароль:${RESET} існуючий (з $ENV_FILE)"
+fi
 echo ""
 echo -e "  ${BOLD}Наступні кроки в браузері:${RESET}"
 echo -e "    1. Відкрий ${CYAN}http://$IP:$PORT/settings.html${RESET}"
-echo -e "    2. Введи токен вище у вікні авторизації"
-echo -e "    3. Вкладка «Інтеграції» → додай Telegram API ID + Hash"
-echo -e "    4. Авторизуй Telethon (телефон → код → 2FA)"
-echo -e "    5. Додай API ключ AI (Claude / Grok / Gemini / DeepSeek)"
-echo -e "    6. Вкладка «Джерела» → додай Telegram-канали"
+echo -e "    2. Введи пароль ${YELLOW}${BOLD}${ADMIN_TOKEN}${RESET} у вікні авторизації"
+echo -e "    3. ${RED}Змінь пароль${RESET}: Імпорт/Експорт → Пароль адмінки"
+echo -e "    4. Вкладка «Інтеграції» → додай Telegram API ID + Hash"
+echo -e "    5. Авторизуй Telethon (телефон → код → 2FA)"
+echo -e "    6. Додай API ключ AI (Claude / Grok / Gemini / DeepSeek)"
+echo -e "    7. Вкладка «Джерела» → додай Telegram-канали"
 echo ""
 echo -e "  ${BOLD}Корисні команди:${RESET}"
 echo -e "    Логи      →  ${CYAN}journalctl -u $SERVICE_NAME -f${RESET}"
