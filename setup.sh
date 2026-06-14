@@ -75,10 +75,6 @@ if [[ "$MODE" == "uninstall" ]]; then
     fi
     [[ -f "$SERVICE_FILE" ]] && rm -f "$SERVICE_FILE" && success "Сервіс видалено"
     systemctl daemon-reload
-    if [[ -f "$ENV_FILE" ]]; then
-        read -rp "Видалити $ENV_FILE (містить токен)? [y/N] " ans
-        [[ "$ans" =~ ^[Yy]$ ]] && rm -f "$ENV_FILE" && success "Env-файл видалено"
-    fi
     if [[ -d "$VENV_DIR" ]]; then
         read -rp "Видалити Python venv ($VENV_DIR)? [y/N] " ans
         [[ "$ans" =~ ^[Yy]$ ]] && rm -rf "$VENV_DIR" && success "venv видалено"
@@ -167,29 +163,8 @@ run_as_user "$VENV_DIR/bin/pip" install -q --upgrade pip
 run_as_user "$VENV_DIR/bin/pip" install -q -r "$BACKEND_DIR/requirements.txt"
 success "Залежності встановлено"
 
-# ── Step 4: Admin token ───────────────────────────────────────────────────────
-header "4. Адмін-токен"
-EXISTING_TOKEN=""
-if [[ -f "$ENV_FILE" ]]; then
-    EXISTING_TOKEN=$(grep -oP '(?<=NEWSMON_API_TOKEN=)\S+' "$ENV_FILE" 2>/dev/null || true)
-fi
-
-DEFAULT_TOKEN="change-me-now"
-
-if [[ -n "$EXISTING_TOKEN" ]]; then
-    success "Токен вже існує в $ENV_FILE"
-    ADMIN_TOKEN="$EXISTING_TOKEN"
-else
-    ADMIN_TOKEN="$DEFAULT_TOKEN"
-    install -m 600 -o "$CURRENT_USER" -g "$CURRENT_USER" /dev/null "$ENV_FILE"
-    echo "NEWSMON_API_TOKEN=$ADMIN_TOKEN" > "$ENV_FILE"
-    chmod 600 "$ENV_FILE"
-    chown "$CURRENT_USER:$CURRENT_USER" "$ENV_FILE"
-    success "Дефолтний пароль записано в $ENV_FILE"
-fi
-
-# ── Step 5: systemd service ───────────────────────────────────────────────────
-header "5. Systemd сервіс"
+# ── Step 4: systemd service ───────────────────────────────────────────────────
+header "4. Systemd сервіс"
 cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=NewsMon — Telegram News Monitor
@@ -201,7 +176,6 @@ Type=simple
 User=$CURRENT_USER
 Group=$CURRENT_USER
 WorkingDirectory=$BACKEND_DIR
-EnvironmentFile=$ENV_FILE
 Environment=PYTHONUNBUFFERED=1
 ExecStart=$VENV_DIR/bin/uvicorn app:app --host 0.0.0.0 --port $PORT
 Restart=always
@@ -253,19 +227,13 @@ echo -e "  ${BOLD}Адреси:${RESET}"
 echo -e "    Dashboard    →  ${CYAN}http://$IP:$PORT/dashboard.html${RESET}"
 echo -e "    Налаштування →  ${CYAN}http://$IP:$PORT/settings.html${RESET}"
 echo ""
-if [[ "$ADMIN_TOKEN" == "$DEFAULT_TOKEN" ]]; then
-echo -e "  ${BOLD}Пароль для першого входу:${RESET}"
-echo -e "    ${YELLOW}${BOLD}$ADMIN_TOKEN${RESET}"
-echo ""
-echo -e "  ${RED}${BOLD}⚠  ЗМІНЬ ПАРОЛЬ ОДРАЗУ ПІСЛЯ ПЕРШОГО ВХОДУ!${RESET}"
-echo -e "  ${RED}Налаштування → Імпорт/Експорт → Пароль адмінки${RESET}"
-else
-echo -e "  ${BOLD}Пароль:${RESET} існуючий (з $ENV_FILE)"
-fi
+echo -e "  ${BOLD}Пароль для першого входу:${RESET}  ${YELLOW}${BOLD}admin${RESET}"
+echo -e "  ${RED}${BOLD}⚠  Змінь пароль після першого входу!${RESET}"
+echo -e "  ${CYAN}Налаштування → Імпорт/Експорт → Пароль адмінки${RESET}"
 echo ""
 echo -e "  ${BOLD}Наступні кроки в браузері:${RESET}"
 echo -e "    1. Відкрий ${CYAN}http://$IP:$PORT/settings.html${RESET}"
-echo -e "    2. Введи пароль ${YELLOW}${BOLD}${ADMIN_TOKEN}${RESET} у вікні авторизації"
+echo -e "    2. Введи пароль ${YELLOW}${BOLD}admin${RESET}"
 echo -e "    3. ${RED}Змінь пароль${RESET}: Імпорт/Експорт → Пароль адмінки"
 echo -e "    4. Вкладка «Інтеграції» → додай Telegram API ID + Hash"
 echo -e "    5. Авторизуй Telethon (телефон → код → 2FA)"
@@ -276,5 +244,4 @@ echo -e "  ${BOLD}Корисні команди:${RESET}"
 echo -e "    Логи      →  ${CYAN}journalctl -u $SERVICE_NAME -f${RESET}"
 echo -e "    Статус    →  ${CYAN}systemctl status $SERVICE_NAME${RESET}"
 echo -e "    Оновлення →  ${CYAN}sudo bash $SCRIPT_DIR/setup.sh --update${RESET}"
-echo -e "    Токен     →  ${CYAN}sudo cat $ENV_FILE${RESET}"
 echo ""

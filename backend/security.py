@@ -16,35 +16,34 @@ from config import (
 )
 from utils import _resolve_client_ip
 
+_DEFAULT_PASSWORD = "admin"
 
-def _get_admin_token() -> str:
-    # DB override takes precedence over the env var so the token can be
-    # changed through the admin UI without restarting the service.
+
+def _get_admin_password() -> str:
+    """Return the active admin password.
+
+    Priority: DB setting → legacy NEWSMON_API_TOKEN env var → "admin" default.
+    """
     try:
         from config import repo
-        db_token = (repo.get_setting("app.admin_token_override") or "").strip()
-        if db_token:
-            return db_token
+        db_pass = (repo.get_setting("app.admin_password") or "").strip()
+        if db_pass:
+            return db_pass
     except Exception:
         pass
-    return (os.environ.get(ADMIN_TOKEN_ENV) or "").strip()
+    env_pass = (os.environ.get(ADMIN_TOKEN_ENV) or "").strip()
+    if env_pass:
+        return env_pass
+    return _DEFAULT_PASSWORD
 
 
 def require_admin(authorization: str | None = Header(None)) -> None:
-    expected = _get_admin_token()
-    if not expected:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                f"Сервер не налаштовано: змінна оточення {ADMIN_TOKEN_ENV} не задана. "
-                "Адмін має встановити її перед запуском."
-            ),
-        )
+    expected = _get_admin_password()
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Потрібен Bearer-токен")
+        raise HTTPException(status_code=401, detail="Потрібен пароль")
     token = authorization[len("Bearer "):].strip()
     if not hmac.compare_digest(token, expected):
-        raise HTTPException(status_code=401, detail="Невірний токен")
+        raise HTTPException(status_code=401, detail="Невірний пароль")
 
 
 def _rate_limit_hit(bucket_key: str, max_hits: int, window_seconds: float) -> bool:

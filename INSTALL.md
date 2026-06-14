@@ -37,11 +37,9 @@ cd newsmon
 sudo bash setup.sh
 ```
 
-Скрипт автоматично виконає всі кроки нижче: встановить залежності, створить Python venv, згенерує адмін-токен, налаштує та запустить systemd-сервіс.
+Скрипт автоматично виконає всі кроки нижче: встановить залежності, створить Python venv, налаштує та запустить systemd-сервіс.
 
-Після завершення в терміналі будуть:
-- **Адреса** сервера (`http://<IP>:8000`)
-- **Адмін-токен** — скопіюй і збережи в надійне місце
+Після завершення в терміналі буде адреса сервера (`http://<IP>:8000`).
 
 ---
 
@@ -49,7 +47,7 @@ sudo bash setup.sh
 
 Відкрий `http://<IP Raspberry Pi>:8000/settings.html`
 
-При першому відкритті з'явиться вікно авторизації — введи адмін-токен, який вивів `setup.sh`.
+При першому відкритті з'явиться вікно авторизації — введи пароль `admin` (за замовчуванням). Змінити пароль можна у вкладці **«Імпорт / Експорт»** → «Пароль адмінки».
 
 ### 2.1 Telegram API + Telethon авторизація
 
@@ -103,8 +101,8 @@ curl http://127.0.0.1:8000/api/monitor/status
 # Останні повідомлення
 curl http://127.0.0.1:8000/api/messages?limit=5
 
-# Стан Telethon сесії
-curl -H "Authorization: Bearer $(sudo grep -oP '(?<=NEWSMON_API_TOKEN=)\S+' /etc/newsmon.env)" \
+# Стан Telethon сесії (замінити MY_PASSWORD на свій пароль)
+curl -H "Authorization: Bearer MY_PASSWORD" \
      http://127.0.0.1:8000/api/telethon/session/health
 ```
 
@@ -121,25 +119,16 @@ sudo bash setup.sh --update
 
 ---
 
-## 5. Адмін-токен
+## 5. Пароль адміністратора
 
-Токен генерується автоматично при першому запуску `setup.sh` і зберігається в `/etc/newsmon.env`.
+Пароль за замовчуванням: `admin`. Зберігається в SQLite — не потребує файлів конфігурації чи env-змінних.
 
-**Переглянути токен:**
-```bash
-sudo cat /etc/newsmon.env
-```
+**Змінити пароль через UI:**
+- Відкрий вкладку **«Імпорт / Експорт»**
+- Знайди картку «Пароль адмінки»
+- Введи новий пароль (мінімум 4 символи) і натисни «Зберегти пароль»
 
-**Змінити токен:**
-```bash
-NEW_TOKEN=$(openssl rand -hex 32)
-echo "NEWSMON_API_TOKEN=$NEW_TOKEN" | sudo tee /etc/newsmon.env > /dev/null
-sudo chmod 600 /etc/newsmon.env
-sudo systemctl restart newsmon
-echo "Новий токен: $NEW_TOKEN"
-```
-
-Після зміни всі браузери з старим токеном отримають 401 і запропонують ввести новий.
+Після зміни браузер автоматично запропонує ввести новий пароль.
 
 ---
 
@@ -184,9 +173,8 @@ sudo systemctl start newsmon
 
 ## 8. Типові проблеми
 
-### Сервіс не стартує — 503 «Сервер не налаштовано»
+### Сервіс не стартує
 ```bash
-sudo cat /etc/newsmon.env          # перевір наявність токена
 sudo systemctl daemon-reload
 sudo systemctl restart newsmon
 journalctl -u newsmon -n 50
@@ -245,12 +233,6 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Токен
-ADMIN_TOKEN=$(openssl rand -hex 32)
-sudo install -m 600 -o $USER -g $USER /dev/null /etc/newsmon.env
-echo "NEWSMON_API_TOKEN=$ADMIN_TOKEN" | sudo tee /etc/newsmon.env
-echo "Токен: $ADMIN_TOKEN"
-
 # Systemd сервіс
 sudo tee /etc/systemd/system/newsmon.service > /dev/null <<EOF
 [Unit]
@@ -262,7 +244,6 @@ Type=simple
 User=$USER
 Group=$USER
 WorkingDirectory=$(pwd)
-EnvironmentFile=/etc/newsmon.env
 Environment=PYTHONUNBUFFERED=1
 ExecStart=$(pwd)/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
 Restart=always
