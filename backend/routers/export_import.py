@@ -312,6 +312,13 @@ async def import_backup(file: UploadFile = File(...)) -> dict:
     finally:
         raw_path.unlink(missing_ok=True)
 
+    # Save current admin password so it survives the database swap
+    current_password: str | None = None
+    try:
+        current_password = (repo.get_setting("app.admin_password") or "").strip() or None
+    except Exception:
+        pass
+
     # Checkpoint WAL on current DB before replacement
     try:
         with get_connection() as conn:
@@ -329,6 +336,13 @@ async def import_backup(file: UploadFile = File(...)) -> dict:
     except Exception as exc:
         clean_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Помилка заміни бази даних: {exc}")
+
+    # Restore the admin password that was active before the swap
+    if current_password:
+        try:
+            repo.set_setting("app.admin_password", current_password)
+        except Exception:
+            pass
 
     return {
         "status": "ok",
