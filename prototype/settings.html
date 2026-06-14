@@ -1641,7 +1641,7 @@
           const summaryId = `aiLogSum${i}`;
           return `<details class="rounded-lg border ${borderColor} bg-slate-900/50">
             <summary id="${summaryId}" class="cursor-pointer list-none flex flex-wrap items-center gap-1.5 p-2">
-              <span class="text-slate-500 font-mono">${escapeHtml(log.at)}</span>
+              <span class="text-slate-500 font-mono">${escapeHtml(formatLocalDateTime(log.at))}</span>
               ${badge}
             </summary>
             <div class="p-2 space-y-2 border-t border-slate-800">
