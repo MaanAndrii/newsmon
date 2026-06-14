@@ -7,7 +7,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from config import repo
@@ -117,13 +117,20 @@ def export_backup() -> FileResponse:
 # Import
 # ---------------------------------------------------------------------------
 
+_MAX_UPLOAD = 500 * 1024 * 1024  # 500 MB — covers even very large DB backups
+
+
 @router.post("/api/import/settings", dependencies=[Depends(require_admin)])
-async def import_settings(file: UploadFile = File(...)) -> dict:
+async def import_settings(request: Request) -> dict:
     """Merge configuration from a previously exported JSON file.
 
     Integrations and settings are overwritten; categories, sources, keywords
     and alerts are upserted (existing records are kept, only new ones added).
     """
+    form = await request.form(max_files=1, max_fields=10, max_part_size=_MAX_UPLOAD)
+    file = form.get("file")
+    if file is None or not hasattr(file, "read"):
+        raise HTTPException(status_code=400, detail="Файл не знайдено у запиті")
     raw = await file.read()
     try:
         data = json.loads(raw)
@@ -256,12 +263,16 @@ async def import_settings(file: UploadFile = File(...)) -> dict:
 
 
 @router.post("/api/import/backup", dependencies=[Depends(require_admin)])
-async def import_backup(file: UploadFile = File(...)) -> dict:
+async def import_backup(request: Request) -> dict:
     """Replace the entire database with an uploaded .db backup file.
 
     The current database is preserved as newsmon.db.bak before replacement.
     A server restart is recommended after this operation.
     """
+    form = await request.form(max_files=1, max_fields=10, max_part_size=_MAX_UPLOAD)
+    file = form.get("file")
+    if file is None or not hasattr(file, "read"):
+        raise HTTPException(status_code=400, detail="Файл не знайдено у запиті")
     raw = await file.read()
 
     if not raw[:16].startswith(b"SQLite format 3"):
