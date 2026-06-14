@@ -1847,7 +1847,7 @@
 
       async function loadTimezone() {
         try {
-          const res = await apiFetch('/api/settings/timezone');
+          const res = await authFetch('/api/settings/timezone');
           const data = await res.json();
           _appTimezone = data.timezone || 'Europe/Kyiv';
           const sel = document.getElementById('appTimezone');
@@ -1880,7 +1880,7 @@
         const msg = document.getElementById('tzSaveMsg');
         if (!tz) return;
         try {
-          const res = await apiFetch('/api/settings/timezone', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({timezone: tz}) });
+          const res = await authFetch('/api/settings/timezone', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({timezone: tz}) });
           const data = await res.json();
           if (res.ok) {
             _appTimezone = data.timezone;
@@ -1927,7 +1927,7 @@
         if (newToken.length < 12) return show('Мінімум 12 символів', false);
         if (newToken !== confirm) return show('Паролі не збігаються', false);
         try {
-          const res = await apiFetch('/api/settings/admin-token', {
+          const res = await authFetch('/api/settings/admin-token', {
             method: 'POST',
             headers: {'Content-Type':'application/json'},
             body: JSON.stringify({new_token: newToken}),
@@ -2383,7 +2383,7 @@
           const parts = Object.entries(data.results || {}).map(([k, v]) => `${k}: ${v}`);
           msgEl.textContent = '✓ ' + (parts.join(' · ') || 'Готово');
         } else {
-          msgEl.textContent = '✗ ' + (data.detail || 'Помилка імпорту');
+          msgEl.textContent = '✗ ' + (data.detail || `HTTP ${res.status}`);
           msgEl.classList.replace('text-slate-400', 'text-rose-400');
         }
         msgEl.classList.remove('hidden');

@@ -127,14 +127,15 @@ async def import_settings(file: UploadFile = File(...)) -> dict:
     raw = await file.read()
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=400, detail=f"Невірний JSON: {exc}")
 
-    if data.get("version") != _EXPORT_VERSION:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Непідтримувана версія формату: {data.get('version')}. Очікується: {_EXPORT_VERSION}",
-        )
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="Файл не є об'єктом JSON")
+
+    # Accept any version — older exports may have version=1; just import what we can
+    if "version" not in data:
+        raise HTTPException(status_code=400, detail="Файл не схожий на експорт налаштувань newsmon (відсутнє поле version)")
 
     results: dict[str, str] = {}
 
@@ -266,18 +267,34 @@ async def import_backup(file: UploadFile = File(...)) -> dict:
     if not raw[:16].startswith(b"SQLite format 3"):
         raise HTTPException(status_code=400, detail="Файл не є SQLite базою даних")
 
-    # Write to temp file and validate schema
-    tmp_path = Path(tempfile.mktemp(suffix=".db"))
+    # Write uploaded bytes to a temp file, then copy via the SQLite Backup API
+    # into a second clean temp file.  This correctly handles WAL-mode databases
+    # that were uploaded without their -wal/-shm sidecar files, which would
+    # otherwise cause "database disk image is malformed" when opened directly.
+    raw_path = Path(tempfile.mktemp(suffix="_raw.db"))
+    clean_path = Path(tempfile.mktemp(suffix="_clean.db"))
     try:
-        tmp_path.write_bytes(raw)
-        tmp_conn = sqlite3.connect(str(tmp_path))
-        found_tables = {
-            r[0]
-            for r in tmp_conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
-        }
-        tmp_conn.close()
+        raw_path.write_bytes(raw)
+        src_conn = sqlite3.connect(str(raw_path))
+        dst_conn = sqlite3.connect(str(clean_path))
+        try:
+            src_conn.backup(dst_conn)  # full online backup — resolves WAL issues
+        finally:
+            dst_conn.close()
+            src_conn.close()
+
+        # Validate schema on the clean copy
+        check_conn = sqlite3.connect(str(clean_path))
+        try:
+            found_tables = {
+                r[0]
+                for r in check_conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+        finally:
+            check_conn.close()
+
         missing = _REQUIRED_TABLES - found_tables
         if missing:
             raise HTTPException(
@@ -285,11 +302,15 @@ async def import_backup(file: UploadFile = File(...)) -> dict:
                 detail=f"Файл не схожий на резервну копію newsmon. Відсутні таблиці: {', '.join(sorted(missing))}",
             )
     except HTTPException:
-        tmp_path.unlink(missing_ok=True)
+        raw_path.unlink(missing_ok=True)
+        clean_path.unlink(missing_ok=True)
         raise
     except Exception as exc:
-        tmp_path.unlink(missing_ok=True)
+        raw_path.unlink(missing_ok=True)
+        clean_path.unlink(missing_ok=True)
         raise HTTPException(status_code=400, detail=f"Помилка перевірки файлу: {exc}")
+    finally:
+        raw_path.unlink(missing_ok=True)
 
     # Checkpoint WAL on current DB before replacement
     try:
@@ -298,15 +319,15 @@ async def import_backup(file: UploadFile = File(...)) -> dict:
     except Exception:
         pass
 
-    # Backup current DB and swap in new one
+    # Swap in the clean copy
     bak_path = DB_PATH.with_suffix(".db.bak")
     try:
         if DB_PATH.exists():
             shutil.copy2(DB_PATH, bak_path)
-        shutil.move(str(tmp_path), str(DB_PATH))
+        shutil.move(str(clean_path), str(DB_PATH))
         init_db()  # apply any missing migrations
     except Exception as exc:
-        tmp_path.unlink(missing_ok=True)
+        clean_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Помилка заміни бази даних: {exc}")
 
     return {
