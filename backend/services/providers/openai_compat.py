@@ -203,7 +203,7 @@ class OpenAICompatProvider:
             try:
                 response = client.chat.completions.create(
                     model=self.model,
-                    max_tokens=1500,
+                    max_tokens=4000,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": messages_text},
