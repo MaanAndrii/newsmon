@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from config import repo
 from models import DigestConfigPayload
@@ -37,7 +37,7 @@ def save_digest_config(payload: DigestConfigPayload) -> dict:
 
 
 @router.get("/api/digest/list")
-def list_digests(limit: int = 7) -> dict:
+def list_digests(limit: int = Query(7, ge=1)) -> dict:
     return {"digests": repo.list_digests(limit=min(limit, 30))}
 
 

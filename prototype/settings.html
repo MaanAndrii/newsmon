@@ -595,6 +595,13 @@
         <div id="importExportTab" class="tab-panel hidden space-y-6">
           <h2 class="text-lg font-semibold">Імпорт / Експорт</h2>
 
+          <div class="rounded-lg border border-slate-800 p-5 space-y-3">
+            <h3 class="font-semibold text-slate-200">Оновлення NewsMon</h3>
+            <button id="systemUpdateButton" disabled onclick="startSystemUpdate()"
+              class="rounded-lg bg-sky-700 hover:bg-sky-600 disabled:opacity-50 px-4 py-2 text-sm">Оновити систему</button>
+            <p id="systemUpdateStatus" role="status" class="text-sm text-slate-300"></p>
+          </div>
+
           <!-- ADMIN PASSWORD -->
           <div class="rounded-lg border border-slate-800 p-5 space-y-3">
             <h3 class="font-semibold text-slate-200">Пароль адмінки</h3>
@@ -1082,6 +1089,7 @@
         if (tabId === 'alertsTab') loadAlerts();
         if (tabId === 'digestTab') { loadDigestConfig(); loadDigestHistory(); }
         if (tabId === 'debugTab') loadDebugAll();
+        if (tabId === 'importExportTab' && !systemUpdateTimer) refreshSystemUpdate();
       }
 
       function integrationPayload() {
@@ -2436,6 +2444,55 @@
         const nameMatch = cd.match(/filename="([^"]+)"/);
         const filename = nameMatch ? nameMatch[1] : 'newsmon-settings.json';
         _triggerDownload(blob, filename);
+      }
+
+      let systemUpdateTimer;
+
+      async function refreshSystemUpdate(pending = null) {
+        clearTimeout(systemUpdateTimer);
+        systemUpdateTimer = null;
+        const button = document.getElementById('systemUpdateButton');
+        const message = document.getElementById('systemUpdateStatus');
+        try {
+          const response = await authFetch(apiBase + '/api/system/update');
+          const data = await parseApiBody(response);
+          if (!response.ok) throw new Error(data.detail || 'Помилка перевірки стану.');
+          const unchanged = pending && data.started === pending.previousStart && data.status !== 'running';
+          const waiting = unchanged && Date.now() < pending.deadline;
+          const messages = {
+            unavailable: 'Для активації на сервері запусти sudo bash setup.sh.',
+            idle: 'Оновлення завантажить зміни поточної гілки та перезапустить NewsMon.',
+            running: 'Оновлення виконується. NewsMon може тимчасово не відповідати.',
+            succeeded: 'Оновлення завершено. Перезавантаж сторінку, щоб завантажити новий інтерфейс.',
+            failed: 'Оновлення завершилось помилкою. На сервері виконай sudo journalctl -u newsmon-update -n 50.',
+          };
+          button.disabled = Boolean(waiting) || ['running', 'unavailable'].includes(data.status);
+          message.textContent = waiting ? 'Очікуємо запуску оновлення…' : messages[data.status];
+          if (unchanged && !waiting) message.textContent = 'Сервер не підтвердив запуск. Перевір журнал newsmon-update.';
+          if (waiting || data.status === 'running') {
+            systemUpdateTimer = setTimeout(() => refreshSystemUpdate(pending), 2500);
+          }
+        } catch (err) {
+          button.disabled = true;
+          message.textContent = 'Стан оновлення поки недоступний. Повторюємо перевірку…';
+          systemUpdateTimer = setTimeout(() => refreshSystemUpdate(pending), 5000);
+        }
+      }
+
+      async function startSystemUpdate() {
+        if (!window.confirm('Оновити NewsMon з поточної гілки й перезапустити сервіс?')) return;
+        const button = document.getElementById('systemUpdateButton');
+        button.disabled = true;
+        try {
+          const response = await authFetch(apiBase + '/api/system/update', { method: 'POST' });
+          const data = await parseApiBody(response);
+          if (response.status === 409) return refreshSystemUpdate();
+          if (!response.ok) throw new Error(data.detail || 'Не вдалося запустити оновлення.');
+          await refreshSystemUpdate({ previousStart: data.previous_start, deadline: Date.now() + 30000 });
+        } catch (err) {
+          document.getElementById('systemUpdateStatus').textContent = err.message;
+          button.disabled = false;
+        }
       }
 
       async function downloadBackup(e) {

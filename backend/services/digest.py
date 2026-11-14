@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 
 from config import broadcast_sse, repo
 from services.providers import get_provider
 
-
+logger = logging.getLogger(__name__)
+_generation_lock = asyncio.Lock()
 
 def _get_digest_config() -> dict:
     def g(k: str, d: str) -> str:
@@ -38,6 +40,11 @@ def _get_digest_config() -> dict:
 
 
 async def _generate_daily_digest(reference_dt: datetime | None = None, force: bool = False) -> dict:
+    async with _generation_lock:
+        return await _generate_digest(reference_dt, force)
+
+
+async def _generate_digest(reference_dt: datetime | None, force: bool) -> dict:
     cfg = _get_digest_config()
     integrations = repo.get_integrations()
 
@@ -54,7 +61,7 @@ async def _generate_daily_digest(reference_dt: datetime | None = None, force: bo
 
     if mode == "previous_24h":
         dt_to = reference_dt
-        dt_from = dt_to - timedelta(hours=24)
+        dt_from = dt_to.astimezone(timezone.utc) - timedelta(hours=24)
         date_str = dt_from.astimezone(tz).date().isoformat()
         date_label = (
             f"{dt_from.astimezone(tz).strftime('%d.%m.%Y %H:%M')} — "
@@ -88,8 +95,9 @@ async def _generate_daily_digest(reference_dt: datetime | None = None, force: bo
     )
 
     if not messages:
-        repo.save_digest(date_str, "", 0, "skipped")
-        repo.replace_digest_items(date_str, [])
+        if not existing or existing.get("status") != "ok":
+            repo.save_digest(date_str, "", 0, "skipped")
+            repo.replace_digest_items(date_str, [])
         return {
             "ok": False,
             "error": f"Недостатньо повідомлень (score ≥ {cfg['min_score']}) за {date_label}",
@@ -141,47 +149,33 @@ async def _generate_daily_digest(reference_dt: datetime | None = None, force: bo
         }
     except Exception as exc:
         err = str(exc)
-        repo.save_digest(date_str, "", 0, f"error: {err}")
-        repo.replace_digest_items(date_str, [])
+        if not existing or existing.get("status") != "ok":
+            repo.save_digest(date_str, "", 0, f"error: {err}")
+            repo.replace_digest_items(date_str, [])
         return {"ok": False, "error": err, "date": date_str}
 
 
 async def _digest_loop() -> None:
+    last_run_date = None
     while True:
         try:
             cfg = _get_digest_config()
             if not cfg["enabled"]:
-                await asyncio.sleep(300)
+                await asyncio.sleep(60)
                 continue
 
             tz = repo.get_app_tz()
             now_local = datetime.now(timezone.utc).astimezone(tz)
             target_hour: int = cfg["hour"]
             target_minute: int = cfg["minute"]
-            target_total = target_hour * 60 + target_minute
-
-            next_run = now_local.replace(
+            target = now_local.replace(
                 hour=target_hour, minute=target_minute, second=0, microsecond=0
             )
-            if next_run <= now_local:
-                next_run += timedelta(days=1)
-
-            sleep_secs = min((next_run - now_local).total_seconds(), 300)
-            await asyncio.sleep(sleep_secs)
-
-            cfg = _get_digest_config()
-            if not cfg["enabled"]:
-                continue
-
-            now_local = datetime.now(timezone.utc).astimezone(tz)
-            diff_min = abs(now_local.hour * 60 + now_local.minute - target_total)
-            if diff_min > 6:
-                continue
-
-            target_run_dt = now_local.replace(
-                hour=target_hour, minute=target_minute, second=0, microsecond=0
-            )
-            await _generate_daily_digest(reference_dt=target_run_dt)
-
+            seconds_until_target = (target.astimezone(timezone.utc) - now_local.astimezone(timezone.utc)).total_seconds()
+            if -360 <= seconds_until_target <= 0 and last_run_date != target.date():
+                last_run_date = target.date()
+                await _generate_daily_digest(reference_dt=target)
+            await asyncio.sleep(min(seconds_until_target, 60) if seconds_until_target > 0 else 60)
         except Exception:
+            logger.exception("Scheduled digest failed")
             await asyncio.sleep(60)

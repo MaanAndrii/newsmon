@@ -1,6 +1,7 @@
 # NewsMon — інструкція встановлення на Raspberry Pi
 
-> Оновлено: червень 2026  
+> Оновлено: листопад 2026
+>
 > Ціль: підняти робочу систему (FastAPI + SQLite + Telethon + Web UI) на Raspberry Pi в локальній мережі.
 
 ---
@@ -10,11 +11,11 @@
 ### Апаратні
 - Raspberry Pi 4 / 5 (рекомендовано 4+ GB RAM)
 - SSD через USB 3.0 (бажано) або microSD
-- Стабільне живлення (офіційний БЖ 5V/3A)
+- Блок живлення USB-C 15 Вт для Pi 4 або 27 Вт для Pi 5, особливо з USB SSD. [Рекомендації Raspberry Pi](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html)
 - Доступ до інтернету
 
 ### Програмні
-- Raspberry Pi OS Lite 64-bit (Debian Bookworm)
+- Raspberry Pi OS Lite 64-bit. Для нового встановлення обери Trixie, наявний Bookworm також має потрібний Python. [Документація Raspberry Pi OS](https://www.raspberrypi.com/documentation/computers/os.html)
 - Python 3.11+
 - Git
 
@@ -65,14 +66,7 @@ sudo bash setup.sh
 
 У тій само вкладці обери та налаштуй один провайдер:
 
-| Провайдер | Рекомендована модель | Поле API Key |
-|---|---|---|
-| Claude (Anthropic) | `claude-haiku-4-5-20251001` | Claude API Key |
-| Grok (xAI) | `grok-3-mini` | Grok API Key |
-| Gemini (Google) | `gemini-2.0-flash` | Gemini API Key |
-| DeepSeek | `deepseek-v4-flash` | DeepSeek API Key |
-
-Натисни **Зберегти інтеграції**, потім **Перевірка інтеграцій** — має з'явитись 🟢.
+Введи ключ і Model ID з кабінету свого провайдера. Натисни **Зберегти інтеграції**, потім **Перевірити підключення**. Для AI-провайдерів ця кнопка перевіряє заповнення та формат полів. Реальний запит до моделі відбудеться під час AI-оцінки або генерації дайджесту.
 
 Для кожного провайдера можна задати до 3 моделей (поля Model ID 1, 2, 3) і використовувати різні для моніторингу та дайджесту.
 
@@ -114,7 +108,19 @@ cd newsmon
 sudo bash setup.sh --update
 ```
 
-Виконує `git pull`, оновлює залежності та перезапускає сервіс.
+Скрипт оновлює поточну гілку з її upstream через `git pull --ff-only`, встановлює залежності, перезапускає сервіс і чекає відповіді HTTP. Перед запуском збережи локальні зміни та зроби резервну копію. Systemd запускає сам NewsMon після завантаження Raspberry Pi.
+
+Також можна відкрити **Імпорт / Експорт → Оновлення NewsMon → Оновити систему**. Для наявної інсталяції спочатку отримай версію з цією функцією через термінал і один раз запусти `sudo bash setup.sh` із тієї самої папки. Скрипт встановить окремий systemd-сервіс оновлення. Для приватного репозиторію Git має мати доступ без інтерактивного запиту від імені користувача інсталяції.
+
+Якщо оновлення зупиниться після завантаження коду, скрипт виведе помилку. Для запусків з адмінки переглянь `sudo journalctl -u newsmon-update -n 50`, усунь причину та повтори команду. Автоматичного відкату коду та залежностей немає.
+
+Якщо системний Python змінився або `.venv` пошкоджено, зупини сервіс і створи середовище заново:
+
+```bash
+sudo systemctl stop newsmon
+mv backend/.venv "backend/.venv.old-$(date +%F_%H-%M-%S)"
+sudo bash setup.sh
+```
 
 ---
 
@@ -153,19 +159,21 @@ sudo bash setup.sh --uninstall
 
 **Через UI:** Вкладка «Імпорт / Експорт» → «Завантажити резервну копію (.db)»
 
-**Через термінал:**
+**Через термінал** у корені репозиторію:
 ```bash
-cp /home/$USER/newsmon/backend/newsmon.db \
-   /home/$USER/newsmon/backend/newsmon_$(date +%F_%H-%M-%S).db
+test -f backend/newsmon.db &&
+  (umask 077; sqlite3 backend/newsmon.db ".backup 'newsmon_$(date +%F_%H-%M-%S).db'")
 ```
 
+Резервна копія містить пароль адмінки, API-ключі та збережену в SQLite сесію Telethon. Для старої файлової сесії окремо збережи `backend/telegram_user.session` після зупинки сервісу.
+
 **Відновлення з файлу:**
-1. Через UI: вкладка «Імпорт / Експорт» → «Відновити з резервної копії»
-2. Або вручну:
+1. Через UI: вкладка «Імпорт / Експорт» → «Відновити з резервної копії». Потім перезапусти сервіс.
+2. Або вручну з кореня репозиторію, від імені власника інсталяції:
 ```bash
 sudo systemctl stop newsmon
-cp backup.db /home/$USER/newsmon/backend/newsmon.db
-sudo systemctl start newsmon
+sqlite3 -bail backend/newsmon.db ".restore 'backup.db'" &&
+  sudo systemctl start newsmon
 ```
 
 ---
@@ -185,13 +193,11 @@ journalctl -u newsmon -n 50
 # 1. Зупини сервіс
 sudo systemctl stop newsmon
 
-# 2. Видали старі session-файли
-rm -f ~/newsmon/backend/telegram_user.session*
+# 2. Віднови права власника за потреби, з кореня репозиторію
+sudo chown -R "$(id -un):$(id -gn)" backend
 
-# 3. Виправ права
-sudo chown -R $USER:$USER ~/newsmon
-
-# 4. Запусти і авторизуйся знову через UI
+# 3. Запусти сервіс, очисть стару сесію через «Вийти з Telethon»
+# і підключи акаунт через QR
 sudo systemctl start newsmon
 ```
 
@@ -207,12 +213,6 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
-
-### DeepSeek повертає роздуми замість JSON
-
-DeepSeek V4 є reasoning-моделлю — система автоматично відключає chain-of-thought для задач оцінки через параметр `thinking: disabled`. Якщо проблема зберігається, спробуй модель `deepseek-v4-flash` замість `deepseek-v4-pro`.
-
----
 
 ## 9. Ручне встановлення (без setup.sh)
 
@@ -237,14 +237,14 @@ sudo tee /etc/systemd/system/newsmon.service > /dev/null <<EOF
 [Unit]
 Description=NewsMon — Telegram News Monitor
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=$USER
-Group=$USER
 WorkingDirectory=$(pwd)
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$(pwd)/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
+ExecStart="$(pwd)/.venv/bin/python" -m uvicorn app:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=5
 

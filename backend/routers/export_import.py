@@ -4,21 +4,27 @@ import json
 import shutil
 import sqlite3
 import tempfile
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
+from typing import BinaryIO
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 
 from config import repo
 from db import DB_PATH, get_connection, init_db
-from security import require_admin
+from security import _get_admin_password, require_admin
 from services.lemmatizer import keyword_to_lemma_json
 
 router = APIRouter()
 
 _EXPORT_VERSION = 1
 _REQUIRED_TABLES = {"messages", "sources", "categories", "integrations", "settings", "alerts"}
+_restore_lock = Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -94,22 +100,27 @@ def export_settings() -> JSONResponse:
 @router.get("/api/export/backup", dependencies=[Depends(require_admin)])
 def export_backup() -> FileResponse:
     """Download a full SQLite backup of the entire database (all messages + config)."""
-    try:
-        with get_connection() as conn:
-            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    except Exception:
-        pass
-
     if not DB_PATH.exists():
         raise HTTPException(status_code=404, detail="База даних не знайдена")
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as file:
+        snapshot = Path(file.name)
+    try:
+        with closing(get_connection()) as source, closing(sqlite3.connect(snapshot)) as target:
+            source.backup(target)
+            target.execute("PRAGMA journal_mode=DELETE")
+    except Exception:
+        snapshot.unlink(missing_ok=True)
+        raise
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     filename = f"newsmon-backup-{ts}.db"
     return FileResponse(
-        path=str(DB_PATH),
+        path=snapshot,
         media_type="application/octet-stream",
         filename=filename,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Cache-Control": "no-store"},
+        background=BackgroundTask(snapshot.unlink, missing_ok=True),
     )
 
 
@@ -264,109 +275,60 @@ async def import_settings(request: Request) -> dict:
 
 @router.post("/api/import/backup", dependencies=[Depends(require_admin)])
 async def import_backup(request: Request) -> dict:
-    """Replace the entire database with an uploaded .db backup file.
-
-    The current database is preserved as newsmon.db.bak before replacement.
-    A server restart is recommended after this operation.
-    """
-    form = await request.form(max_files=1, max_fields=10, max_part_size=_MAX_UPLOAD)
-    file = form.get("file")
-    if file is None or not hasattr(file, "read"):
-        raise HTTPException(status_code=400, detail="Файл не знайдено у запиті")
-    raw = await file.read()
-
-    if not raw[:16].startswith(b"SQLite format 3"):
-        raise HTTPException(status_code=400, detail="Файл не є SQLite базою даних")
-
-    # Write uploaded bytes to a temp file, then copy via the SQLite Backup API
-    # into a second clean temp file.  This correctly handles WAL-mode databases
-    # that were uploaded without their -wal/-shm sidecar files, which would
-    # otherwise cause "database disk image is malformed" when opened directly.
-    raw_path = Path(tempfile.mktemp(suffix="_raw.db"))
-    clean_path = Path(tempfile.mktemp(suffix="_clean.db"))
-    try:
-        raw_path.write_bytes(raw)
-        src_conn = sqlite3.connect(str(raw_path))
-        dst_conn = sqlite3.connect(str(clean_path))
-        try:
-            src_conn.backup(dst_conn)  # full online backup — resolves WAL issues
-        finally:
-            dst_conn.close()
-            src_conn.close()
-
-        # Validate schema on the clean copy
-        check_conn = sqlite3.connect(str(clean_path))
-        try:
-            found_tables = {
-                r[0]
-                for r in check_conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                ).fetchall()
-            }
-        finally:
-            check_conn.close()
-
-        missing = _REQUIRED_TABLES - found_tables
-        if missing:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Файл не схожий на резервну копію newsmon. Відсутні таблиці: {', '.join(sorted(missing))}",
-            )
-    except HTTPException:
-        raw_path.unlink(missing_ok=True)
-        clean_path.unlink(missing_ok=True)
-        raise
-    except Exception as exc:
-        raw_path.unlink(missing_ok=True)
-        clean_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=f"Помилка перевірки файлу: {exc}")
-    finally:
-        raw_path.unlink(missing_ok=True)
-
-    # Save current admin password so it survives the database swap
-    current_password: str | None = None
-    try:
-        current_password = (repo.get_setting("app.admin_password") or "").strip() or None
-    except Exception:
-        pass
-
-    # Checkpoint WAL on current DB before replacement
-    try:
-        with get_connection() as conn:
-            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-    except Exception:
-        pass
-
-    # Remove WAL/SHM sidecars so the new DB file is not tainted by the old journal.
-    # If active connections prevent a full checkpoint the WAL file may linger on disk;
-    # after shutil.move replaces newsmon.db SQLite would pair the new data file with
-    # the old WAL and report "database disk image is malformed".
-    Path(str(DB_PATH) + "-wal").unlink(missing_ok=True)
-    Path(str(DB_PATH) + "-shm").unlink(missing_ok=True)
-
-    # Swap in the clean copy
-    bak_path = DB_PATH.with_suffix(".db.bak")
-    try:
-        if DB_PATH.exists():
-            shutil.copy2(DB_PATH, bak_path)
-        shutil.move(str(clean_path), str(DB_PATH))
-        init_db()  # apply any missing migrations
-    except Exception as exc:
-        clean_path.unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Помилка заміни бази даних: {exc}")
-
-    # Restore the admin password that was active before the swap
-    if current_password:
-        try:
-            repo.set_setting("app.admin_password", current_password)
-        except Exception:
-            pass
+    async with request.form(max_files=1, max_fields=10, max_part_size=_MAX_UPLOAD) as form:
+        file = form.get("file")
+        if file is None or not hasattr(file, "read"):
+            raise HTTPException(400, "Файл не знайдено у запиті")
+        if file.size is not None and file.size > _MAX_UPLOAD:
+            raise HTTPException(413, "Резервна копія перевищує 500 МБ")
+        await run_in_threadpool(_restore_db, file.file)
 
     return {
         "status": "ok",
         "message": "Базу даних замінено. Попередня версія збережена як newsmon.db.bak. Рекомендується перезапустити сервер.",
     }
 
+def _restore_db(upload: BinaryIO) -> None:
+    if upload.read(16) != b"SQLite format 3\x00":
+        raise HTTPException(400, "Файл не є SQLite базою даних")
+    upload.seek(0)
+
+    with tempfile.TemporaryDirectory(dir=DB_PATH.parent) as directory:
+        uploaded = Path(directory) / "upload.db"
+        with uploaded.open("wb") as file:
+            shutil.copyfileobj(upload, file)
+
+        try:
+            with closing(sqlite3.connect(uploaded)) as source:
+                integrity = source.execute("PRAGMA quick_check").fetchone()
+                if integrity != ("ok",):
+                    raise HTTPException(400, "Резервна копія пошкоджена")
+                tables = {
+                    row[0] for row in source.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+                if missing := _REQUIRED_TABLES - tables:
+                    raise HTTPException(400, f"Відсутні таблиці NewsMon: {', '.join(sorted(missing))}")
+
+            init_db(uploaded)
+            with closing(sqlite3.connect(uploaded)) as source, source:
+                source.execute(
+                    "INSERT INTO settings(key, value) VALUES (?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    ("app.admin_password", _get_admin_password()),
+                )
+        except sqlite3.DatabaseError as exc:
+            raise HTTPException(400, "Не вдалося прочитати або оновити схему резервної копії") from exc
+
+        with _restore_lock:
+            pending_backup = Path(directory) / "previous.db"
+            with closing(get_connection()) as current, closing(sqlite3.connect(pending_backup)) as previous:
+                current.backup(previous)
+                previous.execute("PRAGMA journal_mode=DELETE")
+            pending_backup.replace(DB_PATH.with_suffix(".db.bak"))
+            with closing(sqlite3.connect(uploaded)) as source, closing(get_connection()) as current:
+                source.backup(current)
 
 # ---------------------------------------------------------------------------
 # Timezone setting

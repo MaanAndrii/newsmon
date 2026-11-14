@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -15,15 +16,15 @@ except Exception:
 DB_PATH = Path(__file__).resolve().parent / "newsmon.db"
 
 
-def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+def get_connection(path: Path | None = None) -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH if path is None else path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
-def init_db() -> None:
-    with get_connection() as conn:
+def init_db(path: Path | None = None) -> None:
+    with closing(get_connection(path)) as conn, conn:
         conn.executescript(
             """
             PRAGMA journal_mode=WAL;
@@ -1642,7 +1643,7 @@ class Repository:
         excl_clause = ""
         params: list[Any] = [min_score]
         if start_datetime and end_datetime:
-            date_clause = "AND m.published_at BETWEEN ? AND ?"
+            date_clause = "AND m.published_at >= ? AND m.published_at < ?"
             params.extend([start_datetime, end_datetime])
         else:
             date_clause = "AND DATE(m.published_at) = ?"

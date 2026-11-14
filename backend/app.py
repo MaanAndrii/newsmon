@@ -25,6 +25,7 @@ from routers import digest as digest_router
 from routers import sse as sse_router
 from routers import stats as stats_router
 from routers import telethon as telethon_router
+from routers import update as update_router
 
 app = FastAPI(title="NewsMon Prototype API", version="0.1.0")
 
@@ -40,6 +41,7 @@ app.include_router(digest_router.router)
 app.include_router(sse_router.router)
 app.include_router(stats_router.router)
 app.include_router(export_import_router.router)
+app.include_router(update_router.router)
 
 
 @app.on_event("startup")
@@ -57,6 +59,11 @@ async def startup() -> None:
 @app.on_event("shutdown")
 async def shutdown() -> None:
     await stop_qr_login()
+    tasks = [task for task in (config.monitor_task, config.ai_task, config.digest_task) if task]
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    config.monitor_task = config.ai_task = config.digest_task = None
 
 
 def _migrate_alert_lemmas() -> None:
