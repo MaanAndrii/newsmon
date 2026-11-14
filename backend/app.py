@@ -11,6 +11,7 @@ from db import init_db
 from services.digest import _digest_loop
 from services.lemmatizer import keyword_to_lemma_json
 from services.monitor import _ai_loop, _monitor_loop
+from services.telethon_qr import stop_qr_login
 
 from routers import alerts as alerts_router
 from routers import categories as categories_router
@@ -51,6 +52,11 @@ async def startup() -> None:
         config.ai_task = asyncio.create_task(_ai_loop())
     if config.digest_task is None:
         config.digest_task = asyncio.create_task(_digest_loop())
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await stop_qr_login()
 
 
 def _migrate_alert_lemmas() -> None:

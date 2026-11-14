@@ -675,13 +675,17 @@ async def _monitor_loop() -> None:
     reconnect_delay = 3.0
     max_reconnect_delay = 120.0
     while True:
+        saved_session = None
         try:
+            saved_session = _get_saved_string_session()
             monitor_cfg = _get_monitor_config()
             if not monitor_cfg["collect_enabled"]:
                 monitor_status["state"] = "paused"
                 await asyncio.sleep(5)
                 continue
             updated, total, ingested, err = await _sync_sources_last_messages()
+            if _get_saved_string_session() != saved_session:
+                continue
             if err:
                 raise RuntimeError(err)
             monitor_status["updated_sources"] = updated
@@ -699,16 +703,15 @@ async def _monitor_loop() -> None:
             if not re.fullmatch(r"\d{5,12}", api_id_raw) or not re.fullmatch(r"[a-fA-F0-9]{32}", api_hash):
                 raise RuntimeError("Telegram User API ID/Hash не заповнені або некоректні")
             api_id = int(api_id_raw)
-            client_mode, parsed_api_id, parsed_api_hash = _telethon_client_init_data(api_id, api_hash)
             session_obj = (
-                StringSession(_get_saved_string_session())
-                if client_mode == "string"
+                StringSession(saved_session)
+                if saved_session
                 else str(_telethon_session_base())
             )
             client = TelegramClient(
                 session_obj,
-                parsed_api_id,
-                parsed_api_hash,
+                api_id,
+                api_hash,
                 **_telethon_client_kwargs(),
             )
             tracked_by_chat, tracked_by_username = _build_source_indexes()
@@ -757,9 +760,10 @@ async def _monitor_loop() -> None:
                     if _is_telethon_auth_error(exc):
                         if not auth_error_seen:
                             auth_error_seen = True
-                            _reset_telethon_session_for_reauth(
-                                f"{type(exc).__name__}: {str(exc)[:200]}"
-                            )
+                            if _get_saved_string_session() == saved_session:
+                                _reset_telethon_session_for_reauth(
+                                    f"{type(exc).__name__}: {str(exc)[:200]}"
+                                )
                             monitor_status["state"] = "paused"
                             monitor_status["last_error"] = (
                                 "Telethon-сесія втратила авторизацію. "
@@ -776,17 +780,29 @@ async def _monitor_loop() -> None:
                         f"Помилка event-обробки: {type(exc).__name__}: {str(exc)[:200]}",
                     )
 
-            await client.connect()
-            if not await client.is_user_authorized():
-                _record_telegram_call()
-                raise RuntimeError("Telethon-сесія не авторизована (потрібен login)")
-            _record_telegram_call()
-            _log_event("collect_start", "Event listener запущено, очікуємо повідомлення")
             try:
-                await client.run_until_disconnected()
+                await client.connect()
+                if not await client.is_user_authorized():
+                    _record_telegram_call()
+                    raise RuntimeError("Telethon-сесія не авторизована (потрібен login)")
+                _record_telegram_call()
+                _log_event("collect_start", "Event listener запущено, очікуємо повідомлення")
+                listener = asyncio.create_task(client.run_until_disconnected())
+                try:
+                    while _get_saved_string_session() == saved_session:
+                        done, _ = await asyncio.wait({listener}, timeout=5)
+                        if done:
+                            await listener
+                            break
+                finally:
+                    if not listener.done():
+                        listener.cancel()
+                    await asyncio.gather(listener, return_exceptions=True)
             finally:
                 await client.disconnect()
         except Exception as exc:
+            if _get_saved_string_session() != saved_session:
+                continue
             if _is_telethon_auth_error(exc) or "не авторизована" in str(exc).lower():
                 _reset_telethon_session_for_reauth(f"{type(exc).__name__}: {str(exc)[:200]}")
                 monitor_status["state"] = "paused"
