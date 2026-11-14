@@ -75,6 +75,10 @@ class TelethonCodeVerify(BaseModel):
     password: str | None = None
 
 
+class TelethonQRPassword(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+
+
 class MonitorConfigPayload(BaseModel):
     collect_enabled: bool
     ai_enabled: bool

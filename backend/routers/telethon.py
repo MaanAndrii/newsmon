@@ -5,7 +5,7 @@ import re
 import sqlite3
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from config import (
     TELETHON_HEALTH_CACHE_TTL,
@@ -16,9 +16,10 @@ from config import (
     telethon_auth_state,
     telethon_client_lock,
 )
-from models import TelethonCodeRequest, TelethonCodeVerify
+from models import TelethonCodeRequest, TelethonCodeVerify, TelethonQRPassword
 from security import _enforce_telethon_auth_rate_limit, require_admin
 from services.telegram import _record_telegram_call
+from services.telethon_qr import get_qr_login, qr_login_lock, start_qr_login, stop_qr_login
 from services.telethon import (
     _chmod_session_files,
     _get_saved_string_session,
@@ -32,6 +33,46 @@ from services.telethon import (
 )
 
 router = APIRouter()
+qr_router = APIRouter(prefix="/api/telethon/auth/qr", dependencies=[Depends(require_admin)])
+
+
+@qr_router.post("")
+async def telethon_qr_start(request: Request) -> dict:
+    _enforce_telethon_auth_rate_limit(request, action="qr_start")
+    async with qr_login_lock:
+        attempt = await start_qr_login()
+        return {"id": attempt.id}
+
+
+@qr_router.get("/{attempt_id}")
+async def telethon_qr_status(attempt_id: str, response: Response) -> dict:
+    response.headers["Cache-Control"] = "no-store"
+    return get_qr_login(attempt_id).response()
+
+
+@qr_router.post("/{attempt_id}/password")
+async def telethon_qr_password(
+    attempt_id: str, payload: TelethonQRPassword, request: Request
+) -> dict:
+    attempt = get_qr_login(attempt_id)
+    if attempt.status != "password":
+        raise HTTPException(409, "Ця спроба входу зараз не очікує пароль.")
+    _enforce_telethon_auth_rate_limit(request, action="qr_password")
+    attempt.status = "checking_password"
+    attempt.detail = "Перевіряємо пароль…"
+    attempt.passwords.put_nowait(payload.password)
+    return attempt.response()
+
+
+@qr_router.delete("/{attempt_id}")
+async def telethon_qr_cancel(attempt_id: str) -> dict:
+    async with qr_login_lock:
+        get_qr_login(attempt_id)
+        await stop_qr_login()
+    return {"ok": True}
+
+
+router.include_router(qr_router)
 
 
 @router.get("/api/telethon/auth/status", dependencies=[Depends(require_admin)])
@@ -439,7 +480,8 @@ async def telethon_verify_code(
 
 @router.post("/api/telethon/auth/logout", dependencies=[Depends(require_admin)])
 async def telethon_logout() -> dict:
-    async with telethon_client_lock:
+    async with qr_login_lock, telethon_client_lock:
+        await stop_qr_login()
         repo.set_setting("telethon.string_session", "")
         telethon_auth_state.clear()
         _quarantine_telethon_session("manual logout")

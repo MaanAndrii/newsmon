@@ -102,6 +102,10 @@ backend/
 - `GET/POST /api/settings/timezone` — часовий пояс
 - `GET /api/telethon/auth/status` — стан авторизації
 - `GET /api/telethon/session/health` — здоров'я сесії
-- `POST /api/telethon/auth/request-code` — запит SMS-коду
+- `POST /api/telethon/auth/qr` — початок QR-входу
+- `GET /api/telethon/auth/qr/{attempt_id}` — QR-зображення та стан спроби
+- `POST /api/telethon/auth/qr/{attempt_id}/password` — пароль двоетапної перевірки
+- `DELETE /api/telethon/auth/qr/{attempt_id}` — скасування спроби
+- `POST /api/telethon/auth/request-code` — запит коду через API
 - `POST /api/telethon/auth/verify-code` — підтвердження коду
 - `POST /api/telethon/auth/logout` — вихід із Telethon

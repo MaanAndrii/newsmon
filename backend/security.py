@@ -62,10 +62,12 @@ def _rate_limit_hit(bucket_key: str, max_hits: int, window_seconds: float) -> bo
     return True
 
 
-def _enforce_telethon_auth_rate_limit(request_obj: Request, phone: str) -> None:
+def _enforce_telethon_auth_rate_limit(
+    request_obj: Request, phone: str = "", *, action: str = "code"
+) -> None:
     ip = _resolve_client_ip(request_obj)
     if not _rate_limit_hit(
-        f"tg_auth_ip:{ip}", TELETHON_AUTH_RATE_MAX, TELETHON_AUTH_RATE_WINDOW_SECONDS
+        f"tg_auth_ip:{action}:{ip}", TELETHON_AUTH_RATE_MAX, TELETHON_AUTH_RATE_WINDOW_SECONDS
     ):
         raise HTTPException(
             status_code=429,

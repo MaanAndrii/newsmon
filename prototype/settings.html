@@ -236,16 +236,21 @@
               <span id="sigTelethon" class="hidden w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0"></span>
               Telethon авторизація користувача
             </h3>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
-              <input id="telethonAuthPhone" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="+380XXXXXXXXX" />
-              <input id="telethonAuthCode" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="Код з Telegram" />
-              <input id="telethonAuthPassword" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" placeholder="2FA пароль (опц.)" />
-              <div class="flex flex-wrap gap-2">
-                <button id="telethonCodeBtn" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 text-xs" onclick="requestTelethonCode()">Запросити код</button>
-                <button id="telethonVerifyBtn" class="px-3 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-xs" onclick="verifyTelethonCode()">Підтвердити</button>
-                <button id="telethonLogoutBtn" class="hidden px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-xs" onclick="logoutTelethon()">Вийти з Telethon</button>
-              </div>
+            <div class="flex flex-wrap gap-2">
+              <button id="telethonQRStart" class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 disabled:opacity-60 text-xs" onclick="startTelethonQR()">Підключити акаунт через QR</button>
+              <button id="telethonQRCancel" class="hidden px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-xs" onclick="cancelTelethonQR()">Скасувати вхід</button>
+              <button id="telethonLogoutBtn" class="hidden px-3 py-2 rounded-lg bg-rose-700 hover:bg-rose-600 text-xs" onclick="logoutTelethon()">Вийти з Telethon</button>
             </div>
+            <div id="telethonQRScan" class="hidden space-y-2">
+              <p class="text-sm">На смартфоні відкрийте Telegram → Налаштування → Пристрої → Підключити пристрій і відскануйте QR-код.</p>
+              <img id="telethonQRImage" class="w-52 h-52 rounded-lg bg-white" width="208" height="208" alt="QR-код для входу в Telegram" />
+            </div>
+            <form id="telethonQRPasswordForm" class="hidden space-y-2" onsubmit="submitTelethonQRPassword(event)">
+              <label for="telethonQRPassword" class="block text-sm">Пароль двоетапної перевірки Telegram</label>
+              <input id="telethonQRPassword" type="password" required autocomplete="off" maxlength="1024" class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2" />
+              <button class="px-3 py-2 rounded-lg bg-violet-700 hover:bg-violet-600 disabled:opacity-60 text-xs">Підтвердити</button>
+            </form>
+            <p id="telethonQRMessage" role="status" class="text-sm text-slate-300"></p>
             <p id="telethonAuthMessage" class="text-xs text-slate-400">Статус авторизації: невідомо</p>
           </div>
           <div class="flex flex-wrap gap-2">
@@ -1768,55 +1773,109 @@
         }
       }
 
-      async function requestTelethonCode() {
-        const phone = document.getElementById('telethonAuthPhone').value.trim();
-        const button = document.getElementById('telethonCodeBtn');
-        if (!phone) {
-          document.getElementById('telethonAuthMessage').textContent = 'Вкажи номер телефону у форматі +380...';
-          return;
-        }
+      const telethonQRPath = '/api/telethon/auth/qr';
+      let telethonQRId = null;
+      let telethonQRTimer;
+
+      function setTelethonQRMessage(message) {
+        document.getElementById('telethonQRMessage').textContent = message;
+      }
+
+      function resetTelethonQR(message) {
+        clearTimeout(telethonQRTimer);
+        telethonQRId = null;
+        document.getElementById('telethonQRStart').disabled = false;
+        document.getElementById('telethonQRCancel').classList.add('hidden');
+        document.getElementById('telethonQRScan').classList.add('hidden');
+        document.getElementById('telethonQRImage').removeAttribute('src');
+        const form = document.getElementById('telethonQRPasswordForm');
+        form.classList.add('hidden');
+        form.reset();
+        setTelethonQRMessage(message);
+      }
+
+      async function telethonQRFetch(path = '', options) {
+        const res = await authFetch(apiBase + telethonQRPath + path, options);
+        const data = await parseApiBody(res);
+        if (!res.ok) throw new Error(data.detail || 'Не вдалося виконати запит QR-входу.');
+        return data;
+      }
+
+      async function startTelethonQR() {
+        const button = document.getElementById('telethonQRStart');
         button.disabled = true;
-        button.classList.add('opacity-60', 'cursor-not-allowed');
-        document.getElementById('telethonAuthMessage').textContent = 'Надсилаємо код...';
+        setTelethonQRMessage('Створюємо QR-код…');
         try {
-          const res = await authFetch(`${apiBase}/api/telethon/auth/request-code`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone }),
-          });
-          const data = await parseApiBody(res);
-          document.getElementById('telethonAuthMessage').textContent =
-            data.detail || (res.ok ? 'Запит оброблено' : 'Не вдалося запросити код');
+          const { id } = await telethonQRFetch('', { method: 'POST' });
+          telethonQRId = id;
+          document.getElementById('telethonQRCancel').classList.remove('hidden');
+          await pollTelethonQR(id);
         } catch (err) {
-          document.getElementById('telethonAuthMessage').textContent = `Помилка запиту коду: ${err}`;
-        } finally {
-          button.disabled = false;
-          button.classList.remove('opacity-60', 'cursor-not-allowed');
+          resetTelethonQR(err.message);
         }
       }
 
-      async function verifyTelethonCode() {
-        const phone = document.getElementById('telethonAuthPhone').value.trim();
-        const code = document.getElementById('telethonAuthCode').value.trim();
-        const password = document.getElementById('telethonAuthPassword').value.trim();
-        const button = document.getElementById('telethonVerifyBtn');
-        button.disabled = true;
-        button.classList.add('opacity-60', 'cursor-not-allowed');
+      async function pollTelethonQR(id) {
         try {
-          const res = await authFetch(`${apiBase}/api/telethon/auth/verify-code`, {
+          const data = await telethonQRFetch('/' + id);
+          if (telethonQRId !== id) return;
+
+          if (['authorized', 'expired', 'error'].includes(data.status)) {
+            resetTelethonQR(data.detail);
+            if (data.status === 'authorized') await loadTelethonAuthStatus();
+            return;
+          }
+
+          const image = document.getElementById('telethonQRImage');
+          if (data.image && image.getAttribute('src') !== data.image) image.src = data.image;
+          if (!data.image) image.removeAttribute('src');
+          document.getElementById('telethonQRScan').classList.toggle('hidden', data.status !== 'scan');
+          const form = document.getElementById('telethonQRPasswordForm');
+          form.classList.toggle('hidden', !['password', 'checking_password'].includes(data.status));
+          const statusMessages = {
+            starting: 'Створюємо QR-код…',
+            scan: 'Очікуємо підтвердження в Telegram…',
+            saving: 'Зберігаємо сесію Telegram…',
+          };
+          setTelethonQRMessage(statusMessages[data.status] || data.detail);
+          telethonQRTimer = setTimeout(() => pollTelethonQR(id), 1500);
+        } catch (err) {
+          if (telethonQRId === id) resetTelethonQR(err.message);
+        }
+      }
+
+      async function submitTelethonQRPassword(event) {
+        event.preventDefault();
+        const id = telethonQRId;
+        if (!id) return;
+        const input = document.getElementById('telethonQRPassword');
+        const button = event.currentTarget.querySelector('button');
+        button.disabled = true;
+        const password = input.value;
+        input.value = '';
+        try {
+          const data = await telethonQRFetch('/' + id + '/password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone, code, password: password || null }),
+            body: JSON.stringify({ password }),
           });
-          const data = await parseApiBody(res);
-          document.getElementById('telethonAuthMessage').textContent =
-            data.detail || (res.ok ? 'Перевірка виконана' : 'Авторизація не пройшла');
-          await loadTelethonAuthStatus();
+          if (telethonQRId === id) setTelethonQRMessage(data.detail);
         } catch (err) {
-          document.getElementById('telethonAuthMessage').textContent = `Помилка перевірки коду: ${err}`;
+          if (telethonQRId === id) setTelethonQRMessage(err.message);
         } finally {
           button.disabled = false;
-          button.classList.remove('opacity-60', 'cursor-not-allowed');
+        }
+      }
+
+      async function cancelTelethonQR() {
+        const id = telethonQRId;
+        if (!id) return;
+        try {
+          await telethonQRFetch('/' + id, { method: 'DELETE' });
+          if (telethonQRId === id) resetTelethonQR('Вхід скасовано.');
+          await loadTelethonAuthStatus();
+        } catch (err) {
+          if (telethonQRId === id) resetTelethonQR(err.message);
         }
       }
 
@@ -1828,6 +1887,7 @@
           headers: { 'Content-Type': 'application/json' },
         });
         const data = await parseApiBody(res);
+        if (res.ok) resetTelethonQR('');
         document.getElementById('telethonAuthMessage').textContent =
           data.detail || (res.ok ? 'Telethon сесію очищено.' : 'Не вдалося вийти з Telethon');
         await loadTelethonAuthStatus();
