@@ -24,23 +24,30 @@ BACKEND_DIR="$REPO_DIR/backend"
 VENV_DIR="$BACKEND_DIR/.venv"
 SERVICE_NAME="newsmon"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-ENV_FILE="/etc/newsmon.env"
+UPDATE_UNIT="/etc/systemd/system/newsmon-update.service"
+UPDATE_SUDOERS="/etc/sudoers.d/newsmon-update"
 PORT=8000
-CURRENT_USER="${SUDO_USER:-$USER}"
-CURRENT_HOME=$(eval echo "~$CURRENT_USER")
+CURRENT_USER="${SUDO_USER:-$(id -un)}"
 
-MODE="install"
-[[ "${1:-}" == "--update" ]]    && MODE="update"
-[[ "${1:-}" == "--uninstall" ]] && MODE="uninstall"
+[[ $# -le 1 ]] || die "Використання: sudo bash setup.sh [--update | --uninstall]"
+case "${1:-}" in
+    "") MODE="install" ;;
+    --update) MODE="update" ;;
+    --uninstall) MODE="uninstall" ;;
+    -h|--help) echo "Використання: sudo bash setup.sh [--update | --uninstall]"; exit 0 ;;
+    *) die "Невідомий параметр: $1" ;;
+esac
 
 # ── Guards ────────────────────────────────────────────────────────────────────
-[[ "$EUID" -eq 0 ]] || die "Запусти з sudo: sudo bash setup.sh"
+[[ "$EUID" -eq 0 || "$MODE" == "update" ]] || die "Запусти з sudo: sudo bash setup.sh"
 [[ "$CURRENT_USER" == "root" ]] && die "Не запускай від імені root (використай sudo з звичайного акаунта)"
 [[ -f "$BACKEND_DIR/app.py" ]]  || die "Не знайдено backend/app.py. Запусти скрипт з кореня репозиторію newsmon."
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 get_local_ip() {
-    hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1"
+    local ip
+    ip=$(hostname -I 2>/dev/null | awk '{for (i = 1; i <= NF; i++) if ($i ~ /^[0-9.]+$/) {print $i; exit}}') || true
+    echo "${ip:-127.0.0.1}"
 }
 
 python_ok() {
@@ -51,15 +58,29 @@ python_ok() {
     [[ "$ver" == "True" ]]
 }
 
-find_python() {
-    for py in python3.13 python3.12 python3.11 python3; do
-        python_ok "$py" && echo "$py" && return 0
-    done
-    return 1
+run_as_user() {
+    if [[ "$EUID" -eq 0 ]]; then
+        sudo -H -u "$CURRENT_USER" "$@"
+    else
+        "$@"
+    fi
 }
 
-run_as_user() {
-    sudo -u "$CURRENT_USER" "$@"
+install_dependencies() {
+    run_as_user "$VENV_DIR/bin/python" -m pip install -q -r "$BACKEND_DIR/requirements.txt"
+    run_as_user "$VENV_DIR/bin/python" -m pip check
+}
+
+wait_for_service() {
+    local attempt
+    for attempt in {1..30}; do
+        if systemctl is-active --quiet "$SERVICE_NAME" &&
+           curl --fail --silent --max-time 2 "http://127.0.0.1:$PORT/api/monitor/status" -o /dev/null; then
+            return
+        fi
+        sleep 1
+    done
+    die "Сервіс не відповідає. Перевір: sudo journalctl -u $SERVICE_NAME -n 50"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -67,6 +88,10 @@ run_as_user() {
 # ─────────────────────────────────────────────────────────────────────────────
 if [[ "$MODE" == "uninstall" ]]; then
     header "Видалення NewsMon"
+    if [[ -f "$UPDATE_UNIT" ]]; then
+        systemctl stop newsmon-update.service
+        rm -f -- "$UPDATE_UNIT" "$UPDATE_SUDOERS"
+    fi
     if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
         info "Зупиняємо сервіс..."; systemctl stop "$SERVICE_NAME"
     fi
@@ -76,8 +101,10 @@ if [[ "$MODE" == "uninstall" ]]; then
     [[ -f "$SERVICE_FILE" ]] && rm -f "$SERVICE_FILE" && success "Сервіс видалено"
     systemctl daemon-reload
     if [[ -d "$VENV_DIR" ]]; then
-        read -rp "Видалити Python venv ($VENV_DIR)? [y/N] " ans
-        [[ "$ans" =~ ^[Yy]$ ]] && rm -rf "$VENV_DIR" && success "venv видалено"
+        if read -rp "Видалити Python venv ($VENV_DIR)? [y/N] " ans && [[ "$ans" =~ ^[Yy]$ ]]; then
+            run_as_user rm -rf -- "$VENV_DIR"
+            success "venv видалено"
+        fi
     fi
     success "Готово. Файли репозиторію та БД НЕ видалено."
     exit 0
@@ -88,24 +115,29 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 if [[ "$MODE" == "update" ]]; then
     header "Оновлення NewsMon"
+    [[ -f "$SERVICE_FILE" ]] || die "Спочатку встанови NewsMon: sudo bash setup.sh"
+    exec 9<"$BACKEND_DIR"
+    flock -n 9 || die "Оновлення NewsMon уже виконується."
+    python_ok "$VENV_DIR/bin/python" || die "Python у venv відсутній або застарілий. Віднови venv за INSTALL.md."
+    git_status=$(run_as_user git -C "$REPO_DIR" status --porcelain) ||
+        die "Не вдалося перевірити стан репозиторію."
+    [[ -z "$git_status" ]] ||
+        die "У репозиторії є локальні зміни. Збережи їх перед оновленням."
     info "Оновлюємо код..."
-    run_as_user git -C "$REPO_DIR" pull --rebase
+    run_as_user git -C "$REPO_DIR" pull --ff-only
     success "Код оновлено"
 
     info "Оновлюємо залежності..."
-    run_as_user "$VENV_DIR/bin/pip" install -q --upgrade pip
-    run_as_user "$VENV_DIR/bin/pip" install -q -r "$BACKEND_DIR/requirements.txt"
+    install_dependencies
     success "Залежності оновлено"
 
     info "Перезапускаємо сервіс..."
-    systemctl restart "$SERVICE_NAME"
-    sleep 2
-    if systemctl is-active --quiet "$SERVICE_NAME"; then
-        success "Сервіс запущено"
+    if [[ "$EUID" -eq 0 ]]; then
+        systemctl restart newsmon.service
     else
-        error "Сервіс не запустився. Перевір: journalctl -u $SERVICE_NAME -n 50"
-        exit 1
+        sudo -n /usr/bin/systemctl restart newsmon.service
     fi
+    wait_for_service
 
     IP=$(get_local_ip)
     echo -e "\n${GREEN}${BOLD}NewsMon оновлено!${RESET}"
@@ -133,8 +165,9 @@ echo ""
 header "1. Системні пакети"
 apt-get update -qq
 PKGS_NEEDED=()
-for pkg in git python3 python3-venv python3-pip sqlite3 curl; do
-    dpkg -s "$pkg" &>/dev/null || PKGS_NEEDED+=("$pkg")
+for pkg in git python3 python3-venv python3-pip sqlite3 curl util-linux; do
+    [[ "$(dpkg-query -W -f='${db:Status-Status}' "$pkg" 2>/dev/null)" == "installed" ]] ||
+        PKGS_NEEDED+=("$pkg")
 done
 if [[ ${#PKGS_NEEDED[@]} -gt 0 ]]; then
     info "Встановлюємо: ${PKGS_NEEDED[*]}"
@@ -144,7 +177,8 @@ success "Системні пакети готові"
 
 # ── Step 2: Python version ────────────────────────────────────────────────────
 header "2. Python"
-PYTHON=$(find_python) || die "Потрібен Python 3.11+. Встанови: sudo apt install python3.11"
+PYTHON=python3
+python_ok "$PYTHON" || die "Потрібен системний Python 3.11+ із python3-venv."
 PY_VER=$("$PYTHON" --version 2>&1)
 success "$PY_VER знайдено ($PYTHON)"
 
@@ -158,9 +192,9 @@ else
     success "venv вже існує"
 fi
 
-info "Оновлюємо pip та встановлюємо залежності..."
-run_as_user "$VENV_DIR/bin/pip" install -q --upgrade pip
-run_as_user "$VENV_DIR/bin/pip" install -q -r "$BACKEND_DIR/requirements.txt"
+python_ok "$VENV_DIR/bin/python" || die "Віднови venv за INSTALL.md."
+info "Встановлюємо залежності..."
+install_dependencies
 success "Залежності встановлено"
 
 # ── Step 4: systemd service ───────────────────────────────────────────────────
@@ -174,10 +208,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=$CURRENT_USER
-Group=$CURRENT_USER
 WorkingDirectory=$BACKEND_DIR
 Environment=PYTHONUNBUFFERED=1
-ExecStart=$VENV_DIR/bin/uvicorn app:app --host 0.0.0.0 --port $PORT
+ExecStart="$VENV_DIR/bin/python" -m uvicorn app:app --host 0.0.0.0 --port $PORT
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -188,12 +221,35 @@ WantedBy=multi-user.target
 EOF
 success "Сервіс записано: $SERVICE_FILE"
 
+cat > "$UPDATE_UNIT" <<EOF
+[Unit]
+Description=Update NewsMon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=$CURRENT_USER
+WorkingDirectory=$REPO_DIR
+Environment=GIT_TERMINAL_PROMPT=0
+ExecStart=/bin/bash ./setup.sh --update
+TimeoutStartSec=20min
+EOF
+
+[[ "$CURRENT_USER" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]] || die "Ім'я користувача несумісне з налаштуванням sudoers."
+sudoers_tmp=$(mktemp)
+trap 'rm -f -- "$sudoers_tmp"' EXIT
+printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl restart --no-block newsmon-update.service, /usr/bin/systemctl restart newsmon.service\n' "$CURRENT_USER" > "$sudoers_tmp"
+/usr/sbin/visudo -cf "$sudoers_tmp"
+install -o root -g root -m 0440 "$sudoers_tmp" "$UPDATE_SUDOERS"
+
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME" --quiet
 success "Автозапуск увімкнено"
 
-# ── Step 6: Start service ─────────────────────────────────────────────────────
-header "6. Запуск сервісу"
+# ── Step 5: Start service ─────────────────────────────────────────────────────
+header "5. Запуск сервісу"
 if systemctl is-active --quiet "$SERVICE_NAME"; then
     info "Перезапускаємо (вже запущений)..."
     systemctl restart "$SERVICE_NAME"
@@ -202,17 +258,7 @@ else
 fi
 
 info "Чекаємо старту..."
-for i in {1..10}; do
-    sleep 1
-    if curl -sf "http://127.0.0.1:$PORT/api/monitor/status" -o /dev/null 2>/dev/null; then
-        break
-    fi
-    [[ $i -eq 10 ]] && {
-        error "Сервіс не відповідає після 10 секунд."
-        error "Перевір логи: journalctl -u $SERVICE_NAME -n 50"
-        exit 1
-    }
-done
+wait_for_service
 success "Сервіс запущено і відповідає"
 
 # ── Step 7: Summary ───────────────────────────────────────────────────────────
@@ -236,12 +282,12 @@ echo -e "    1. Відкрий ${CYAN}http://$IP:$PORT/settings.html${RESET}"
 echo -e "    2. Введи пароль ${YELLOW}${BOLD}admin${RESET}"
 echo -e "    3. ${RED}Змінь пароль${RESET}: Імпорт/Експорт → Пароль адмінки"
 echo -e "    4. Вкладка «Інтеграції» → додай Telegram API ID + Hash"
-echo -e "    5. Авторизуй Telethon (телефон → код → 2FA)"
+echo -e "    5. Підключи акаунт через QR у блоці Telethon"
 echo -e "    6. Додай API ключ AI (Claude / Grok / Gemini / DeepSeek)"
 echo -e "    7. Вкладка «Джерела» → додай Telegram-канали"
 echo ""
 echo -e "  ${BOLD}Корисні команди:${RESET}"
 echo -e "    Логи      →  ${CYAN}journalctl -u $SERVICE_NAME -f${RESET}"
 echo -e "    Статус    →  ${CYAN}systemctl status $SERVICE_NAME${RESET}"
-echo -e "    Оновлення →  ${CYAN}sudo bash $SCRIPT_DIR/setup.sh --update${RESET}"
+echo -e "    Оновлення →  ${CYAN}sudo bash \"$SCRIPT_DIR/setup.sh\" --update${RESET}"
 echo ""
