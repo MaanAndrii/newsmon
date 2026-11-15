@@ -119,12 +119,10 @@ if [[ "$MODE" == "update" ]]; then
     exec 9<"$BACKEND_DIR"
     flock -n 9 || die "Оновлення NewsMon уже виконується."
     python_ok "$VENV_DIR/bin/python" || die "Python у venv відсутній або застарілий. Віднови venv за INSTALL.md."
-    git_status=$(run_as_user git -C "$REPO_DIR" status --porcelain) ||
-        die "Не вдалося перевірити стан репозиторію."
-    [[ -z "$git_status" ]] ||
-        die "У репозиторії є локальні зміни. Збережи їх перед оновленням."
     info "Оновлюємо код..."
-    run_as_user git -C "$REPO_DIR" pull --ff-only
+    if ! run_as_user git -C "$REPO_DIR" pull --no-rebase --ff-only --no-autostash; then
+        die "Git не зміг оновити гілку. Причина наведена вище. Для перевірки локальних змін виконай git status --short."
+    fi
     success "Код оновлено"
 
     info "Оновлюємо залежності..."
